@@ -1,0 +1,2 @@
+     ID     MM  DD   YY       LAT      LON       TEMP      VE        VN        SPD     VAR. LAT   VAR. LON  VAR. TEMP
+                                                 Deg C    CM/S      CM/S       CM/S
