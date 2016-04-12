@@ -1,5 +1,5 @@
-from drifter.grid.edge import Edge
-from drifter.grid.vertex import Vertex
+from grid.edge import Edge
+from grid.vertex import Vertex
 
 class Cell(object):
     """
