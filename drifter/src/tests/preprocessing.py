@@ -10,7 +10,7 @@ class Test(unittest.TestCase):
 
 
     def test_buoy_lookup(self):
-        from drifter.data.preprocess_data import build_buoy_lookup
+        from data.preprocess_data import build_buoy_lookup
         data_file = '/home/hans-werner/files/work/code/ws/drifter/data/buoydata_test.dat'
         lookup_file = '/home/hans-werner/files/work/code/ws/drifter/data/buoy_lookup_table.dat'
         build_buoy_lookup(data_file,lookup_file)
