@@ -1,5 +1,4 @@
 from grid.edge import Edge
-from grid.vertex import Vertex
 
 class Cell(object):
     """
@@ -38,7 +37,7 @@ class Cell(object):
     VERTEX_LIST = [] 
     EDGE_LIST = []
     
-    def __init__(self, parent, vertices, pos=None):
+    def __init__(self, parent, vertices, position=None):
         """
         Description: Initializes the cell (sub-)tree
         
@@ -48,52 +47,63 @@ class Cell(object):
             
             rectangle: rectangle defining the cell boundary
             
-            pos: own position in parent cell (NW, SW, NE, SE)
+            position: own position in parent cell (NW, SW, NE, SE)
         """
- 
+        """
+        Attributes:
+        children
+        depth
+        edges
+        flag
+        parent
+        position
+        rectangle ?
+        type 
+        vertices
+        """
+        
+        
         self.parent = parent
+        self.children = {'NE': None, 'NW': None, 'SE': None, 'SW': None}
         self.flag = False
-        self.position = pos
+        self.position = position
         #
         # Classify Node as ROOT or LEAF
         # 
         if self.parent == None:
-            self.type = 'ROOT'
-            self.children = []
-            self.depth = 0            
+            cell_type = 'ROOT'
+            cell_depth = 0  
+                     
         else:
-            self.type = 'LEAF'
-            self.children = {'NE': None, 'NW': None, 'SE': None, 'SW': None}
-            self.depth = parent.depth + 1
-
-            #
-            # Position vertices within Node
-            # 
-            v_sw, v_se, v_ne, v_nw = vertices
-            self.vertices = {'SW': v_sw, 'SE': v_se, 'NW': v_nw, 'NE': v_ne, 
-                             'N': None, 'S': None, 'E': None, 'W': None, 
-                             'M': None}
-           
-            #
-            # Define bounding rectangle
-            #
-            coordinates = [vertex.coordinates for vertex in vertices]
-            x0, y0 = min(coordinates)
-            x1, y1 = max(coordinates)
-            self.rectangle = (x0, x1, y0, y1)         
-                             
-            #
-            # Define edges
-            # 
-            e_we = Edge(v_sw, v_se, self)
-            e_sn = Edge(v_se, v_ne, self)
-            e_ew = Edge(v_ne, v_nw, self)
-            e_ns = Edge(v_nw, v_sw, self)
-            self.edges = {'S': e_we, 'E': e_sn, 'N': e_ew, 'W': e_ns}
+            cell_type = 'LEAF'
+            cell_depth = parent.depth + 1
+        self.depth = cell_depth
+        self.type = cell_type
+        
+        #
+        # Position vertices within Node
+        # 
+        v_sw, v_se, v_ne, v_nw = vertices
+        self.vertices = {'SW': v_sw, 'SE': v_se, 'NW': v_nw, 'NE': v_ne, 
+                         'N': None, 'S': None, 'E': None, 'W': None, 
+                         'M': None}
+       
+        #
+        # Define bounding rectangle
+        #
+        coordinates = [vertex.coordinates for vertex in vertices]
+        x0, y0 = min(coordinates)
+        x1, y1 = max(coordinates)
+        self.rectangle = (x0, x1, y0, y1)         
+                         
+        #
+        # Define edges
+        # 
+        e_we = Edge(v_sw, v_se, self)
+        e_sn = Edge(v_se, v_ne, self)
+        e_ew = Edge(v_ne, v_nw, self)
+        e_ns = Edge(v_nw, v_sw, self)
+        self.edges = {'S': e_we, 'E': e_sn, 'N': e_ew, 'W': e_ns}
                  
-            if parent.type == 'ROOT':
-                self.position = None
-            else:
-                self.position = pos
-
+                
         
