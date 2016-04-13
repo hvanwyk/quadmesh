@@ -1,17 +1,56 @@
-'''
-Created on Apr 11, 2016
-
-@author: hans-werner
-'''
+from grid.cell import Cell
+from grid.vertex import Vertex
+import numpy
 
 class Mesh(object):
     '''
-    classdocs
+    Description: (Quad) Mesh object
+    
+    Attributes:
+    
+        bounding_box: 
+        
+        children:
+    
+    Methods:
     '''
 
 
-    def __init__(self, params):
+    def __init__(self, box=[0.,1.,0.,1.], nx=10, ny=10):
         '''
-        Constructor
-        '''
+        Description: Constructor, initialize rectangular grid
         
+        Inputs: 
+            
+            box: double, boundary vertices of rectangular grid, box = [x_min, x_max, y_min, y_max]
+            
+            nx: int, number of cells in x-direction
+            
+            ny: int, number of cells in y-direction
+            
+            type: 'MESH'
+            
+        '''
+        self.bounding_box = box
+        self.type = 'MESH'
+        #
+        # Define cells in mesh
+        # 
+        xmin, xmax, ymin, ymax = box
+        x = numpy.linspace(xmin, xmax, nx+1)
+        y = numpy.linspace(ymin, ymax, ny+1)
+        xx, yy = numpy.meshgrid(x, y, sparse=True)
+        mesh_cells = []
+        node_number = 0
+        for i in range(nx):
+            for j in range(ny):
+                cell_vertices = {'SW': Vertex((xx(i)  ,yy(j)  )),  
+                                 'SE': Vertex((xx(i+1),yy(j)  )),
+                                 'NE': Vertex((xx(i+1),yy(j+1))),
+                                 'NW': Vertex((xx(i)  ,yy(j+1)))
+                                 }
+                node_number += 1
+                mesh_cells.append(Cell(self, cell_vertices, node_number))
+        self.children = mesh_cells
+        
+    

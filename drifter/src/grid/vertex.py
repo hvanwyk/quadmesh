@@ -6,12 +6,27 @@ Created on Apr 11, 2016
 
 class Vertex(object):
     '''
-    classdocs
+    Description:
+    
+    Attributes:
+    
+        coordinate: double, tuple (x,y)
+        
+        node_number: int, index of vertex in mesh
+    
+    Methods: 
     '''
 
 
-    def __init__(self, params):
+    def __init__(self, coordinate, node_number=None):
         '''
-        Constructor
-        '''
+        Description: Constructor
         
+        Inputs: 
+        
+            coordinate: double, x- and y- coordinates of vertex
+            
+            node_number: int, index for vertex  
+        '''
+        self.coordinate = coordinate
+        self.node_number = node_number 

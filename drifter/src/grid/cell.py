@@ -13,7 +13,7 @@ class Cell(object):
             BRANCH - cell has parent(s) as well as children
             LEAF   - cell on finest refinement level
          
-        parent: cell of which current cell is a sub-cell
+        parent: cell/mesh of which current cell is a sub-cell
          
         children: list of sub-cells of current cell
          
@@ -43,7 +43,9 @@ class Cell(object):
         
         Inputs: 
                     
-            parent: parental Node
+            parent: parental cell/mesh
+            
+            vertices: dictionary of coordinates {'SW': (x0,y0), 'SE': (x1,y0), 'NE': (x1,y1), 'NW', (x0,y1) }
             
             rectangle: rectangle defining the cell boundary
             
@@ -70,7 +72,7 @@ class Cell(object):
         #
         # Classify Node as ROOT or LEAF
         # 
-        if self.parent == None:
+        if parent.type == 'MESH':
             cell_type = 'ROOT'
             cell_depth = 0  
                      
@@ -82,9 +84,9 @@ class Cell(object):
         
         #
         # Position vertices within Node
-        # 
-        v_sw, v_se, v_ne, v_nw = vertices
-        self.vertices = {'SW': v_sw, 'SE': v_se, 'NW': v_nw, 'NE': v_ne, 
+        #
+        v_sw, v_se, v_ne, v_nw = [vertices[k] for k in ['SW', 'SE', 'NE', 'NW']]
+        self.vertices = {'SW': v_sw, 'SE': v_se, 'NE': v_ne, 'NW': v_nw, 
                          'N': None, 'S': None, 'E': None, 'W': None, 
                          'M': None}
        
@@ -106,4 +108,78 @@ class Cell(object):
         self.edges = {'S': e_we, 'E': e_sn, 'N': e_ew, 'W': e_ns}
                  
                 
-        
+    def find_neighbor(self, direction):
+        """
+        Description: Returns the deepest neighboring cell, whose depth is at most that of the given cell, or
+                     'None' if there aren't any neighbors.
+         
+        Inputs: 
+         
+            direction: char, 'N'(north), 'S'(south), 'E'(east), or 'W'(west)
+             
+        Output: 
+         
+            neighboring node
+            
+        TODO: replace x0, xx0 etc by vertices (can you directly compare vertices?) 
+        """
+
+        #
+        # For the Root cell, do a brute force search
+        #
+        if self.type == 'ROOT':
+            x0, x1, y0, y1 = self.rectangle
+            for sibling in self.parent.children:
+                xx0, xx1, yy0, yy1 = sibling.rectangle
+                if direction == 'N':
+                    is_neighbor = ( xx0 == x0 and xx1 == x1 and yy0 == y1 )
+                elif direction == 'S':
+                    is_neighbor = ( xx0 == x0 and xx1 == x1 and yy1 == y0 )
+                elif direction == 'E':
+                    is_neighbor = ( yy0 == y0 and yy1 == y1 and xx0 == x1 )
+                elif direction == 'W':
+                    is_neighbor = ( yy0 == y0 and yy1 == y1 and xx1 == x0 )
+                else:
+                    print "Invalid direction. Use 'N', 'S', 'E', or 'W'."
+                    return None
+                    
+                if is_neighbor:
+                    return sibling
+        #
+        # Interior cells 
+        # 
+        else:
+            #
+            # Check for interior neighbors
+            # 
+            if direction == 'N':
+                interior_neighbors_dict = {'SW': 'NW', 'SE': 'NE'}
+            elif direction == 'S':
+                interior_neighbors_dict = {'NW': 'SW', 'NE': 'SE'}
+            elif direction == 'E':
+                interior_neighbors_dict = {'SW': 'SE', 'NW': 'NE'}
+            elif direction == 'W':
+                interior_neighbors_dict = {'SE': 'SW', 'NE': 'NW'}
+            else:
+                print "Invalid direction. Use 'N', 'S', 'E', or 'W'."
+            
+            if interior_neighbors_dict.has_key(self.position):
+                neighbor_pos = interior_neighbors_dict[self.position]
+                return self.parent.children[neighbor_pos]
+            #
+            # Check for (children of) parental neighbors
+            #
+            else:
+                mu = self.parent.find_neighbor(direction)
+                if mu == None or mu.type == 'LEAF':
+                    return mu
+                else:
+                    #
+                    # Reverse dictionary to get exterior neighbors
+                    # 
+                    exterior_neighbors_dict = \
+                       {v: k for k, v in interior_neighbors_dict.iteritems()}
+                        
+                    if exterior_neighbors_dict.has_key(self.position):
+                        neighbor_pos = exterior_neighbors_dict[self.position]
+                        return mu.children[neighbor_pos]                        
