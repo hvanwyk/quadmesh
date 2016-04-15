@@ -50,18 +50,7 @@ class Cell(object):
             rectangle: rectangle defining the cell boundary
             
             position: own position in parent cell (NW, SW, NE, SE)
-        """
-        """
-        Attributes:
-        children
-        depth
-        edges
-        flag
-        parent
-        position
-        rectangle ?
-        type 
-        vertices
+
         """
         
         
@@ -128,17 +117,17 @@ class Cell(object):
         # For the Root cell, do a brute force search
         #
         if self.type == 'ROOT':
-            x0, x1, y0, y1 = self.rectangle
+            x = self.vertices
             for sibling in self.parent.children:
-                xx0, xx1, yy0, yy1 = sibling.rectangle
+                xx = sibling.vertices
                 if direction == 'N':
-                    is_neighbor = ( xx0 == x0 and xx1 == x1 and yy0 == y1 )
+                    is_neighbor = ( x['NW'] == xx['SW'] and x['NE'] == xx['SE'] )
                 elif direction == 'S':
-                    is_neighbor = ( xx0 == x0 and xx1 == x1 and yy1 == y0 )
+                    is_neighbor = ( x['SW'] == xx['NW'] and x['SE'] == xx['NE'] )
                 elif direction == 'E':
-                    is_neighbor = ( yy0 == y0 and yy1 == y1 and xx0 == x1 )
+                    is_neighbor = ( x['SE'] == xx['SW'] and x['NE'] == xx['NW'] )
                 elif direction == 'W':
-                    is_neighbor = ( yy0 == y0 and yy1 == y1 and xx1 == x0 )
+                    is_neighbor = ( x['SW'] == xx['SE'] and x['NW'] == xx['NE'] ) 
                 else:
                     print "Invalid direction. Use 'N', 'S', 'E', or 'W'."
                     return None
@@ -183,3 +172,20 @@ class Cell(object):
                     if exterior_neighbors_dict.has_key(self.position):
                         neighbor_pos = exterior_neighbors_dict[self.position]
                         return mu.children[neighbor_pos]                        
+
+    def find_leaves(self):
+        """
+        Returns a list of all leaf sub-nodes of a given node
+        """
+        leaves = []
+        if self.type == 'LEAF':
+            leaves.append(self)
+        elif self.type == 'ROOT':
+            for child in self.children:
+                leaves.extend(child.find_leaves())
+        else:
+            for pos in ['NW', 'NE', 'SW', 'SE']:
+                child = self.children[pos]
+                leaves.extend(child.find_leaves())
+            
+        return leaves

@@ -8,9 +8,9 @@ class Mesh(object):
     
     Attributes:
     
-        bounding_box: 
+        bounding_box: [xmin, xmax, ymin, ymax]
         
-        children:
+        children: Cell, list of cells contained in mesh 
     
     Methods:
     '''
@@ -52,5 +52,24 @@ class Mesh(object):
                 node_number += 1
                 mesh_cells.append(Cell(self, cell_vertices, node_number))
         self.children = mesh_cells
+    
+    
+    def find_leaves(self):
+        '''
+        Returns a list of all leaf sub-cells of the mesh
+        '''
+        leaves = []
+        for child in self.children:
+            leaves.extend(child.find_leaves())        
+        return leaves
+      
         
+    def plot_quadmesh(self, name):
+        '''
+        Plot the current quadmesh
+        '''
+        pass
+    
+    def plot_trimesh(self):
+        pass
     
