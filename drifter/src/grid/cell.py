@@ -16,6 +16,8 @@ class Cell(object):
         parent: cell/mesh of which current cell is a sub-cell
          
         children: list of sub-cells of current cell
+        
+        flag: boolean, used to mark cells
          
         neighbors: addresses of neighboring cells
          
@@ -30,7 +32,12 @@ class Cell(object):
      
         refine, coarsen, has_children,  
     """
-    # TODO: Is rectangle necessary? 
+    
+    # TODO: --plot_grid
+    # TODO: --refine
+    # TODO: --coarsen
+    # TODO: --balance tree 
+    # TODO: Global node and edge_lists?  
     
     # Globals
     NODE_NUM = 0
@@ -49,11 +56,9 @@ class Cell(object):
             
             rectangle: rectangle defining the cell boundary
             
-            position: own position in parent cell (NW, SW, NE, SE)
+            position: own position in parent cell (NW, SW, NE, SE) or None if N/A
 
-        """
-        
-        
+        """       
         self.parent = parent
         self.children = {'NE': None, 'NW': None, 'SE': None, 'SW': None}
         self.flag = False
@@ -72,7 +77,7 @@ class Cell(object):
         self.type = cell_type
         
         #
-        # Position vertices within Node
+        # Position vertices within Cell
         #
         v_sw, v_se, v_ne, v_nw = [vertices[k] for k in ['SW', 'SE', 'NE', 'NW']]
         self.vertices = {'SW': v_sw, 'SE': v_se, 'NE': v_ne, 'NW': v_nw, 
@@ -95,8 +100,8 @@ class Cell(object):
         e_ew = Edge(v_ne, v_nw, self)
         e_ns = Edge(v_nw, v_sw, self)
         self.edges = {'S': e_we, 'E': e_sn, 'N': e_ew, 'W': e_ns}
-                 
-                
+
+                                 
     def find_neighbor(self, direction):
         """
         Description: Returns the deepest neighboring cell, whose depth is at most that of the given cell, or
@@ -110,11 +115,10 @@ class Cell(object):
          
             neighboring node
             
-        TODO: replace x0, xx0 etc by vertices (can you directly compare vertices?) 
         """
 
         #
-        # For the Root cell, do a brute force search
+        # For the ROOT cell in a MESH, do a brute force search (comparing vertices)
         #
         if self.type == 'ROOT':
             x = self.vertices
@@ -134,12 +138,14 @@ class Cell(object):
                     
                 if is_neighbor:
                     return sibling
+                else:
+                    return None
         #
-        # Interior cells 
+        # Non-ROOT cells 
         # 
         else:
             #
-            # Check for interior neighbors
+            # Check for neighbors interior to parent cell
             # 
             if direction == 'N':
                 interior_neighbors_dict = {'SW': 'NW', 'SE': 'NE'}
@@ -173,9 +179,10 @@ class Cell(object):
                         neighbor_pos = exterior_neighbors_dict[self.position]
                         return mu.children[neighbor_pos]                        
 
+
     def find_leaves(self):
         """
-        Returns a list of all leaf sub-nodes of a given node
+        Returns a list of all leaf sub-cells of a given cell
         """
         leaves = []
         if self.type == 'LEAF':
@@ -184,8 +191,111 @@ class Cell(object):
             for child in self.children:
                 leaves.extend(child.find_leaves())
         else:
-            for pos in ['NW', 'NE', 'SW', 'SE']:
+            for pos in self.children.keys():
                 child = self.children[pos]
                 leaves.extend(child.find_leaves())
             
         return leaves
+   
+    
+    def find_root(self):
+        '''
+        Find the ROOT cell for a given cell
+        '''
+        if self.type == 'ROOT':
+            return self
+        else:
+            return self.parent.find_root()
+        
+        
+    def plot(self):
+        '''
+        Plot the current cell with all of its sub-cells
+        '''
+        pass
+    
+    
+    def contains_point(self, point):
+        '''
+        Determine whether the given cell contains a point
+        
+        Input: 
+        
+            point: tuple (x,y)
+            
+        Output: 
+        
+            contains_point: boolean, True if cell contains point, False otherwise
+              
+        '''
+        # TODO: What about points on the boundary?
+        # TESTME: contains_point
+            
+        x,y = point
+        x_min, y_min = self.vertices['SW'].coordinate
+        x_max, y_max = self.vertices['NE'].coordinate 
+        
+        if x_min <= x <= x_max and y_min <= y <= y_max:
+            return True
+        else:
+            return False
+    
+    
+    def locate_point(self, point):
+        '''
+        Returns the smallest cell containing a given point or None if current cell doesn't contain the point
+        
+        Input:
+            
+            point: tuple (x,y)
+            
+        Output:
+            
+            cell: smallest cell that contains (x,y)
+                
+        '''
+        # TESTME: locate_point
+        
+        if self.contains_point(point):
+            if self.type == 'LEAF': 
+                return self
+            else:
+                #
+                # If cell has children, find the child containing the point and continue looking from there
+                # 
+                for pos in self.children.key():
+                    child = self.children[pos]
+                    if child.contains_point():
+                        return child.locate_point(point)                     
+        else:
+            return None
+    
+     
+    def mark(self):
+        '''
+        Mark cell for refinement/coarsening
+        '''   
+        self.flag = True
+    
+    
+    def unmark(self):
+        '''
+        Unmark cell
+        '''
+        self.flag = False
+        
+        
+    def refine(self):
+        '''
+        Subdivide marked cells in cell
+        '''
+        pass
+        
+        
+    def coarsen(self):
+        '''
+        Delete all marked sub-cells
+        '''
+        
+    
+    
