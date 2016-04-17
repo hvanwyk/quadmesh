@@ -1,8 +1,3 @@
-'''
-Created on Apr 7, 2016
-
-@author: hans-werner
-'''
 import unittest
 
 
@@ -16,8 +11,7 @@ class TestData(unittest.TestCase):
         #build_buoy_lookup(data_file,lookup_file)
 
     def test_grid(self):
-        from grid.mesh import Mesh
-        
+        pass
         
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
