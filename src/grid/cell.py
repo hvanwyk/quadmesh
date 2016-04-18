@@ -1,4 +1,6 @@
 from grid.edge import Edge
+from grid.vertex import Vertex
+import matplotlib.pyplot as plt
 
 class Cell(object):
     """
@@ -32,7 +34,7 @@ class Cell(object):
      
         refine, coarsen, has_children,  
     """
-    
+    # TESTME: 
     # TODO: --plot_grid
     # TODO: --refine
     # TODO: --coarsen
