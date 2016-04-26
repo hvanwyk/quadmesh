@@ -24,9 +24,12 @@ class Vertex(object):
         
         Inputs: 
         
-            coordinate: double, x- and y- coordinates of vertex
+            coordinate: double tuple, x- and y- coordinates of vertex
             
-            node_number: int, index for vertex  
+            node_number: int, index for vertex
+            
+            on_boundary: boolean, true if on boundary  
         '''
         self.coordinate = coordinate
-        self.node_number = node_number 
+        self.node_number = node_number
+        self.on_boundary = None 
