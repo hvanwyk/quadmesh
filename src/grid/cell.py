@@ -25,8 +25,6 @@ class Cell(object):
          
         depth: int, current refinement level 0,1,2,...
          
-        rectangle: (x0, x1, y0, y1), where cell = [x0, x1]x[y0, y1]
-         
         min_size: double, minimum possible mesh width
      
     
@@ -36,7 +34,6 @@ class Cell(object):
     """
     # TESTME: 
     # TODO: --plot_grid
-    # TODO: --refine
     # TODO: --coarsen
     # TODO: --balance tree 
     # TODO: Global node and edge_lists?  
@@ -45,6 +42,7 @@ class Cell(object):
     NODE_NUM = 0
     VERTEX_LIST = [] 
     EDGE_LIST = []
+    DEBUG = True
     
     def __init__(self, vertices, parent=None, position=None):
         """
@@ -56,13 +54,11 @@ class Cell(object):
             
             vertices: dictionary of coordinates {'SW': (x0,y0), 'SE': (x1,y0), 'NE': (x1,y1), 'NW', (x0,y1) }
             
-            rectangle: rectangle defining the cell boundary
-            
             position: own position in parent cell (NW, SW, NE, SE) or None if N/A
 
         """       
         self.parent = parent
-        self.children = {'NE': None, 'NW': None, 'SE': None, 'SW': None}
+        self.children = {}
         self.flag = False
         self.position = position
         #
@@ -70,8 +66,7 @@ class Cell(object):
         # 
         if self.parent == None or parent.type == 'MESH':
             cell_type = 'ROOT'
-            cell_depth = 0  
-                     
+            cell_depth = 0               
         else:
             cell_type = 'LEAF'
             cell_depth = parent.depth + 1
@@ -81,26 +76,17 @@ class Cell(object):
         #
         # Position vertices within Cell
         #
-        self.vertices = {'SW': None, 'SE': None, 'NE': None, 'NW': None, 
-                         'N': None, 'S': None, 'E': None, 'W': None, 'M': None}
-       
+        self.vertices = {}
         for k in ['SW', 'SE', 'NE', 'NW']:
-            if type(vertices[k]) is Vertex:
-                self.vertices[k] = vertices[k]
-            elif type(vertices[k]) is tuple:
-                self.vertices[k] = Vertex(vertices[k])
-            else:
-                print('Error: vertex should be Vertex or tuple.')
-                return
-            
-        #
-        # Define bounding rectangle
-        #
-        '''
-        coordinates = [vertex.coordinate for vertex in vertices]
-        x0, y0 = min(coordinates)
-        x1, y1 = max(coordinates)
-        '''
+            v = vertices[k]
+            #
+            # Convert tuple to Vertex if necessary
+            #
+            if type(v) is tuple:
+                v = Vertex(v)
+            self.vertices[k] = v 
+            if type(v) is Vertex:
+                self.vertices[k] = v
                          
         #
         # Define edges
@@ -111,7 +97,15 @@ class Cell(object):
         e_ns = Edge(self.vertices['NW'], self.vertices['SW'], self)
         self.edges = {'S': e_we, 'E': e_sn, 'N': e_ew, 'W': e_ns}
 
-                                 
+    def box(self):
+        """
+        Description: Returns the coordinates of the cell's bounding box x_min, x_max, y_min, y_max
+        """
+        x_min, y_min = self.vertices['SW'].coordinate
+        x_max, y_max = self.vertices['NE'].coordinate
+        return x_min, x_max, y_min, y_max
+            
+                                     
     def find_neighbor(self, direction):
         """
         Description: Returns the deepest neighboring cell, whose depth is at most that of the given cell, or
@@ -123,9 +117,10 @@ class Cell(object):
              
         Output: 
          
-            neighboring node
+            neighboring cell
             
         """
+        # TESTME: find_neighbor
         if self.parent == None:
             return None
         #
@@ -193,7 +188,7 @@ class Cell(object):
 
     def find_leaves(self):
         """
-        Returns a list of all leaf sub-cells of a given cell
+        Returns a list of all 'LEAF' type sub-cells of a given cell
         """
         leaves = []
         if self.type == 'LEAF':
@@ -219,7 +214,7 @@ class Cell(object):
         
     def has_children(self):
         '''
-        Returns true if cell has any sub-cells, False otherwise
+        Returns True if cell has any sub-cells, False otherwise
         '''    
         return any([self.children[pos]!=None for pos in self.children.keys()])
         
@@ -228,32 +223,33 @@ class Cell(object):
         '''
         Plot the current cell with all of its sub-cells
         '''
-        x0, y0 = self.vertices['SW'].coordinate
-        x1, y1 = self.vertices['NE'].coordinate
-        
-        print 'BOX: [%f, %f, %f, %f]' % (x0, x1, y0, y1)
-        if set_axis:
-            hx = x1 - x0
-            hy = y1 - y0
-            ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
-            ax.set_ylim(y0-0.1*hy, y1+0.1*hy)
-        
-        # Plot current cell
-        plt.plot([x0, x0, x1, x1],[y0, y1, y0, y1],'r.')
-        points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-        if self.flag:
-            rect = plt.Polygon(points, fc='r', edgecolor='k')
-        else:
-            rect = plt.Polygon(points, fc='w', edgecolor='k')
-        ax.add_patch(rect)
-        
+            
         if self.has_children():
-            for pos in self.children.keys():
-                child = self.children[pos]
-                print 'Child: %s' %(pos)
-                child.plot(ax, set_axis=False) 
-                 
-        plt.savefig('../../fig/cellplot.png')
+            if set_axis:
+                x0, y0 = self.vertices['SW'].coordinate
+                x1, y1 = self.vertices['NE'].coordinate 
+                
+                hx = x1 - x0
+                hy = y1 - y0
+                ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
+                ax.set_ylim(y0-0.1*hy, y1+0.1*hy)
+            
+            for child in self.children.itervalues():
+                ax = child.plot(ax, set_axis=False) 
+        else:
+            x0, y0 = self.vertices['SW'].coordinate
+            x1, y1 = self.vertices['NE'].coordinate 
+
+            # Plot current cell
+            plt.plot([x0, x0, x1, x1],[y0, y1, y0, y1],'r.')
+            points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+            if self.flag:
+                rect = plt.Polygon(points, fc='r', edgecolor='k')
+            else:
+                rect = plt.Polygon(points, fc='w', edgecolor='k')
+            ax.add_patch(rect)         
+        return ax
+    
     
     def contains_point(self, point):
         '''
@@ -303,9 +299,8 @@ class Cell(object):
                 #
                 # If cell has children, find the child containing the point and continue looking from there
                 # 
-                for pos in self.children.key():
-                    child = self.children[pos]
-                    if child.contains_point():
+                for child in self.children.itervalues():
+                    if child.contains_point(point):
                         return child.locate_point(point)                     
         else:
             return None
@@ -329,12 +324,21 @@ class Cell(object):
         '''
         Subdivide marked cells in cell
         '''
+        
+        if self.has_children():         
+            #
+            # Refine all progeny that are 'LEAF' cells  
+            # 
+            leaves = self.find_leaves()
+            for leaf in leaves:
+                leaf.mark()
+                leaf.refine()
+        else:
             
-        if self.type == 'LEAF':
+            if self.type == 'LEAF':
+                # Change type to 'BRANCH'
+                self.type = 'BRANCH'
             
-            # Change type to 'BRANCH'
-            self.type = 'BRANCH'
-
             # ---------------------------------------------------------------------
             # Add cell vertices
             # ---------------------------------------------------------------------
@@ -346,7 +350,7 @@ class Cell(object):
             hx = 0.5*(x1-x0)
             hy = 0.5*(y1-y0)
             
-            if self.vertices['M'] == None:
+            if not self.vertices.has_key('M'):
                 self.vertices['M'] = Vertex((x0 + hx, y0 + hy))  
                  
                 
@@ -360,16 +364,16 @@ class Cell(object):
                 #
                 # Check wether we already have a record of this vertex
                 #
-                if self.vertices[direction] == None:
+                if not self.vertices.has_key(direction):
                     neighbor = self.find_neighbor(direction)
                     if neighbor == None or neighbor.type == 'LEAF':
                         #
-                        # New vertex - add it to the global list
+                        # New vertex - add it
                         # 
                         self.vertices[direction] = Vertex(mid_point[direction])
                     else:
                         #
-                        # Vertex exists already - get it from neighoring Node
+                        # Vertex exists already - get it from neighouring Node
                         # 
                         opposite_dir = opposite_direction[direction]
                         self.vertices[direction] = neighbor.vertices[opposite_dir]
@@ -383,26 +387,53 @@ class Cell(object):
                             'NE': ['M', 'E', 'NE', 'N'],
                             'NW': ['W', 'M', 'N', 'NW']}   
              
-            for i in ['NW', 'NE', 'SW', 'SE']:
+            for i in sub_vertices.keys():
                 child_vertices = {}
                 child_vertex_pos = ['SW', 'SE', 'NE', 'NW'] 
                 for j in range(4):
                     child_vertices[child_vertex_pos[j]] = self.vertices[sub_vertices[i][j]] 
                 child = Cell(child_vertices, parent=self, position=i)
                 self.children[i] = child
-        else:
-            #
-            # Not a LEAF cell - find the leaves and 
-            # 
-            leaves = self.find_leaves()
-            for leaf in leaves:
-                leaf.mark()
-                leaf.refine()    
+        
+        #
+        # Unmark yourself once refinement is done
+        #             
+        self.unmark()
         
     def coarsen(self):
         '''
         Delete all marked sub-cells
         '''
+        if self.flag:
+            #
+            # Cell is flagged
+            # 
+            if not self.has_children():
+                print 'Cell has no children and cannot delete itself.'
+                return
+            else:
+                #
+                # Delete all children
+                # 
+                del self.children
+        else:
+            if self.DEBUG:
+                print 'Cell [%f,%f,%f,%f]' % self.box() 
+                     
+            for pos in self.children.keys():
+                #
+                # Delete only flagged children
+                # 
+                if self.children[pos].flag:
+                    if self.DEBUG:
+                        print '%s child flagged: deleted' % (pos)
+                    
+                    del self.children[pos] 
+                    
+                    if self.DEBUG:
+                        print 'updated list of children:', self.children
+                else: 
+                    self.children[pos].coarsen()
         
     
     

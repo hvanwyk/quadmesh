@@ -35,6 +35,8 @@ class Edge(object):
             
             on_boundary: boolean, true if edge lies on boundary
         """
+        # TODO: Change incident face to dictionary with either 'N','S' or 'E', 'W' ? 
+        
         self.v_begin = vb
         self.v_end = ve
         self.incident_face = face
