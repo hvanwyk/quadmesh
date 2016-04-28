@@ -97,6 +97,7 @@ class Cell(object):
         e_ns = Edge(self.vertices['NW'], self.vertices['SW'], self)
         self.edges = {'S': e_we, 'E': e_sn, 'N': e_ew, 'W': e_ns}
 
+
     def box(self):
         """
         Description: Returns the coordinates of the cell's bounding box x_min, x_max, y_min, y_max
@@ -203,9 +204,9 @@ class Cell(object):
    
     
     def find_root(self):
-        '''
+        """
         Find the ROOT cell for a given cell
-        '''
+        """
         if self.type == 'ROOT':
             return self
         else:
@@ -213,16 +214,70 @@ class Cell(object):
         
         
     def has_children(self):
-        '''
+        """
         Returns True if cell has any sub-cells, False otherwise
-        '''    
+        """    
         return any([self.children[pos]!=None for pos in self.children.keys()])
+    
         
+    def balance_tree(self):
+        """
+        Ensure that the quadtree conforms to the 2:1 rule
+        """
+        root = self.find_root()
+        leaves = root.find_leaves()
+        leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
+                     'E': ['NW', 'SW'], 'W': ['NE', 'SE']} 
+        print "There are ", len(leaves), " leaves in total."             
+        while len(leaves) > 0:
+            leaf = leaves.pop()
+            flag = False
+            #
+            # Check if leaf needs to be split
+            # 
+            for direction in ['N', 'S', 'E', 'W']:
+                nb = leaf.find_neighbor(direction)
+                if nb == None:
+                    pass
+                elif nb.type == 'LEAF':
+                    pass
+                else:
+                    for pos in leaf_dict[direction]:
+                        #
+                        # If neighor's children nearest to you aren't LEAVES,
+                        # then split and add children to list of leaves! 
+                        #
+                        if nb.children[pos].type != 'LEAF':
+                            if self.DEBUG:
+                                print "node", id(leaf), "must be split"
+                            leaf.mark()
+                            leaf.refine()
+                            for pos in ['NW', 'NE', 'SW', 'SE']:
+                                leaves.append(leaf.children[pos])
+                            
+                            #
+                            # Check if there are any neighbors that should 
+                            # now also be split.
+                            #  
+                            for direction in ['N', 'S', 'E', 'W']:
+                                if self.DEBUG:
+                                    print "Looking in the ", direction
+                                nb = leaf.find_neighbor(direction)
+                                if nb != None and nb.depth < leaf.depth:
+                                    if self.DEBUG:
+                                        print "Neighbor needs to be split"
+                                    leaves.append(nb)
+                                
+                            flag = True
+                            break
+                if flag:
+                    break
+    
         
     def plot(self, ax, show=True, set_axis=True):
-        '''
+        """
         Plot the current cell with all of its sub-cells
-        '''
+        """
             
         if self.has_children():
             if set_axis:
@@ -252,7 +307,7 @@ class Cell(object):
     
     
     def contains_point(self, point):
-        '''
+        """
         Determine whether the given cell contains a point
         
         Input: 
@@ -263,7 +318,7 @@ class Cell(object):
         
             contains_point: boolean, True if cell contains point, False otherwise
               
-        '''
+        """
         # TODO: What about points on the boundary?
         # TESTME: contains_point
             
@@ -278,7 +333,7 @@ class Cell(object):
     
     
     def locate_point(self, point):
-        '''
+        """
         Returns the smallest cell containing a given point or None if current cell doesn't contain the point
         
         Input:
@@ -289,7 +344,7 @@ class Cell(object):
             
             cell: smallest cell that contains (x,y)
                 
-        '''
+        """
         # TESTME: locate_point
         
         if self.contains_point(point):
@@ -307,23 +362,23 @@ class Cell(object):
     
      
     def mark(self):
-        '''
+        """
         Mark cell
-        '''   
+        """   
         self.flag = True
     
     
     def unmark(self):
-        '''
+        """
         Unmark cell
-        '''
+        """
         self.flag = False
         
         
     def refine(self):
-        '''
+        """
         Subdivide marked cells in cell
-        '''
+        """
         
         if self.has_children():         
             #
@@ -339,9 +394,9 @@ class Cell(object):
                 # Change type to 'BRANCH'
                 self.type = 'BRANCH'
             
-            # ---------------------------------------------------------------------
+            #
             # Add cell vertices
-            # ---------------------------------------------------------------------
+            #
             #
             # Add center vertex to global- and parent vertex lists
             #
@@ -379,9 +434,9 @@ class Cell(object):
                         self.vertices[direction] = neighbor.vertices[opposite_dir]
                     
                             
-            # ---------------------------------------------------------------------
+            # 
             # Add child cells
-            # ---------------------------------------------------------------------
+            # 
             sub_vertices = {'SW': ['SW', 'S', 'M', 'W'], 
                             'SE': ['S', 'SE', 'E', 'M'], 
                             'NE': ['M', 'E', 'NE', 'N'],
@@ -399,6 +454,7 @@ class Cell(object):
         # Unmark yourself once refinement is done
         #             
         self.unmark()
+        
         
     def coarsen(self):
         '''
@@ -435,5 +491,4 @@ class Cell(object):
                 else: 
                     self.children[pos].coarsen()
         
-    
     

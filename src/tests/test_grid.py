@@ -34,11 +34,27 @@ class TestGrid(unittest.TestCase):
         cell.mark()
         cell.refine()
         
-                      
-        cell.children['NW'].mark()
-        print cell.children['NW'].flag
-        cell.children['NW'].refine() 
+        for pos in cell.children.keys():
+            if pos == 'NW':
+                cell.children[pos].mark()
+                cell.children[pos].refine()
         
+        for child in cell.children.itervalues():
+            if child.position == 'NW':
+                child.mark()
+                child.refine()
+                                      
+        fig, ax  = plt.subplots()        
+        cell.plot(ax)
+        plt.show()
+        
+        cell.balance_tree()
+        
+        fig, ax = plt.subplots()
+        cell.plot(ax)
+        plt.show()
+        
+        '''
         point = (.4,.6)
         if cell.contains_point(point):
             print 'Cell contains the point (%f,%f)' %(point[0],point[1])
@@ -55,13 +71,13 @@ class TestGrid(unittest.TestCase):
         
         # Test cell plot
         # 
-        fig, ax  = plt.subplots()        
-        cell.plot(ax)
-        plt.show()
-        
+      
+        '''
         
     def test_mesh(self):
-        pass
+        from grid.mesh import Mesh
+        mesh = Mesh()
+        
     
     
 if __name__ == "__main__":
