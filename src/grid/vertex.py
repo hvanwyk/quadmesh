@@ -28,14 +28,21 @@ class Vertex(object):
             
             node_number: int, index for vertex
             
-            on_boundary: boolean, true if on boundary  
+            on_boundary: boolean, true if on boundary
+            
+            address: int, address within root mesh (computed based on highest refinement level)  
         """
         self.coordinate = coordinate
         self.node_number = node_number
         self.on_boundary = None 
         
+        
     def set_node_number(self, node_num):
         """
         Assign node number
         """
-        self.node_number = node_num
+        if self.node_number == None:
+            self.node_number = node_num
+        else:
+            raise Warning('Node number already assigned to this vertex')
+            return

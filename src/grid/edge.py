@@ -21,7 +21,7 @@ class Edge(object):
     
     '''
     
-    def __init__(self, vb, ve, face, on_boundary=False):
+    def __init__(self, vb, ve, face=None, on_boundary=False):
         """
         Description: Constructor
         

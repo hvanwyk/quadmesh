@@ -1,7 +1,7 @@
 import unittest
 
 
-class TestGrid(unittest.TestCase):
+class TestData(unittest.TestCase):
 
 
     #def test_buoy_lookup(self):
