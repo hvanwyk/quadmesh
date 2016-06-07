@@ -4,18 +4,28 @@ from grid.mesh import Mesh
 
 class TransitMatrix(object):
     '''
-    Description:
+    Description: A transit matrix is a possibly periodic or even time dependent operator
     
     Attributes:
     
     Methods:
     '''
-    def __init__(self):
+    def __init__(self, mesh, data_path):
         '''
         Constructor
         
-        Inputs
+        Inputs:
         
+            date_range
             
+            spatial_range: 'auto' - 
+            
+            dt
+            
+            mesh
+            
+            seasonality
+               
         '''
+        self.__mesh = mesh
         

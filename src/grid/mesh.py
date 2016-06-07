@@ -40,7 +40,6 @@ class Mesh(object):
         '''
         self.bounding_box = box
         self.type = 'MESH'
-        self.flag = False
         self.children_array_size = (nx,ny)
         #
         # Define cells in mesh
@@ -117,11 +116,12 @@ class Mesh(object):
         return cells    
        
                 
-    def number_cells(self):
+    def number_cells(self, overwrite='False'):
         """
         Numbers all leaf cells from 0 to n_cells - 1.
         """
         pass
+        
         
     def number_vertices(self):
         """
@@ -157,6 +157,15 @@ class Mesh(object):
         """
         for child in self.children:
             child.get_        
+    
+    def unmark_all(self):
+        """
+        Unmark all cells in mesh
+        """
+        if self.has_children():
+            for child in self.children.itervalues():
+                child.unmark_all()
+                
             
     def refine(self):
         """
@@ -207,7 +216,6 @@ class Mesh(object):
                         # then split and add children to list of leaves! 
                         #
                         if nb.children[pos].type != 'LEAF':
-                            print "node", id(leaf), "must be split"
                             leaf.mark()
                             leaf.split()
                             for child in leaf.children.itervalues():
@@ -219,10 +227,8 @@ class Mesh(object):
                             # now also be split.
                             #  
                             for direction in ['N', 'S', 'E', 'W']:
-                                print "Looking in the ", direction
                                 nb = leaf.find_neighbor(direction)
                                 if nb != None and nb.depth < leaf.depth:
-                                    print "Neighbor needs to be split"
                                     leaves.append(nb)
                                 
                             flag = True
@@ -257,90 +263,6 @@ class Mesh(object):
                         del child
                     parent.children.clear()
                     leaves.append(parent)
-    '''
-    def balance_tree(self):
-        """
-        Ensure that the quadtree conforms to the 2:1 rule
-        
-        TESTME: mesh.balance_tree()
-        """
-        print '-'*20
-        print 'Balancing tree'
-        print '-'*20
-        #
-        # Get leaves and sort from deep to shallow
-        # 
-        leaves = self.find_leaves()
-        leaves.sort(key=lambda t: t[1])
-        leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
-                     'E': ['NW', 'SW'], 'W': ['NE', 'SE']} 
-        depths = [leaf[1] for leaf in leaves]
-        print 'depths', depths            
-        print 'list of leaves has', len(leaves), 'entries'
-        while len(leaves) > 0:
-            leaf = leaves.pop()[0]
-            flag = False
-            #
-            # Check if any neighbors need to be split
-            #
-            print "cell:", leaf.address 
-            for direction in ['N', 'S', 'E', 'W']:
-                nb = leaf.find_neighbor(direction)                                   
-                if nb == None:
-                    #
-                    # No neighbor 
-                    # 
-                    print '  ', direction, ': no neighbor'
-                    pass
-                elif nb.depth < leaf.depth - 1:
-                    print '  ', direction, ': neighbor', nb.address, '-> too large.'
-                    while nb.depth < leaf.depth - 1:
-                        #
-                        # Neighbor is too large - split until 2:1 rule is met
-                        #
-                        nb.mark()
-                        nb.split()
-                        nb = leaf.find_neighbor(direction)
-                    #
-                    # Add neighbor's children to leaves (at depth leaf.depth - 1)
-                    # 
-                    for child in nb.parent.children.itervalues():
-                        print '    add child', child.address, 'to leaves'
-                        leaves.insert(leaf.depth-1, (child,child.depth))
-                    print 'list now has ', len(leaves), 'entries'    
-                else: 
-                    print '  ', direction, ': neighbor', nb.address, '-> fine.' 
-                
-                    #
-                    # Neighbor is a BRANCH cell, i.e. it has children
-                    #  
-                    print 'Neighbor', nb.address, 'is a', nb.type, 'cell (with children)'
-                    for pos in leaf_dict[direction]:
-                        #
-                        # If neighor's children nearest to you aren't LEAVES,
-                        # then split and add children to list of leaves! 
-                        #
-                        if nb.children[pos].type != 'LEAF':
-                            print 'NB', nb
-                            leaf.mark()
-                            leaf.split()
-                            for pos in ['NW', 'NE', 'SW', 'SE']:
-                                leaves.append(leaf.children[pos])
-                            
-                            #
-                            # Check if there are any neighbors that should 
-                            # now also be split.
-                            #  
-                            for direction in ['N', 'S', 'E', 'W']:
-                                nb = leaf.find_neighbor(direction)
-                                if nb != None and nb.depth < leaf.depth:
-                                    leaves.append(nb)
-                                
-                            flag = True
-                            break
-                if flag:
-                    break
-    '''            
      
            
     def build_connectivity(self):
@@ -358,7 +280,6 @@ class Mesh(object):
         #self.balance_tree()
         leaves = self.find_leaves()
         for leaf in leaves:
-            print 'leaf', leaf.address
             add_steiner_pt = False
             #
             # Get global indices for each corner vertex
@@ -367,7 +288,6 @@ class Mesh(object):
             for pos in ['NW', 'SW', 'NE', 'SE']:
                 gi[pos] = leaf.vertices[pos].node_number
             
-            print gi    
             edges = {'S': [[gi['SW'], gi['SE']]], 'N': [[gi['NE'], gi['NW']]], 
                      'W': [[gi['NW'], gi['SW']]], 'E': [[gi['SE'], gi['NE']]] }
                      
@@ -398,14 +318,12 @@ class Mesh(object):
                               [gi['NE'], gi['NW'], gi['SW']]] )
                               
             elif not leaf.vertices.has_key('M') or leaf.vertices['M'] == None:
-                print 'No midpoint! Add'
                 #
                 # Add Steiner Vertex
                 # 
                 x0, x1, y0, y1 = leaf.box()
                 vm = Vertex((0.5*(x0 + x1), 0.5*(y0 + y1)), node_number=num_vertices)
                 leaf.vertices['M'] = vm
-                print leaf.vertices
                 gi['M'] = vm.node_number
                 self.vertex_list.append(vm)
                 num_vertices += 1
@@ -422,10 +340,7 @@ class Mesh(object):
                    
         if self.has_children():
             if set_axis:
-                print 'bounding box', self.bounding_box
-                x0, x1, y0, y1 = self.bounding_box 
-                
-                
+                x0, x1, y0, y1 = self.bounding_box          
                 hx = x1 - x0
                 hy = y1 - y0
                 ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
@@ -455,7 +370,6 @@ class Mesh(object):
         e_conn = self.build_connectivity()
         for element in e_conn:
             points = []
-            print element
             for node_num in element:
                 x, y = self.vertex_list[node_num].coordinate
                 points.append([x,y])

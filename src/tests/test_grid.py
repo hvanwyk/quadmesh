@@ -30,11 +30,45 @@ class TestGrid(unittest.TestCase):
     # Edge Class
     #     
     def test_edge_constructor(self):
-        vb = Vertex(0.,0.)
-        ve = Vertex(1.,0)
+        vb = Vertex((0.,0.))
+        ve = Vertex((1.,0.))
         edge = Edge(vb, ve)
         self.assertEqual(edge.v_begin, vb, 'Initial vertex should be (0,0).')
         self.assertEqual(edge.v_end, ve, 'Terminal vertex should be (1,0).')
+     
+     
+    def test_edge_intersects_line_segment(self):
+        vb = Vertex((0.,0.))
+        ve = Vertex((1.,0.))
+        edge = Edge(vb,ve)
+        
+        #
+        # Parallel & collinear - no intersection
+        #
+        line = [(-1.0, 0.), (-0.5,0.)]
+        i = edge.intersects_line_segment(line)
+        self.assertFalse(i, 'Line segment should not intersect with edge.')
+        
+        #
+        # Parallel, not collinear - no intersection
+        # 
+        line = [(0., 1.), (1., 1.)]
+        i = edge.intersects_line_segment(line)
+        self.assertFalse(i, 'Line segment should not intersect with edge.')
+        
+        #
+        # Parallel - intersection
+        # 
+        line = [(-1., 0.), (0., 0.)]
+        i = edge.intersects_line_segment(line)
+        self.assertTrue(i, 'Line segment should intersect with edge.')
+        
+        #
+        # Not parallel - no intersection
+        # 
+        line = [(0., 1.), (1., 1.)]
+        i = edge.intersects_line_segment(line)
+        self.assertFalse(i, 'Line segment should not intersect with edge.')
         
     # 
     # Cell Class
@@ -78,23 +112,103 @@ class TestGrid(unittest.TestCase):
                          
     
     def test_cell_find_leaves(self):
-        pass
-    
+        #
+        # Single cell
+        # 
+        vertices = {'SW': (0.,0.), 'SE': (0.,1.), 'NE': (1.,1.), 'NW': (0.,1.)}
+        cell = Cell(vertices)
+        leaves = cell.find_leaves()
+        self.assertEqual(leaves, [], 'Cell should not have leaves.')
+        
+        #
+        # Split cell and SW child - find leaves
+        # 
+        cell.split()
+        sw_child = cell.children['SW']
+        sw_child.split()
+        leaves = cell.find_leaves()
+        self.assertEqual(len(leaves), 7, 'Cell should have 7 leaves.')
+        
+        #
+        # Merge SW child - find leaves
+        # 
+        sw_child.merge()
+        leaves = cell.find_leaves()
+        self.assertEqual(len(leaves), 4, 'Cell should have 4 leaves.')
+        
+        
     def test_cell_find_cells_at_depth(self):
-        pass
+        vertices = {'SW': (0.,0.), 'SE': (0.,1.), 'NE': (1.,1.), 'NW': (0.,1.)}
+        cell = Cell(vertices)
+        #
+        #  Level 0
+        # 
+        level_0 = cell.find_cells_at_depth(0)
+        self.assertEqual(level_0[0], cell, 'Zeroth level subcell should be self.')
+        #
+        # Split and look for level 1 
+        # 
+        cell.split()
+        level_1 = cell.find_cells_at_depth(1)
+        self.assertEqual(len(level_1), 4, 'There should be 4 cells at level 1.')
+        
+        sw_child = cell.children['SW']
+        sw_child.split()
+        level_2 = cell.find_cells_at_depth(2)
+        self.assertEqual(len(level_2), 4, 'There are 4 cells at level 2.')
     
+        
     def test_cell_find_root(self):
-        pass
+        vertices = {'SW': (0.,0.), 'SE': (0.,1.), 'NE': (1.,1.), 'NW': (0.,1.)}
+        cell = Cell(vertices)
+        self.assertEqual(cell.find_root(), cell, 'Cell is its own root.')
+        
+        cell.split()
+        sw_child = cell.children['SW']
+        self.assertEqual(sw_child.find_root(), cell, 'Cell is its childs root.')
+    
     
     def test_cell_has_children(self):
-        pass
+        vertices = {'SW': (0.,0.), 'SE': (0.,1.), 'NE': (1.,1.), 'NW': (0.,1.)}
+        cell = Cell(vertices)
+        self.assertFalse(cell.has_children(), 'Cell has no children.')
+        cell.split()
+        self.assertTrue(cell.has_children(), 'Cell has children.')
+    
     
     def test_cell_has_parent(self):
-        pass
+        vertices = {'SW': (0.,0.), 'SE': (0.,1.), 'NE': (1.,1.), 'NW': (0.,1.)}
+        cell = Cell(vertices)
+        self.assertFalse(cell.has_parent(), 'Cell has no parent.')
+        cell.split()
+        sw_child = cell.children['SW']
+        self.assertTrue(sw_child.has_parent(), 'Cell has parent.')
+    
     
     def test_cell_contains_point(self):
-        pass
+        vertices = {'SW': (0.,0.), 'SE': (0.,1.), 'NE': (1.,1.), 'NW': (0.,1.)}
+        cell = Cell(vertices)
+        self.assertTrue(cell.contains_point((0.,0.)),'Cell contains the point (0,0).')
+        self.assertFalse(cell.contains_point((-0.1,0.3)), 'Cell does not contain (-0.1,0.3')
     
+    
+    def test_cell_intersects_line_segment(self):
+        vertices = {'SW': (0.,0.), 'SE': (0.,1.), 'NE': (1.,1.), 'NW': (0.,1.)}
+        cell = Cell(vertices)
+        
+        line = [(.25,.25),(.75,.75)]
+        i = cell.intersects_line_segment(line)
+        self.assertTrue(i,'Line segment should intersect with cell.')
+        
+        line = [(-1.,-1.), (0.5,0.5)]
+        i = cell.intersects_line_segment(line)
+        self.assertTrue(i,'Line segment should intersect with cell.')
+        
+        line = [(-0.5,0.5), (0.25, 2.0)]
+        i = cell.intersects_line_segment(line)
+        self.assertFalse(i, 'Line segment should not intersect with cell.')
+        
+        
     def test_cell_locate_point(self):
         pass
     
@@ -105,6 +219,9 @@ class TestGrid(unittest.TestCase):
         pass
     
     def test_cell_unmark(self):
+        pass
+    
+    def test_cell_unmark_all(self):
         pass
     
     def test_cell_split(self):
@@ -261,6 +378,9 @@ class TestGrid(unittest.TestCase):
     def test_mesh_get_max_depth(self):
         pass
     
+    def test_mesh_unmark_all(self):
+        pass
+    
     def test_mesh_refine(self):
         pass
     
@@ -273,19 +393,15 @@ class TestGrid(unittest.TestCase):
     def test_mesh_remove_supports(self):
         pass
     
+    '''
     def test_mesh_build_connectivity(self):
         mesh = Mesh()
-        for child in mesh.children.itervalues():
-            print child.address
         child = mesh.children[0,0]
         child.split()
         mesh.number_vertices()
-        #econn = mesh.build_connectivity()
-        #for element in econn:
-        #    print element
         _, ax = plt.subplots()
         mesh.plot_trimesh(ax)
-        plt.show()
+        plt.savefig('../../fig/test_mesh_build_connectivity.png')
         
     def test_mesh_plot_quad_mesh(self):
         pass
@@ -293,7 +409,7 @@ class TestGrid(unittest.TestCase):
     def test_mesh_plot_tri_mesh(self):
         mesh = Mesh()
         child = mesh.children[0,0]
-        for _ in range(6):
+        for _ in range(8):
             child.split()
             child = child.children['NE']
         _, ax = plt.subplots()
@@ -313,7 +429,6 @@ class TestGrid(unittest.TestCase):
 
     
     def test_mesh(self):
-        '''
         mesh = Mesh()
         
         sw_child = mesh.children[0,0]
