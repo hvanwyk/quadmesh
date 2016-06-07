@@ -13,6 +13,9 @@ class TestData(unittest.TestCase):
     def test_grid(self):
         pass
         
+    def test_data(self):
+        pass
+    
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()
