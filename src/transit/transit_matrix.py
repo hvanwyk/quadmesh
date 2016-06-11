@@ -10,22 +10,21 @@ class TransitMatrix(object):
     
     Methods:
     '''
-    def __init__(self, mesh, data_path):
+    def __init__(self, mesh, data_file):
         '''
         Constructor
         
         Inputs:
         
-            date_range
+            date_range: specify date range
             
-            spatial_range: 'auto' - 
+            spatial_range: 'auto'
             
             dt
             
             mesh
-            
-            seasonality
                
         '''
         self.__mesh = mesh
+    
         
