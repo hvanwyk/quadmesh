@@ -1,6 +1,7 @@
 import unittest
 from grid.vertex import Vertex
 from grid.edge import Edge
+from grid.triangle import Triangle
 from grid.cell import Cell
 from grid.mesh import Mesh
 import matplotlib.pyplot as plt
@@ -25,6 +26,19 @@ class TestGrid(unittest.TestCase):
         self.assertEqual(v.node_number, 10, 'Node number should be 10.')
         self.assertRaises(Warning, v.set_node_number, 20)
     
+    def test_vertex_mark(self):
+        v = Vertex((0.,0.))
+        v.mark()
+        self.assertTrue(v.is_marked(),'Vertex should be marked.')
+    
+    def test_vertex_unmark(self):
+        v = Vertex((0.,0.))
+        v.mark()
+        v.unmark()
+        self.assertFalse(v.is_marked(),'Vertex should not be marked.')
+    
+    def test_vertex_ismarked(self):
+        pass
     
     # 
     # Edge Class
@@ -69,6 +83,17 @@ class TestGrid(unittest.TestCase):
         line = [(0., 1.), (1., 1.)]
         i = edge.intersects_line_segment(line)
         self.assertFalse(i, 'Line segment should not intersect with edge.')
+     
+    #
+    # Triangle Class
+    #
+    def test_triangle_constructor(self):
+        pass
+    
+    def test_triangle_area(self):
+        vertices = [Vertex((0.,0.)), Vertex((1.,0.)), Vertex((0.,1.))]
+        triangle = Triangle(vertices)
+        self.assertEqual(triangle.area(), 0.5, 'Area of triangle should be 0.5.')
         
     # 
     # Cell Class
@@ -225,11 +250,32 @@ class TestGrid(unittest.TestCase):
         pass
     
     def test_cell_split(self):
-        pass
-    
+        vertices = {'SW': (0.,0.), 'SE': (0.,1.), 'NE': (1.,1.), 'NW': (0.,1.)}
+        cell = Cell(vertices)
+        cell.split()
+        #
+        # Check whether neigbors cell vertices are updated
+        # 
+        sw_child = cell.children['SW']
+        sw_child.split()
+        self.assertTrue(cell.children['SE'].vertices.has_key('W'), \
+                        'East neighbor of split cell must have midpoint on W edge.')
+     
     def test_cell_merge(self):
-        pass
-    
+        vertices = {'SW': (0.,0.), 'SE': (0.,1.), 'NE': (1.,1.), 'NW': (0.,1.)}
+        cell = Cell(vertices)
+        cell.split()
+        #
+        # Check neigbors what cell vertices are deleted when coarsened
+        # 
+        cell.children['SW'].split()
+        cell.children['NW'].split()
+        cell.children['SW'].merge()
+        self.assertFalse(cell.children['SE'].vertices.has_key('W'), \
+                        'East neighbor of merged cell must have midpoint on W edge.')
+        self.assertTrue(cell.children['NW'].vertices.has_key('S'), \
+                        'North neigbor should maintain its S midpoint.')
+        
     def test_cell_balance_tree(self):
         pass
     
@@ -360,17 +406,20 @@ class TestGrid(unittest.TestCase):
     def test_mesh_constructor(self):
         pass
     
-    def test_mesh_find_leaves(self):
+    def test_mesh_leaves(self):
+        mesh = Mesh()
+        mesh.children[0,0].mark()
+        mesh.refine()
+        
+    def test_mesh_triangles(self):
+        pass
+    
+    def test_mesh_vertices(self):
         pass
     
     def test_mesh_cells_at_depth(self):
         pass
-    
-    def test_mesh_number_cells(self):
-        pass
-    
-    def test_mesh_number_vertices(self):
-        pass
+
     
     def test_mesh_has_children(self):
         pass
@@ -391,6 +440,9 @@ class TestGrid(unittest.TestCase):
         pass
     
     def test_mesh_remove_supports(self):
+        pass
+    
+    def test_mesh_triangulate(self):
         pass
     
     '''

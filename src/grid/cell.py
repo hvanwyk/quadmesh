@@ -434,16 +434,24 @@ class Cell(object):
                 #
                 if not self.vertices.has_key(direction):
                     neighbor = self.find_neighbor(direction)
-                    if neighbor == None or neighbor.type == 'LEAF':
+                    opposite_dir = opposite_direction[direction]
+                    if neighbor == None: 
                         #
-                        # New vertex - add it
+                        # New vertex - add it to self and to neighbor
                         # 
-                        self.vertices[direction] = Vertex(mid_point[direction])
+                        v_new =  Vertex(mid_point[direction])
+                        self.vertices[direction] = v_new
+                    elif neighbor.type == 'LEAF':
+                        #
+                        # Neighbor has no children add new vertex to self and neighbor
+                        #  
+                        v_new =  Vertex(mid_point[direction])
+                        self.vertices[direction] = v_new
+                        neighbor.vertices[opposite_dir] = v_new 
                     else:
                         #
                         # Vertex exists already - get it from neighouring Node
                         # 
-                        opposite_dir = opposite_direction[direction]
                         self.vertices[direction] = neighbor.vertices[opposite_dir]     
             #            
             # Add child cells
@@ -466,8 +474,31 @@ class Cell(object):
         '''
         Delete child nodes
         '''
+        #
+        # Delete unnecessary vertices of neighbors
+        # 
+        opposite_direction = {'N': 'S', 'S': 'N', 'W': 'E', 'E': 'W'}
+        for direction in ['N','S','E','W']:
+            neighbor = self.find_neighbor(direction)
+            if neighbor==None:
+                #
+                # No neighbor on this side delete midpoint vertices
+                # 
+                del self.vertices[direction]
+                
+            elif not neighbor.has_children():
+                #
+                # Neighbouring cell has no children - delete edge midpoints of both
+                # 
+                del self.vertices[direction]
+                op_direction = opposite_direction[direction]
+                del neighbor.vertices[op_direction] 
+        #
+        # Delete all children
+        # 
         self.children.clear()
         self.type = 'LEAF'
+
 
     def balance_tree(self):
         """
@@ -517,9 +548,17 @@ class Cell(object):
                     break
 
 
-    def number_vertices(self, n_vertex):
+    def number_vertices(self, n_vertex, overwrite=False):
         """
         Number cell vertices and add vertices to list
+        
+        Input:
+        
+            n_vertex: int, current number of vertices
+            
+        Output: 
+        
+            vertex_list: list of vertices in current cell
         """
         vertex_list = []            
         for pos in ['SW', 'SE', 'NE', 'NW']:
@@ -528,7 +567,7 @@ class Cell(object):
             # Number own corner vertices
             # 
             if vertex.node_number == None:
-                vertex.set_node_number(n_vertex)
+                vertex.set_node_number(n_vertex, overwrite=overwrite)
                 vertex_list.append(vertex)
                 n_vertex += 1
                    
