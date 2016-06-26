@@ -23,8 +23,10 @@ class TransitMatrix(object):
             dt
             
             mesh
+            
+            seasonality
                
         '''
         self.__mesh = mesh
-    
+        
         
