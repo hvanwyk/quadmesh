@@ -1,5 +1,6 @@
 from grid.cell import Cell
 from grid.vertex import Vertex
+from grid.triangle import Triangle
 import numpy
 import matplotlib.pyplot as plt
 
@@ -18,11 +19,12 @@ class Mesh(object):
         connectivity: int, numpy array - element connectivity matrix (run build_connectivity)
         
         max_depth: int, maximum number of times each of the mesh's cell can be refined
+        
+        balanced: bool, true if mesh is balanced. 
     
     Methods:
+    
     '''
-
-
     def __init__(self, box=[0.,1.,0.,1.], nx=2, ny=2):
         '''
         Description: Constructor, initialize rectangular grid
@@ -40,7 +42,6 @@ class Mesh(object):
         '''
         self.bounding_box = box
         self.type = 'MESH'
-        self.flag = False
         self.children_array_size = (nx,ny)
         #
         # Define cells in mesh
@@ -81,11 +82,13 @@ class Mesh(object):
         self.vertex_list = []
         self.connectivity = None
         self.max_depth = 0
-    
-    
-    
+        self.__num_vertices = 0
+        self.__num_cells = 0
+        self.__balanced = False
+        self.__triangles = []
+        
 
-    def find_leaves(self, with_depth=False):
+    def leaves(self):
         """
         Description: Returns a list of all leaf sub-cells of the mesh
         
@@ -95,16 +98,59 @@ class Mesh(object):
             
         Output:
         
-            leaves: list of tuples (LEAF cell, depth).  
+            leaves: list of LEAF cells  
         """
         #
         # All leaves go in a long list
         # 
         leaves = []
         for child in self.children.itervalues():
-            leaves.extend(child.find_leaves(with_depth))        
+            leaves.extend(child.find_leaves())
+        self.__num_cells = len(leaves)        
         return leaves
-      
+    
+    def triangles(self):
+        """
+        Returns a list of triangles 
+        """
+        if len(self.__triangles) == 0:
+            #
+            # Mesh has not been triangulated yet
+            #  
+            self.triangulate()
+            return self.__triangles
+        else:
+            #
+            # Mesh triangulated
+            # 
+            return self.__triangles
+            
+    def vertices(self):
+        """
+        Returns a list of vertices.
+        
+        POSSIBLE BUG: if vertex has been marked outside of 
+            this function, it will not show up in the list.  
+        """ 
+        n_vertices = -1
+        vertices = []
+        for leaf in self.leaves():
+            for v in leaf.vertices.itervalues():
+                if not v.is_marked():
+                    n_vertices += 1
+                    vertices.append(v)
+                    v.set_node_number(n_vertices)
+                    #
+                    # Mark vertices in the list
+                    # 
+                    v.mark()
+        self.__num_vertices = n_vertices            
+        #
+        # Unmark all vertices again
+        # 
+        for v in vertices:
+            v.unmark()
+            
         
     def cells_at_depth(self, depth):
         """
@@ -112,38 +158,10 @@ class Mesh(object):
         """
         cells = []
         for child in self.children.itervalues():
-            cells.extend(child.cells_at_depth(depth)) 
-          
-        return cells    
-       
-                
-    def number_cells(self):
-        """
-        Numbers all leaf cells from 0 to n_cells - 1.
-        """
-        pass
-        
-    def number_vertices(self):
-        """
-        Numbers all vertices and stores them in a list
-        
-        Note: There are ordering methods (eg. from coarse to fine) - perhaps add it later!
-        """
-        # TODO: Make compatible with when some vertices are already numbered
-        
-        #
-        # Empty vertex list
-        #
-        n_vertex = 0 
-        nx, ny = self.children_array_size
-        for i in range(nx):
-            for j in range(ny):
-                child = self.children[i,j]
-                v = child.number_vertices(n_vertex)
-                self.vertex_list.extend(v)
-                n_vertex = len(self.vertex_list)
+            cells.extend(child.cells_at_depth(depth))  
+        return cells
     
-    
+     
     def has_children(self):
         """
         Determine whether the mesh has children
@@ -155,37 +173,47 @@ class Mesh(object):
         """
         Determine the maximum depth of the mesh
         """
-        for child in self.children:
-            child.get_        
+                    
+    
+    def unmark_all(self):
+        """
+        Unmark all cells in mesh
+        """
+        if self.has_children():
+            for child in self.children.itervalues():
+                child.unmark_all()
+                
             
     def refine(self):
         """
         Refine mesh by splitting marked cells.            
         """
-        leaves = self.find_leaves()
+        leaves = self.leaves()
         for leaf in leaves:
             if leaf.flag:
                 leaf.split()
                 leaf.unmark()
-    
+        self.__balanced = False
+        
     
     def coarsen(self):
         """
         Coarsen mesh by collapsing marked cells
         """
-        leaves = self.find_leaves()
+        leaves = self.leaves()
         for leaf in leaves:
             parent = leaf.parent
             if parent.flag:
                 parent.children.clear()
         self.remove_supports()    
+        self.__balanced = False
                 
      
     def balance_tree(self):
         """
         Ensure the 2:1 rule holds 
         """
-        leaves = self.find_leaves()
+        leaves = self.leaves()
         leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
                      'E': ['NW', 'SW'], 'W': ['NE', 'SE']}              
         while len(leaves) > 0:
@@ -207,7 +235,6 @@ class Mesh(object):
                         # then split and add children to list of leaves! 
                         #
                         if nb.children[pos].type != 'LEAF':
-                            print "node", id(leaf), "must be split"
                             leaf.mark()
                             leaf.split()
                             for child in leaf.children.itervalues():
@@ -219,23 +246,22 @@ class Mesh(object):
                             # now also be split.
                             #  
                             for direction in ['N', 'S', 'E', 'W']:
-                                print "Looking in the ", direction
                                 nb = leaf.find_neighbor(direction)
                                 if nb != None and nb.depth < leaf.depth:
-                                    print "Neighbor needs to be split"
                                     leaves.append(nb)
                                 
                             flag = True
                             break
                 if flag:
                     break
-    
+        self.__balanced = True
+        
     
     def remove_supports(self):
         """
         Remove the supporting cells
         """    
-        leaves = self.find_leaves()
+        leaves = self.leaves()
         while len(leaves) > 0:
             leaf = leaves.pop()
             if leaf.support_cell:
@@ -257,92 +283,66 @@ class Mesh(object):
                         del child
                     parent.children.clear()
                     leaves.append(parent)
-    '''
-    def balance_tree(self):
-        """
-        Ensure that the quadtree conforms to the 2:1 rule
+        self.__balanced = False
         
-        TESTME: mesh.balance_tree()
-        """
-        print '-'*20
-        print 'Balancing tree'
-        print '-'*20
-        #
-        # Get leaves and sort from deep to shallow
-        # 
-        leaves = self.find_leaves()
-        leaves.sort(key=lambda t: t[1])
-        leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
-                     'E': ['NW', 'SW'], 'W': ['NE', 'SE']} 
-        depths = [leaf[1] for leaf in leaves]
-        print 'depths', depths            
-        print 'list of leaves has', len(leaves), 'entries'
-        while len(leaves) > 0:
-            leaf = leaves.pop()[0]
-            flag = False
-            #
-            # Check if any neighbors need to be split
-            #
-            print "cell:", leaf.address 
-            for direction in ['N', 'S', 'E', 'W']:
-                nb = leaf.find_neighbor(direction)                                   
-                if nb == None:
-                    #
-                    # No neighbor 
-                    # 
-                    print '  ', direction, ': no neighbor'
-                    pass
-                elif nb.depth < leaf.depth - 1:
-                    print '  ', direction, ': neighbor', nb.address, '-> too large.'
-                    while nb.depth < leaf.depth - 1:
-                        #
-                        # Neighbor is too large - split until 2:1 rule is met
-                        #
-                        nb.mark()
-                        nb.split()
-                        nb = leaf.find_neighbor(direction)
-                    #
-                    # Add neighbor's children to leaves (at depth leaf.depth - 1)
-                    # 
-                    for child in nb.parent.children.itervalues():
-                        print '    add child', child.address, 'to leaves'
-                        leaves.insert(leaf.depth-1, (child,child.depth))
-                    print 'list now has ', len(leaves), 'entries'    
-                else: 
-                    print '  ', direction, ': neighbor', nb.address, '-> fine.' 
-                
-                    #
-                    # Neighbor is a BRANCH cell, i.e. it has children
-                    #  
-                    print 'Neighbor', nb.address, 'is a', nb.type, 'cell (with children)'
-                    for pos in leaf_dict[direction]:
-                        #
-                        # If neighor's children nearest to you aren't LEAVES,
-                        # then split and add children to list of leaves! 
-                        #
-                        if nb.children[pos].type != 'LEAF':
-                            print 'NB', nb
-                            leaf.mark()
-                            leaf.split()
-                            for pos in ['NW', 'NE', 'SW', 'SE']:
-                                leaves.append(leaf.children[pos])
-                            
-                            #
-                            # Check if there are any neighbors that should 
-                            # now also be split.
-                            #  
-                            for direction in ['N', 'S', 'E', 'W']:
-                                nb = leaf.find_neighbor(direction)
-                                if nb != None and nb.depth < leaf.depth:
-                                    leaves.append(nb)
-                                
-                            flag = True
-                            break
-                if flag:
-                    break
-    '''            
      
-           
+    def triangulate(self):
+        """
+        Generate triangulation of mesh:
+            balance if necessary
+            populate cells with triangles
+            generate connectivity matrix. 
+            
+        #TODO: unfinished
+        """
+        triangles = []
+        if not self.__balanced:
+            #
+            # Balance mesh first
+            # 
+            self.balance_tree()
+        for leaf in self.leaves():
+            v = leaf.vertices
+            #
+            # Determine whether Steiner Point is necessary
+            # 
+            if any([v.has_key(direction) for direction in ['N','S','E','W']]):
+                #
+                # Add Steiner vertex
+                # 
+                x0, x1, y0, y1 = leaf.box()
+                vm = Vertex((0.5*(x0 + x1), 0.5*(y0 + y1)))
+                leaf.vertices['M'] = vm
+                
+                sub_edge_dict = {'S': ['SW','S','SE'], \
+                                 'E': ['NE','E','SE'], \
+                                 'N': ['NE','N','NW'], \
+                                 'W': ['NW','W','SW']}
+                for direction in ['S','E','N','W']:
+                    se = sub_edge_dict[direction]
+                    if v.has_key(direction):
+                        #
+                        # Midpoint on this edge
+                        #
+                        tri = [Triangle([v[se[0]],v[se[1]],vm],parent_cell=leaf), 
+                               Triangle([v[se[1]],v[se[2]],vm],parent_cell=leaf)]
+                    else:
+                        #
+                        # No midpoint
+                        # 
+                        tri = [Triangle([v[se[0]],v[se[2]],vm],parent_cell=leaf)]
+                        
+                    triangles.extend(tri)
+            else:
+                #
+                # No Steiner vertex - simple triangulation
+                # 
+                tri = [Triangle([v['SW'],v['SE'],v['NE']], parent_cell=leaf), \
+                       Triangle([v['NE'],v['NW'],v['SW']], parent_cell=leaf)]
+                triangles.extend(tri)
+        self.__triangles = triangles
+                
+               
     def build_connectivity(self):
         """
         Returns the connectivity matrix for the tree
@@ -356,9 +356,7 @@ class Mesh(object):
         # Balance tree first
         # 
         #self.balance_tree()
-        leaves = self.find_leaves()
-        for leaf in leaves:
-            print 'leaf', leaf.address
+        for leaf in self.leaves():
             add_steiner_pt = False
             #
             # Get global indices for each corner vertex
@@ -367,7 +365,6 @@ class Mesh(object):
             for pos in ['NW', 'SW', 'NE', 'SE']:
                 gi[pos] = leaf.vertices[pos].node_number
             
-            print gi    
             edges = {'S': [[gi['SW'], gi['SE']]], 'N': [[gi['NE'], gi['NW']]], 
                      'W': [[gi['NW'], gi['SW']]], 'E': [[gi['SE'], gi['NE']]] }
                      
@@ -398,14 +395,12 @@ class Mesh(object):
                               [gi['NE'], gi['NW'], gi['SW']]] )
                               
             elif not leaf.vertices.has_key('M') or leaf.vertices['M'] == None:
-                print 'No midpoint! Add'
                 #
                 # Add Steiner Vertex
                 # 
                 x0, x1, y0, y1 = leaf.box()
                 vm = Vertex((0.5*(x0 + x1), 0.5*(y0 + y1)), node_number=num_vertices)
                 leaf.vertices['M'] = vm
-                print leaf.vertices
                 gi['M'] = vm.node_number
                 self.vertex_list.append(vm)
                 num_vertices += 1
@@ -422,10 +417,7 @@ class Mesh(object):
                    
         if self.has_children():
             if set_axis:
-                print 'bounding box', self.bounding_box
-                x0, x1, y0, y1 = self.bounding_box 
-                
-                
+                x0, x1, y0, y1 = self.bounding_box          
                 hx = x1 - x0
                 hy = y1 - y0
                 ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
@@ -455,7 +447,6 @@ class Mesh(object):
         e_conn = self.build_connectivity()
         for element in e_conn:
             points = []
-            print element
             for node_num in element:
                 x, y = self.vertex_list[node_num].coordinate
                 points.append([x,y])

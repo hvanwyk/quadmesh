@@ -18,9 +18,9 @@ def build_buoy_lookup(data_files, lookup_file):
         buoy_lookup_table.dat: file in drifter/data, to store lookup table
             headers: ID    file_num    first_line    last_line
     '''
-    # --------------------------------------------------------------------------
+    #
     # Import Data
-    # --------------------------------------------------------------------------
+    # 
     current_id = 'None'
     list_id = []
     list_file_num = []
@@ -58,9 +58,9 @@ def build_buoy_lookup(data_files, lookup_file):
                     list_first_line.append(line_count)
                     list_file_num.append(file_num)
 
-    # --------------------------------------------------------------------------
+    # 
     # Sort according to ID
-    # --------------------------------------------------------------------------
+    # 
     
     #
     # Open lookup file

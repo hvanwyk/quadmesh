@@ -32,17 +32,44 @@ class Vertex(object):
             
             address: int, address within root mesh (computed based on highest refinement level)  
         """
-        self.coordinate = coordinate
+        if type(coordinate) is not tuple:
+            raise Exception('Vertex coordinate should be a tuple.')
+        else:
+            self.coordinate = coordinate
         self.node_number = node_number
         self.on_boundary = None 
         
         
-    def set_node_number(self, node_num):
+    def set_node_number(self, node_num, overwrite=False):
         """
         Assign node number
         """
-        if self.node_number == None:
+        if self.node_number == None or overwrite:
+            #
+            # No existing node number/overwrite
+            # 
             self.node_number = node_num
         else:
             raise Warning('Node number already assigned to this vertex')
             return
+       
+        
+    def mark(self):
+        """
+        Mark vertex
+        """
+        self.__flag = True
+    
+    
+    def unmark(self):
+        """
+        Unmark vertex
+        """
+        self.__flag = False
+    
+        
+    def is_marked(self):
+        """
+        Check whether vertex is marked
+        """
+        return self.__flag

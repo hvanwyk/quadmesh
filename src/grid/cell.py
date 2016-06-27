@@ -30,10 +30,10 @@ class Cell(object):
      
     
     Methods: 
-     
-        split, coarsen, has_children,  
+       
     """ 
-    # TODO: --coarsen
+    
+    DEBUG = True
     
     def __init__(self, vertices, parent=None, position=None):
         """
@@ -243,7 +243,7 @@ class Cell(object):
             cells.append(self)
         else:
             for child in self.children.itervalues():
-                cells.extend(child.cells_at_depth())
+                cells.extend(child.find_cells_at_depth(depth))
         return cells
     
     
@@ -284,9 +284,7 @@ class Cell(object):
             contains_point: boolean, True if cell contains point, False otherwise
               
         """
-        # TODO: What about points on the boundary?
-        # TESTME: contains_point
-            
+        # TODO: What about points on the boundary?            
         x,y = point
         x_min, y_min = self.vertices['SW'].coordinate
         x_max, y_max = self.vertices['NE'].coordinate 
@@ -297,6 +295,39 @@ class Cell(object):
             return False
     
     
+    def intersects_line_segment(self, line):
+        """
+        Determine whether cell intersects with a given line segment
+        
+        Input: 
+        
+            line: double, list of two tuples (x0,y0) and (x1,y1)
+            
+        Output:
+        
+            intersects: bool, true if line segment and quadcell intersect
+            
+        Modified: 06/04/2016
+        """               
+        #
+        # Check whether line is contained in rectangle
+        # 
+        if self.contains_point(line[0]) and self.contains_point(line[1]):
+            return True
+        
+        #
+        # Check whether line intersects with any cell edge
+        # 
+        for edge in self.edges.itervalues():
+            if edge.intersects_line_segment(line):
+                return True
+            
+        #
+        # If function has not terminated yet, there is no intersection
+        #     
+        return False
+    
+               
     def locate_point(self, point):
         """
         Returns the smallest cell containing a given point or None if current cell doesn't contain the point
@@ -346,6 +377,23 @@ class Cell(object):
         Unmark cell
         """
         self.flag = False
+    
+    
+    def unmark_all(self):
+        """
+        Umark cell and all children
+        """    
+        #
+        # Unmark self
+        # 
+        self.unmark()
+        
+        if self.has_children():
+            #
+            # Unmark children
+            #
+            for child in self.children.itervalues():
+                child.unmark_all()
         
         
     def split(self):
@@ -386,16 +434,24 @@ class Cell(object):
                 #
                 if not self.vertices.has_key(direction):
                     neighbor = self.find_neighbor(direction)
-                    if neighbor == None or neighbor.type == 'LEAF':
+                    opposite_dir = opposite_direction[direction]
+                    if neighbor == None: 
                         #
-                        # New vertex - add it
+                        # New vertex - add it to self and to neighbor
                         # 
-                        self.vertices[direction] = Vertex(mid_point[direction])
+                        v_new =  Vertex(mid_point[direction])
+                        self.vertices[direction] = v_new
+                    elif neighbor.type == 'LEAF':
+                        #
+                        # Neighbor has no children add new vertex to self and neighbor
+                        #  
+                        v_new =  Vertex(mid_point[direction])
+                        self.vertices[direction] = v_new
+                        neighbor.vertices[opposite_dir] = v_new 
                     else:
                         #
                         # Vertex exists already - get it from neighouring Node
                         # 
-                        opposite_dir = opposite_direction[direction]
                         self.vertices[direction] = neighbor.vertices[opposite_dir]     
             #            
             # Add child cells
@@ -416,40 +472,32 @@ class Cell(object):
         
     def merge(self):
         '''
-        Delete the marked LEAF nodes (as well as the unnecessary support nodes).
-        
-        TODO: UNFINISHED
+        Delete child nodes
         '''
-        if self.flag:
-            #
-            # Cell is flagged
-            # 
-            if __debug__:
-                if not self.has_children(): 
-                    raise AssertionError('Cell has no children and cannot delete itself.')
-            else:
+        #
+        # Delete unnecessary vertices of neighbors
+        # 
+        opposite_direction = {'N': 'S', 'S': 'N', 'W': 'E', 'E': 'W'}
+        for direction in ['N','S','E','W']:
+            neighbor = self.find_neighbor(direction)
+            if neighbor==None:
                 #
-                # Delete all children
+                # No neighbor on this side delete midpoint vertices
                 # 
-                del self.children
-        else:
-            if self.DEBUG:
-                print 'Cell [%f,%f,%f,%f]' % self.box() 
-                     
-            for pos in self.children.keys():
+                del self.vertices[direction]
+                
+            elif not neighbor.has_children():
                 #
-                # Delete only flagged children
+                # Neighbouring cell has no children - delete edge midpoints of both
                 # 
-                if self.children[pos].flag:
-                    if self.DEBUG:
-                        print '%s child flagged: deleted' % (pos)
-                    
-                    del self.children[pos] 
-                    
-                    if self.DEBUG:
-                        print 'updated list of children:', self.children
-                else: 
-                    self.children[pos].coarsen()
+                del self.vertices[direction]
+                op_direction = opposite_direction[direction]
+                del neighbor.vertices[op_direction] 
+        #
+        # Delete all children
+        # 
+        self.children.clear()
+        self.type = 'LEAF'
 
 
     def balance_tree(self):
@@ -500,9 +548,17 @@ class Cell(object):
                     break
 
 
-    def number_vertices(self, n_vertex):
+    def number_vertices(self, n_vertex, overwrite=False):
         """
         Number cell vertices and add vertices to list
+        
+        Input:
+        
+            n_vertex: int, current number of vertices
+            
+        Output: 
+        
+            vertex_list: list of vertices in current cell
         """
         vertex_list = []            
         for pos in ['SW', 'SE', 'NE', 'NW']:
@@ -511,7 +567,7 @@ class Cell(object):
             # Number own corner vertices
             # 
             if vertex.node_number == None:
-                vertex.set_node_number(n_vertex)
+                vertex.set_node_number(n_vertex, overwrite=overwrite)
                 vertex_list.append(vertex)
                 n_vertex += 1
                    
@@ -531,6 +587,7 @@ class Cell(object):
                 n_vertex = n_vertex + len(v) 
             return vertex_list
         
+        
     def pos2id(self, pos):
         """ 
         Convert position to index: 'SW' -> 0, 'SE' -> 1, 'NE' -> 2, 'NW' -> 3 
@@ -540,6 +597,7 @@ class Cell(object):
         else:
             pos_to_id = {'SW': 0, 'SE': 1, 'NE': 2, 'NW': 3}
             return pos_to_id[pos]
+    
     
     def id2pos(self, idx):
         """
