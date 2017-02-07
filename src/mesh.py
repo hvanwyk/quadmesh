@@ -103,13 +103,13 @@ class Mesh(object):
                 #
                 # Unmark quad edges
                 #
-                for edge in node.quadcell().edges.itervalues():
+                for edge in node.quadcell().edges.values():
                     edge.unmark()
             if quadvertices:
                 #
                 # Unmark quad vertices
                 #
-                for vertex in node.quadcell().vertices.itervalues():
+                for vertex in node.quadcell().vertices.values():
                     vertex.unmark()
             if tricells or triedges or trivertices:
                 if node.has_tricells():
@@ -123,13 +123,13 @@ class Mesh(object):
                             #
                             # Unmark triangle edges
                             # 
-                            for edge in triangle.edges.itervalues():
+                            for edge in triangle.edges.values():
                                 edge.unmark()
                         if trivertices:
                             #
                             # Unmark triangle vertices
                             #
-                            for vertex in triangle.vertices.itervalues():
+                            for vertex in triangle.vertices.values():
                                 vertex.unmark()
                 
         
@@ -553,7 +553,7 @@ class Node(object):
             node_copy = Node(position=position, parent=parent)
             
         if self.has_children():
-            for child in self.children.itervalues():
+            for child in self.children.values():
                 if child != None:
                     node_copy.children[position] = \
                         child.copy(position=child.position, parent=node_copy) 
@@ -662,7 +662,7 @@ class Node(object):
             else:
                 print("Invalid direction. Use 'N', 'S', 'E', 'NE','SE','NW, 'SW', or 'W'.")
             
-            if interior_neighbors_dict.has_key(self.position):
+            if self.position in interior_neighbors_dict:
                 neighbor_pos = interior_neighbors_dict[self.position]
                 return self.parent.children[neighbor_pos]
             #
@@ -699,7 +699,7 @@ class Node(object):
                         exterior_neighbors_dict = \
                            {v: k for k, v in interior_neighbors_dict.items()}
                             
-                        if exterior_neighbors_dict.has_key(self.position):
+                        if self.position in exterior_neighbors_dict:
                             neighbor_pos = exterior_neighbors_dict[self.position]
                             return mu.children[neighbor_pos] 
     
@@ -726,7 +726,7 @@ class Node(object):
         all_nodes = []
         all_nodes.append(self)
         if self.has_children():
-            for child in self.children.itervalues():
+            for child in self.children.values():
                 if child != None:
                     all_nodes.extend(child.traverse_tree())
         return all_nodes
@@ -857,7 +857,7 @@ class Node(object):
         else:
             self.__flag = False
             if recursive and self.has_children():
-                for child in self.children.itervalues():
+                for child in self.children.values():
                     child.unmark(recursive=recursive)
             
     
@@ -893,7 +893,7 @@ class Node(object):
                     #
                     quadcell.split()
              
-                for pos in self.children.iterkeys():
+                for pos in self.children.keys():
                     tree_child = self.children[pos]
                     if tree_child.cell == None:
                         cell_child = quadcell.children[pos]
@@ -909,7 +909,7 @@ class Node(object):
             #
             # Unlink child nodes from cells
             # 
-            for child in self.children.itervalues():
+            for child in self.children.values():
                 if child != None:
                     child.unlink()
         
@@ -947,7 +947,7 @@ class Node(object):
         """
         Delete all sub-nodes of given node
         """
-        for key in self.children.iterkeys():
+        for key in self.children.keys():
             self.children[key] = None
         self.type = 'LEAF'
     
@@ -979,7 +979,7 @@ class Node(object):
                 self.children[pos] = Node(parent=self, position=pos, \
                                           quadcell=cell.children[pos])
         else:
-            for pos in self.children.iterkeys():
+            for pos in self.children.keys():
                 self.children[pos] = Node(parent=self, position=pos)
             
                     
@@ -991,7 +991,7 @@ class Node(object):
             for direction in ['N','S','E','W']:
                 nb = leaf.find_neighbor(direction)
                 if nb != None and nb.has_children():
-                    for child in nb.children.itervalues():
+                    for child in nb.children.values():
                         if child.type != 'LEAF':
                             return False
         return True
@@ -1025,7 +1025,7 @@ class Node(object):
                         #
                         if nb.children[pos].type != 'LEAF':
                             leaf.split()
-                            for child in leaf.children.itervalues():
+                            for child in leaf.children.values():
                                 child.mark_support()
                                 leaves.append(child)
                             
@@ -1677,7 +1677,7 @@ class QuadCell(object):
             else:
                 leaves.append(self)
         elif self.has_children():
-            for child in self.children.itervalues():
+            for child in self.children.values():
                 leaves.extend(child.find_leaves(with_depth))    
         return leaves
 
@@ -1690,7 +1690,7 @@ class QuadCell(object):
         if self.depth == depth:
             cells.append(self)
         elif self.has_children():
-            for child in self.children.itervalues():
+            for child in self.children.values():
                 cells.extend(child.find_cells_at_depth(depth))
         return cells
     
@@ -1766,7 +1766,7 @@ class QuadCell(object):
         #
         # Check whether line intersects with any cell edge
         # 
-        for edge in self.edges.itervalues():
+        for edge in self.edges.values():
             if edge.intersects_line_segment(line):
                 return True
             
@@ -1799,7 +1799,7 @@ class QuadCell(object):
                 #
                 # If cell has children, find the child containing the point and continue looking from there
                 # 
-                for child in self.children.itervalues():
+                for child in self.children.values():
                     if child.contains_point(point):
                         return child.locate_point(point)                     
         else:
@@ -1839,7 +1839,7 @@ class QuadCell(object):
         """
         self.__flag = 0
         if recursive and self.has_children():
-            for child in self.children.itervalues():
+            for child in self.children.values():
                 child.unmark(recursive=recursive)
                 
                                 
@@ -1947,7 +1947,7 @@ class QuadCell(object):
             hx = 0.5*(x1-x0)
             hy = 0.5*(y1-y0)
              
-            if not self.vertices.has_key('M'):
+            if not 'M' in self.vertices:
                 self.vertices['M'] = Vertex((x0 + hx, y0 + hy))        
             #
             # Add edge midpoints to parent
@@ -1968,7 +1968,7 @@ class QuadCell(object):
                 # Check wether we already have a record of this
                 # MIDPOINT vertex
                 #
-                if not self.vertices.has_key(direction):
+                if not (direction in self.vertices):
                     neighbor = self.find_neighbor(direction)
                     opposite_dir = opposite_direction[direction]
                     if neighbor == None: 
@@ -2103,7 +2103,7 @@ class QuadCell(object):
                         if nb.children[pos].type != 'LEAF':
                             leaf.mark()
                             leaf.split()
-                            for child in leaf.children.itervalues():
+                            for child in leaf.children.values():
                                 child.mark_support_cell()
                                 leaves.append(child)
                             
