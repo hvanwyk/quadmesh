@@ -104,7 +104,8 @@ class QuadFE(FiniteElement):
         self.__basis_index = basis_index
         self.__p = p
         self.__px = px
-            
+     
+      
     def cell_type(self):
         return self.__cell_type
     
@@ -724,21 +725,44 @@ class GaussRule(object):
     """
     Gaussian Quadrature weights and nodes on reference cell
     """
-    def __init__(self, element, order):
+    def __init__(self, order, element=None, shape=None):
         """
         Constructor 
         
         Inputs: 
-        
-            element: FiniteElement object 
-            
+                    
             order: int, order of quadrature rule
+                1D rule: order in {1,2,3,4,5,6}
+                2D rule: order in {1,4,16,25} for quadrilaterals
+                                  {1,3,7,13} for triangles 
+            
+            element: FiniteElement object
+            
+                OR 
+            
+            shape: str, 'interval' (subset of R^1), 'edge' (subset of R^2), 
+                        'triangle', or 'quadrilateral'
+             
         """
-        dim = element.dim()
-        assert dim in [1,2], 'Only 1 or 2 dimensions supported.'
+        if element is None:
+            #
+            # Shape explicitly given
+            # 
+            assert shape in ['interval','edge','triangle','quadrilateral'], \
+                "Use 'interval','edge', 'triangle', or 'quadrilateral'."
+            if shape == 'interval' or shape == 'edge':
+                dim = 1
+            else:
+                dim = 2
+        else:  
+            #
+            # Shape given by element 
+            dim = element.dim()
+            assert dim in [1,2], 'Only 1 or 2 dimensions supported.'
+            shape = element.cell_type()
               
         use_tensor_product_rules = \
-            ( dim == 1 or element.cell_type() == 'quadrilateral' )
+            ( dim == 1 or shape == 'quadrilateral' )
          
         if use_tensor_product_rules:
             #
@@ -762,7 +786,7 @@ class GaussRule(object):
             elif order_1d == 2:
                 # Nodes
                 r[0] = -1.0 /np.sqrt(3.0)
-                r[2] = -r[0]
+                r[1] = -r[0]
                 # Weights
                 w[0] = 1.0
                 w[1] = 1.0
@@ -822,8 +846,8 @@ class GaussRule(object):
             w = [0.5*wi for wi in w]
             
             if dim == 1:
-                self.__nodes = r
-                self.__weights = w
+                self.__nodes = np.array(r)
+                self.__weights = np.array(w)
             elif dim == 2:
                 #
                 # Combine 1d rules into tensor product rules
@@ -834,8 +858,8 @@ class GaussRule(object):
                     for j in range(len(r)):
                         nodes.append((r[i],r[j]))
                         weights.append(w[i]*w[j])
-                self.__nodes = nodes
-                self.__weights = weights
+                self.__nodes = np.array(nodes)
+                self.__weights = np.array(weights)
                 
         elif element.cell_type == 'triangle':
             #
@@ -944,24 +968,27 @@ class GaussRule(object):
                 
                 w = [0.5*wi for wi in w]
                 
-            self.__nodes = r
-            self.__weights = w  
-        self.__cell_type = element.cell_type()
+            self.__nodes = np.array(r)
+            self.__weights = np.array(w)  
+        self.__cell_type = shape
         self.__dim = dim
+        
         
     def nodes(self):
         """
         Return quadrature nodes 
         """
         return self.__nodes
+       
         
     def weights(self):
         """
         Return quadrature weights
         """
         return self.__weights
+       
         
-    def map(self, cell, x):
+    def map(self, cell, x=None):
         """
         Map from reference to physical cell
         
@@ -972,18 +999,33 @@ class GaussRule(object):
             x: double, a length n list of dim-tuples or an (n,dim) array  
         """
         dim = self.__dim
-        x_ref = np.array(x)
+        cell_type = self.__cell_type
+        if x==None:
+            x_ref = self.__nodes
+        else:
+            x_ref = np.array(x)
         if dim == 1:
             #
             # One dimensional mesh
             # 
-            x0,x1 = cell.box()
-            x_phys = x0 + (x1-x0)*x_ref
+            if cell_type == 'interval':
+                #
+                # Interval on real line
+                # 
+                x0, x1 = cell.box()
+                x_phys = x0 + (x1-x0)*x_ref
+            elif cell_type == 'edge':
+                # 
+                # Line segment in 2D
+                # 
+                x0,y0,x1,y1 = cell.box()
+                x = x0 + x_ref*(x1-x0)
+                y = y0 + x_ref*(y1-y0)
+                x_phys = np.array([x,y]).T              
         elif dim == 2:
             #
             # Two dimensional mesh
             # 
-            cell_type = self.__cell_type
             if cell_type == 'triangle':
                 #
                 # Triangles not supported yet
@@ -1001,17 +1043,22 @@ class GaussRule(object):
         Jacobian of the Mapping from reference to physical cell
         """
         dim = self.__dim
+        cell_type = self.__cell_type
         if dim == 1:
             #
             # One dimensional mesh
             # 
-            x0, x1 = cell.box()
-            jac = x1-x0
+            if cell_type == 'interval':
+                x0, x1 = cell.box()
+                jac = x1-x0
+            elif cell_type == 'edge':
+                # Length of edge
+                jac = cell.length()
+                
         elif dim == 2:
             #
             # Two dimensional mesh
             #
-            cell_type = self.__cell_type
             if cell_type == 'triangle':
                 #
                 # Triangles not yet supported

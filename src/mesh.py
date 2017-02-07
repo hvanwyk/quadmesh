@@ -2394,22 +2394,16 @@ class Edge(object):
             
             on_boundary: Either None (if not set) or Boolean (True if edge lies on boundary)
         """
-        # TODO: Change incident face to dictionary with either 'N','S' or 'E', 'W' ? 
-        
         self.__vertices = set([v1,v2])
         
         x0,y0 = v1.coordinate()
         x1,y1 = v2.coordinate()
         nnorm = numpy.sqrt((y1-y0)**2+(x1-x0)**2)
         self.__length = nnorm
-        #
-        # Compute unit normal
-        # 
-        # TODO: Make this a QuadCell method
-        self.__unit_normal = ((y1-y0)/nnorm,(x0-x1)/nnorm)  
         self.__on_boundary = on_boundary
         self.__flag = False
         self.__parent = parent 
+     
      
     def info(self):
         """
@@ -2418,8 +2412,19 @@ class Edge(object):
         v1, v2 = self.vertices()
         print('{0:10}: {1} --> {2}'.format('Vertices', v1.coordinate(), v2.coordinate()))
         #print('{0:10}: {1}'.format('Length', self.length()))
+    
+    
+    def box(self):
+        """
+        Return the edge endpoint coordinates x0,y0,x1,y1, where 
+        edge: (x0,y0) --> (x1,y1) 
+        """    
+        v1, v2 = self.vertices()
+        x0,y0 = v1.coordinate()
+        x1,y1 = v2.coordinate()
+        return x0,y0,x1,y1
         
-            
+        
     def mark(self):
         """
         Mark Edge
@@ -2448,19 +2453,13 @@ class Edge(object):
         else:
             return self.__on_boundary
          
-    def normal(self):
-
-        """
-        Returns unit normal
-        TODO: To be removed
-        """
-        return self.__unit_normal
        
     def vertices(self):
         """
         Returns the set of vertices
         """
         return self.__vertices
+    
     
     def length(self):
         """

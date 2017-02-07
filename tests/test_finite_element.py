@@ -4,7 +4,8 @@ Created 11/22/2016
 """
 import unittest
 from finite_element import FiniteElement, QuadFE, TriFE, DofHandler, GaussRule
-from mesh import Mesh
+from mesh import Mesh, Edge, Vertex
+from numpy import sqrt, sum, dot
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -70,8 +71,30 @@ class TestDofHandler(unittest.TestCase):
         
         
 
-class GaussRule(unittest.TestCase):
+class TestGaussRule(unittest.TestCase):
     """
     Test GaussRule class
     """
-    pass
+    
+    def test_line_integral(self):
+        # Define quadrature rule
+        rule = GaussRule(2, shape='edge')
+        w = rule.weights()
+        
+        # function f to be integrated over edge e
+        f = lambda x,y: x**2*y
+        e = Edge(Vertex((0,0)),Vertex((1,1)))
+        
+        # Map rule to physical entity
+        x_ref = rule.map(e)
+        jac = rule.jacobian(e)
+        fvec = f(x_ref[:,0],x_ref[:,1])
+        
+        self.assertAlmostEqual(sum(dot(fvec,w))*jac,1/sqrt(2)/2,places=10,\
+                               msg='Failed to integrate x^2y.')
+        self.assertAlmostEqual(sum(w)*jac, sqrt(2), places=10,\
+                               msg='Failed to integrate 1.')
+        
+    def test_flux_integral(self):
+        """
+        """

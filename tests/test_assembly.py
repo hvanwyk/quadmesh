@@ -3,6 +3,20 @@ from mesh import Mesh
 from finite_element import DofHandler, GaussRule, QuadFE
 import matplotlib.pyplot as plt
 import scipy.sparse as sp
+# -------------------
+# Helper functions
+# -------------------
+def DirichletBoundary(x,on_boundary):
+    """
+    Return true if 
+    """
+    return on_boundary
+
+def NeumannBoundary(x):
+    pass
+
+def RobinBoundary(x):
+    pass
 
 """
 Test solution of simple Dirichlet problem.
@@ -15,10 +29,11 @@ TODO: Impose Hanging Node Restrictions
 #fe = lambda x,y: np.pi**2*np.sin(np.pi*x)*(1.+2*np.cos(np.pi*y))
 ue = lambda x,y: np.sin(np.pi*x)*np.sin(np.pi*y)
 fe = lambda x,y: np.pi**2*np.sin(np.pi*x)*np.sin(np.pi*y)
-mesh = Mesh.newmesh(grid_size=(10,10))
+
+mesh = Mesh.newmesh(grid_size=(20,20))
 mesh.root_node().mark()
 mesh.refine()
-V = QuadFE(2,'Q1')
+V = QuadFE(2,'Q2')
 n_dofs = V.n_dofs()
 dh = DofHandler(mesh,V)
 dh.distribute_dofs()
@@ -27,9 +42,9 @@ n_nodes = dh.n_nodes()
 # Quadrature Rule
 # 
 n_quad = 9
-rule = GaussRule(V,n_quad)
-r = np.array(rule.nodes())
-w = np.array(rule.weights())
+rule = GaussRule(n_quad,V)
+r = rule.nodes()
+w = rule.weights()
 
 #
 # Evaluate Shape Functions on Reference Domain
