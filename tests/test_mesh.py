@@ -6,6 +6,7 @@ Created on Oct 23, 2016
 import unittest
 from mesh import Mesh, Node, QuadCell, TriCell, Edge, Vertex
 import matplotlib.pyplot as plt
+import numpy as np
 
 class TestMesh(unittest.TestCase):
     """
@@ -640,7 +641,24 @@ class TestQuadCell(unittest.TestCase):
         self.assertFalse(sw_child.is_marked(), 'SW child should not be marked.')
         self.assertFalse(sw_sw_child.is_marked(), 'SW-SW child should not be marked')
        
-        
+    
+    def test_quadcell_normal(self):
+        box = [0.,1.,0.,1.]
+        qc = QuadCell(box=box)
+        ew = qc.get_edges('W')
+        ee = qc.get_edges('E')
+        es = qc.get_edges('S')
+        en = qc.get_edges('N')
+        self.assertEqual(np.sum(np.array([-1.,0])-qc.normal(ew)),0.0, 
+                         'Unit normal should be [-1,0].')
+        self.assertEqual(np.sum(np.array([1.,0])-qc.normal(ee)),0.0, 
+                         'Unit normal should be [1,0].')
+        self.assertEqual(np.sum(np.array([0.,-1.])-qc.normal(es)),0.0, 
+                         'Unit normal should be [0,-1].')
+        self.assertEqual(np.sum(np.array([0.,1.])-qc.normal(en)),0.0, 
+                         'Unit normal should be [0,1].')
+  
+            
 class TestTriCell(unittest.TestCase):
     """
     Test TriCell Class

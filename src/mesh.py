@@ -1580,7 +1580,18 @@ class QuadCell(object):
             x0, y0 = self.vertices['SW'].coordinate()
             x1, y1 = self.vertices['NE'].coordinate()
         return x0, x1, y0, y1
+           
             
+    def get_edges(self, pos=None):
+        """
+        Returns edge with a given position or all 
+        """
+        edge_dict = {'W':('NW','SW'),'E':('SE','NE'),'S':('SW','SE'),'N':('NE','NW')}   
+        if pos == None:
+            return [self.edges[edge_dict[key]] for key in ['W','E','S','N']]
+        else:
+            return self.edges[edge_dict[pos]] 
+        
         
     def find_neighbor(self, direction):
         """
@@ -1805,7 +1816,26 @@ class QuadCell(object):
         else:
             return None    
     
+    
+    def normal(self, edge):
+        """
+        Return the cell's outward normal vector along edge
+        """    
+        xm,ym = self.vertices['M'].coordinate()
+        v0,v1 = edge.vertices()
+        x0,y0 = v0.coordinate(); x1 = v1.coordinate()[0]
+        if numpy.abs(x0-x1) < 1e-12:
+            #
+            # Vertical 
+            # 
+            return numpy.sign(x0-xm)*numpy.array([1.,0.])
+        else:
+            #
+            # Horizontal
+            # 
+            return numpy.sign(y0-ym)*numpy.array([0.,1.])
             
+        
     def is_marked(self,flag=1):
         """
         Check whether quadcell is marked
@@ -2290,7 +2320,13 @@ class TriCell(object):
         a = [v[1].coordinate()[i] - v[0].coordinate()[i] for i in range(2)]
         b = [v[2].coordinate()[i] - v[0].coordinate()[i] for i in range(2)]
         return 0.5*abs(a[0]*b[1]-a[1]*b[0])
-        
+    
+     
+    def normal(self, edge):
+        #p = ((y1-y0)/nnorm,(x0-x1)/nnorm)
+        pass    
+    
+    
     def number(self, num, overwrite=False):
         """
         Assign a number to the triangle
