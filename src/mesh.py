@@ -4,6 +4,8 @@ import numpy
 """
 Created on Jun 29, 2016
 @author: hans-werner
+
+TODO: Add flexible tagging.
 """
 
 class Mesh(object):
