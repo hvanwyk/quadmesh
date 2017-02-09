@@ -494,7 +494,7 @@ class Node(object):
         self.children = node_children
         self.__quadcell = quadcell
         self.__tricells = None
-        self.__flag  = False
+        self.__flags  = set()
         self.__support = False
     
     
@@ -821,47 +821,60 @@ class Node(object):
         return type(self.position) is tuple
     
     
-    def is_marked(self):
+    def mark(self, flag=None):
         """
-        Check whether a node is marked.
-        """
-        return self.__flag
-    
-    
-    def mark(self):
-        """
-        Mark node for split/merging
-        """
-        self.__flag = True
-    
-    
-    def mark_support(self):
-        """
-        Mark node as support node (to enforce the 2:1 rule)
+        Mark node with keyword. 
         
-        TODO: Currently, no way of unmarking support cells or changing from support cell to marked cell...
+        Recognized keys: 
+                
+            True, catchall 
+            'split', split node
+            'merge', delete children
+            'support', mark as support node
+            'count', mark for counting
         """
-        self.__support = True
+        if flag is None:
+            self.__flags.add(True)
+        else:
+            self.__flags.add(flag)
+        
     
-    
-    def unmark(self, recursive=False, all_nodes=False):
+    def unmark(self, flag=None, recursive=False):
         """
         Unmark node (and sub-nodes)
         
         Inputs: 
         
+            flag: 
+        
             recursive (False): boolean, unmark all progeny
             
-            all_nodes (False): boolean, unmark all nodes
         """
-        if all_nodes:
-            self.find_root().unmark(recursive=True)
+        # Remove tag
+        if flag is None:
+            self.__flags.clear()
         else:
-            self.__flag = False
-            if recursive and self.has_children():
-                for child in self.children.values():
-                    child.unmark(recursive=recursive)
-            
+            self.__flags.remove(flag)
+        # Remove tag from children
+        if recursive and self.has_children():
+            for child in self.children.values():
+                child.unmark(flag=flag, recursive=recursive)
+     
+    
+    def is_marked(self,flag=None):
+        """
+        Check whether a node is marked.
+        """
+        if flag is None:
+            # No flag specified check whether there is any mark
+            if self.__flags:
+                return True
+            else:
+                return False
+        else:
+            # Check for the presence of given flag
+            return flag in self.__flags           
+    
     
     def is_linked(self):
         """
@@ -1028,7 +1041,7 @@ class Node(object):
                         if nb.children[pos].type != 'LEAF':
                             leaf.split()
                             for child in leaf.children.values():
-                                child.mark_support()
+                                child.mark('support')
                                 leaves.append(child)
                             
                             #
@@ -1340,7 +1353,7 @@ class QuadCell(object):
         self.depth = cell_depth
         self.address = cell_address
         self.position = position
-        self.__flag = 0  # TODO: change 'is_marked', 'marked', 'support_cell',
+        self.__flags = set()  # TODO: change 'is_marked', 'marked', 'support_cell',
         
         
         # =====================================================================
@@ -1836,44 +1849,68 @@ class QuadCell(object):
             # Horizontal
             # 
             return numpy.sign(y0-ym)*numpy.array([0.,1.])
-            
-        
-    def is_marked(self,flag=1):
-        """
-        Check whether quadcell is marked
-        
-        Inputs: int, optional integer for different labels
-        """ 
-        if self.__flag == flag:
-            return True
-        else:
-            return False
-    
+                
      
-    def mark(self, flag=1):
+    def mark(self, flag=None):
         """
-        Mark cell
+        Mark QuadCell
         
         Inputs:
         
-            flag: int, optional integer used to mark cell
-        """   
-        self.__flag = flag
+            flag: int, optional label used to mark cell
+        """  
+        if flag is None:
+            self.__flags.add(True)
+        else:
+            self.__flags.add(flag)
             
         
-    def unmark(self, recursive=False):
+    def unmark(self, flag=None, recursive=False):
         """
-        Unmark quadcell
+        Unmark QuadCell
         
         Inputs: 
         
+            flag: label to be removed
+        
             recursive: bool, also unmark all subcells
         """
-        self.__flag = 0
+        #
+        # Remove label from own list
+        #
+        if flag is None:
+            # No flag specified -> delete all
+            self.__flags.clear()
+        else:
+            # Remove specified flag (if present)
+            if flag in self.__flags: self.__flags.remove(flag)
+        
+        #
+        # Remove label from children if applicable   
+        # 
         if recursive and self.has_children():
             for child in self.children.values():
-                child.unmark(recursive=recursive)
+                child.unmark(flag=flag, recursive=recursive)
                 
+ 
+         
+    def is_marked(self,flag=None):
+        """
+        Check whether quadcell is marked
+        
+        Input: flag, label for QuadCell: usually one of the following:
+            True (catchall), 'split' (split cell), 'count' (counting)
+        """ 
+        if flag is None:
+            # No flag -> check whether set is empty
+            if self.__flags:
+                return True
+            else:
+                return False
+        else:
+            # Check wether given label is contained in quadcell's set
+            return flag in self.__flags
+                    
                                 
     def split(self):
         """
@@ -2304,7 +2341,7 @@ class TriCell(object):
                         Edge(vertices[2], vertices[0], parent=self)
                         ]
         self.__element_no = None
-        self.__marked = False
+        self.__flags = set()
         
         
     def vertices(self,n):
@@ -2345,19 +2382,67 @@ class TriCell(object):
         """
         pass
 
-    def is_marked(self):
+    def mark(self, flag=None):
         """
-        Returns self.__flag
+        Mark TriCell
+        
+        Inputs:
+        
+            flag: optional label used to mark cell
+        """  
+        if flag is None:
+            self.__flags.add(True)
+        else:
+            self.__flags.add(flag)
+            
+        
+    def unmark(self, flag=None, recursive=False):
         """
-        return self.__flag
-    
-    
-    def mark(self):
-        self.__flag = True
+        Remove label from TriCell
         
+        Inputs: 
         
-    def unmark(self):
-        self.__flag = False
+            flag: label to be removed
+        
+            recursive: bool, also unmark all subcells
+        """
+        #
+        # Remove label from own list
+        #
+        if flag is None:
+            # No flag specified -> delete all
+            self.__flags.clear()
+        else:
+            # Remove specified flag (if present)
+            if flag in self.__flags: self.__flags.remove(flag)
+        
+        #
+        # Remove label from children if applicable   
+        # 
+        if recursive and self.has_children():
+            for child in self.children.values():
+                child.unmark(flag=flag, recursive=recursive)
+                
+ 
+         
+    def is_marked(self,flag=None):
+        """
+        Check whether cell is marked
+        
+        Input: flag, label for QuadCell: usually one of the following:
+            True (catchall), 'split' (split cell), 'count' (counting)
+            
+        TODO: Possible to add/remove set? Useful? 
+        """ 
+        if flag is None:
+            # No flag -> check whether set is empty
+            if self.__flags:
+                return True
+            else:
+                return False
+        else:
+            # Check wether given label is contained in quadcell's set
+            return flag in self.__flags
         
         
 class Edge(object):
@@ -2402,8 +2487,7 @@ class Edge(object):
         x1,y1 = v2.coordinate()
         nnorm = numpy.sqrt((y1-y0)**2+(x1-x0)**2)
         self.__length = nnorm
-        self.__on_boundary = on_boundary
-        self.__flag = False
+        self.__flags = set()
         self.__parent = parent 
      
      
@@ -2427,34 +2511,54 @@ class Edge(object):
         return x0,y0,x1,y1
         
         
-    def mark(self):
+    def mark(self, flag=None):
         """
         Mark Edge
-        """
-        self.__flag = True
         
-    def unmark(self):
+        Inputs:
+        
+            flag: optional label used to mark edge
+        """  
+        if flag is None:
+            self.__flags.add(True)
+        else:
+            self.__flags.add(flag)
+            
+        
+    def unmark(self, flag=None):
         """
         Unmark Edge
-        """
-        self.__flag = False
         
-    def is_marked(self):
+        Inputs: 
+        
+            flag: label to be removed
+            
+        """
+        if flag is None:
+            # No flag specified -> delete all
+            self.__flags.clear()
+        else:
+            # Remove specified flag (if present)
+            if flag in self.__flags: self.__flags.remove(flag)         
+ 
+         
+    def is_marked(self,flag=None):
         """
         Check whether Edge is marked
-        """
-        return self.__flag
-    
-    def is_on_boundary(self):
-        """
-        Returns True is the edge lies on the boundary
-        """
-        if self.__on_boundary == None:
-            # Undetermined
-            raise Exception('Not specified')
+        
+        Input: flag, label for QuadCell: usually one of the following:
+            True (catchall), 'split' (split cell), 'count' (counting)
+        """ 
+        if flag is None:
+            # No flag -> check whether set is empty
+            if self.__flags:
+                return True
+            else:
+                return False
         else:
-            return self.__on_boundary
-         
+            # Check wether given label is contained in quadcell's set
+            return flag in self.__flags     
+      
        
     def vertices(self):
         """
@@ -2556,8 +2660,7 @@ class Vertex(object):
         """
         assert type(coordinate) is tuple, 'Vertex coordinate should be a tuple.'
         self.__coordinate = coordinate
-        self.__flag = False
-        self.on_boundary = None 
+        self.__flags = set()
     
     def coordinate(self):
         """
@@ -2565,21 +2668,53 @@ class Vertex(object):
         """
         return self.__coordinate
     
-    def mark(self):
+    def mark(self, flag=None):
         """
-        Mark vertex
-        """
-        self.__flag = True
-    
-    def unmark(self):
-        """
-        Unmark vertex
-        """
-        self.__flag = False
-    
+        Mark Vertex
         
-    def is_marked(self):
+        Inputs:
+        
+            flag: int, optional label
+        """  
+        if flag is None:
+            self.__flags.add(True)
+        else:
+            self.__flags.add(flag)
+            
+        
+    def unmark(self, flag=None):
         """
-        Check whether vertex is marked
+        Unmark Vertex
+        
+        Inputs: 
+        
+            flag: label to be removed
+
         """
-        return self.__flag
+        #
+        # Remove label from own list
+        #
+        if flag is None:
+            # No flag specified -> delete all
+            self.__flags.clear()
+        else:
+            # Remove specified flag (if present)
+            if flag in self.__flags: self.__flags.remove(flag)
+        
+         
+    def is_marked(self,flag=None):
+        """
+        Check whether Vertex is marked
+        
+        Input: flag, label for QuadCell: usually one of the following:
+            True (catchall), 'split' (split cell), 'count' (counting)
+        """ 
+        if flag is None:
+            # No flag -> check whether set is empty
+            if self.__flags:
+                return True
+            else:
+                return False
+        else:
+            # Check wether given label is contained in quadcell's set
+            return flag in self.__flags

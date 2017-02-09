@@ -402,7 +402,7 @@ class TestNode(unittest.TestCase):
         #
         # Unmark all
         # 
-        sw_sw_child.unmark(all_nodes=True)
+        node.unmark(recursive=True)
         self.assertFalse(node.is_marked(), 'Node should still be marked.')
         self.assertFalse(sw_child.is_marked(),'SW child should be unmarked.')
         self.assertFalse(sw_sw_child.is_marked(),'SWSW grandchild should be marked.')
