@@ -4,9 +4,9 @@ Created on Feb 8, 2017
 @author: hans-werner
 '''
 
-class MyClass(object):
+class Gmrf(object):
     '''
-    classdocs
+    Gaussian Markov Random Field
     '''
 
 
