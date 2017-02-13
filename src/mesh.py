@@ -287,14 +287,19 @@ class Mesh(object):
         return trivertex_list
     
         
-    def refine(self):
+    def refine(self, flag=None):
         """
         Refine mesh by splitting marked LEAF nodes
         """ 
         for leaf in self.root_node().find_leaves():
-            if leaf.is_marked():
+            if flag is None:
+                # Non-selective refinement
                 leaf.split()
-                leaf.unmark()
+            else:
+                # Refine selectively according to flag
+                if leaf.is_marked(flag=flag):
+                    leaf.split()
+                    leaf.unmark(flag=flag)
     
     
     def coarsen(self):

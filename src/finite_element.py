@@ -3,12 +3,13 @@ from scipy import sparse
 """
 To do with Finite Element Classes
 """
+
 class FiniteElement(object):
     """
     Parent Class: Finite Elements
     """
     def __init__(self, dim, element_type):   
-        self.element_type = element_type
+        self.__element_type = element_type
         self.__dim = dim    
     
     def dim(self):
@@ -104,12 +105,26 @@ class QuadFE(FiniteElement):
         self.__basis_index = basis_index
         self.__p = p
         self.__px = px
-     
+        self.__element_type = element_type
+    
       
     def cell_type(self):
         return self.__cell_type
     
-     
+    
+    def polynomial_degree(self):
+        """
+        Return the finite element's polynomial degree 
+        """
+        return list(self.__element_type)[1]
+    
+    def element_type(self):
+        """
+        Return the finite element type (Q1, Q2, or Q3)
+        """ 
+        return self.__element_type
+    
+        
     def n_dofs(self,key=None):
         """
         Return the number of dofs per elementary entity
@@ -130,7 +145,7 @@ class QuadFE(FiniteElement):
         Returns vertices used to define nodal basis functions on reference cell
         """
         p = np.array(self.__basis_index)
-        if list(self.element_type)[0] == 'Q':
+        if list(self.__element_type)[0] == 'Q':
             n_dofs_per_dim = self.n_dofs('edge')+2
             x = np.linspace(0.0,1.0,n_dofs_per_dim)
             return x[p] 
@@ -154,7 +169,7 @@ class QuadFE(FiniteElement):
         # 1D 
         # 
         if self.dim() == 1:
-            i = self.basis_index[n]
+            i = self.__basis_index[n]
             return self.__p[i](x)
         #
         # 2D
@@ -189,7 +204,7 @@ class QuadFE(FiniteElement):
         # 1D
         # 
         if self.dim() == 1: 
-            i = self.basis_index[n]
+            i = self.__basis_index[n]
             return self.__px[i](x)
         #
         # 2D
@@ -424,7 +439,7 @@ class DofHandler(object):
         """
         Constructor
         """
-        etype = element.element_type
+        etype = element.element_type()
         if etype == 'Q1':
             dofs_per_vertex = 1
             dofs_per_edge = 0
@@ -756,7 +771,8 @@ class GaussRule(object):
                 dim = 2
         else:  
             #
-            # Shape given by element 
+            # Shape given by element
+            # 
             dim = element.dim()
             assert dim in [1,2], 'Only 1 or 2 dimensions supported.'
             shape = element.cell_type()
@@ -1000,7 +1016,7 @@ class GaussRule(object):
         """
         dim = self.__dim
         cell_type = self.__cell_type
-        if x==None:
+        if x is None:
             x_ref = self.__nodes
         else:
             x_ref = np.array(x)
@@ -1068,3 +1084,313 @@ class GaussRule(object):
                 x0,x1,y0,y1 = cell.box()
                 jac = (x1-x0)*(y1-y0)
         return jac
+    
+    
+    
+class System(object):
+    """
+    (Non)linear system to be defined and solved 
+    """
+    def __init__(self, mesh, element, n_gauss=(3,9), 
+                 bnd_markers=None, bnd_functions=None):
+        """
+        Set up linear system
+        
+        Inputs:
+        
+            mesh: Mesh, finite element mesh
+            
+            element: FiniteElement, shapefunctions
+            
+            n_gauss: int tuple, number of quadrature nodes in 1d and 2d respectively
+                        
+            bnd_markers: dictionary of boolean functions for marking boundaries 
+                {'dirichlet':m_d,'neumann':m_n,'robin':m_r, 'periodic':m_p},
+                where m_i maps a node/edge? to a boolean 
+                
+            bnd_functions: dictionary of functions corresponding to the 
+                boundary conditions, i.e.
+                {'dirichlet':g_d,'neumann':g_n,'robin':g_r, 'periodic':g_p},
+        """
+        self.__mesh = mesh
+        self.__element = element
+        self.__n_gauss_2d = n_gauss[1]
+        self.__n_gauss_1d = n_gauss[0]
+        self.__bnd_markers = bnd_markers
+        self.__bnd_functions = bnd_functions
+          
+    
+    def assemble(self, bilinear_forms=None, linear_forms=None, 
+                 bnd_conditions=False, separate_forms=False):
+        """
+        
+        Inputs: 
+        
+            bilinear_forms: (q*u,v), where u,v can denote phi,phi_x, or phi_y 
+            
+            linear_forms: (f,v)
+            
+            bnd_conditions: bool, True if boundary conditions should be applied 
+            
+            separate_forms: bool, False if (bi)linear forms should be added to
+                form a linear system.
+            
+        Outputs:
+        
+            b
+            
+        """
+        # ---------------------------------------------------------------------
+        # Set Element Spaces, Mesh, and DofHandler
+        # ---------------------------------------------------------------------
+        element_2d = self.__element
+        print(element_2d.element_type())
+        element_1d = QuadFE(1,element_2d.element_type())
+        mesh = self.__mesh
+        dof_handler = DofHandler(mesh,element_2d)
+        dof_handler.distribute_dofs()
+        n_nodes = dof_handler.n_nodes()
+        
+        # ---------------------------------------------------------------------
+        # Define Quadrature Rule
+        # ---------------------------------------------------------------------
+        # One dimensional rule for edges 
+        rule_1d = GaussRule(self.__n_gauss_1d,shape='edge')
+        r_ref_1d = rule_1d.nodes()
+        w_ref_1d = rule_1d.weights()
+        
+        # Two dimensional rule for cells
+        rule_2d = GaussRule(self.__n_gauss_2d,shape='quadrilateral')
+        r_ref_2d = rule_2d.nodes()
+        w_ref_2d = rule_2d.weights()
+        
+        # ---------------------------------------------------------------------
+        # Evaluate shape functions at Gauss nodes on reference element
+        # ---------------------------------------------------------------------
+        # 1D
+        n_dofs_1d = element_1d.n_dofs()
+        phi_ref_1d = [np.empty((self.__n_gauss_1d,n_dofs_1d))]*2 
+
+        for i in range(n_dofs_1d):
+            phi_ref_1d[0][:,i] = element_1d.phi(i,r_ref_1d)
+            phi_ref_1d[1][:,i] = element_1d.dphi(i,r_ref_1d)
+     
+        # 2D
+        n_dofs_2d = element_2d.n_dofs()  
+        print('n_dofs per cell %i'%(n_dofs_2d))
+        print('n_dofs per edge %i'%(n_dofs_1d))    
+        phi_ref_2d = [np.empty((self.__n_gauss_2d,n_dofs_2d)), 
+                      [np.empty((self.__n_gauss_2d,n_dofs_2d)),
+                       np.empty((self.__n_gauss_2d,n_dofs_2d))]]
+        
+        for i in range(n_dofs_2d):
+            phi_ref_2d[0][:,i] = element_2d.phi(i,r_ref_2d)
+            phi_ref_2d[1][0][:,i] = element_2d.dphi(i,r_ref_2d,0)
+            phi_ref_2d[1][1][:,i] = element_2d.dphi(i,r_ref_2d,1)
+         
+        #
+        # Determine the forms to assemble
+        #
+        if bilinear_forms is not None:
+            if type(bilinear_forms) is list:
+                bivals = [[] for i in range(len(bilinear_forms))]
+            else:
+                bilinear_error_msg = 'bilinear_form should be a 3-tuple.'
+                assert (type(bilinear_forms) is tuple and \
+                        len(bilinear_forms)==3), bilinear_error_msg   
+                bivals = [[]]
+        print(bivals)
+        
+        if linear_forms is not None:
+            if type(linear_forms) is list:
+                linvecs = [np.empty((n_nodes,)) for i in range(len(linear_forms))]
+            else:
+                linear_error_msg = 'linear_form should be a 2-tuple.'
+                assert(type(linear_forms) is tuple and \
+                       len(linear_forms)==2), linear_error_msg 
+                linvecs = [np.empty((n_nodes,))]
+        
+
+        
+        rows = []
+        cols = []
+        for node in mesh.root_node().find_leaves():
+            node_dofs = dof_handler.get_cell_dofs(node)
+            cell = node.quadcell()
+            
+            #
+            # Map quadrature info
+            # 
+            r_phys_2d = rule_2d.map(cell, r_ref_2d)
+            w_phys_2d = w_ref_2d*rule_2d.jacobian(cell)
+            
+            #
+            # Assemble local system matrices/vectors
+            # 
+            if bilinear_forms is not None:
+                bf_loc = []
+                for bf in bilinear_forms:
+                    kernel, trial, test = \
+                        self.local_eval(bf, phi_ref_2d, r_phys_2d)
+                    bf_loc.append(self.bilinear_loc(w_phys_2d, kernel, \
+                                                    trial, test)) 
+            if linear_forms is not None:
+                lf_loc = []
+                for lf in linear_forms:
+                    kernel, test = self.local_eval(lf, phi_ref_2d, r_phys_2d)
+                    lf_loc.append(self.linear_loc(w_phys_2d, kernel, test))
+          
+            #
+            # Boundary conditions
+            # 
+            for direction in ['W','E','S','N']:
+                edge = cell.get_edges(direction)
+                for key in ['dirichlet','neumann','robin','periodic']:
+                    if self.__bnd_markers[key](edge):
+                        pass
+            #
+            # Local to global mapping
+            #
+            for i in range(n_dofs_2d):
+
+                #
+                # Test Dofs
+                #
+                # Update linear forms
+                # 
+                for k in range(len(linvecs)):
+                    linvecs[k][node_dofs[i]] = lf_loc[k][i]
+                     
+                for j in range(n_dofs_2d):
+                    #
+                    # Trial Dofs
+                    #
+                    rows.append(node_dofs[i]) 
+                    cols.append(node_dofs[j])
+                    #
+                    # Update bilinear forms
+                    # 
+                    for k in range(len(bivals)):
+                        bivals[k].append(bf_loc[k][i,j])
+                        
+        #            
+        # Save results as sparse matrices 
+        #
+        bimats = []
+        for bv in bivals:
+            bimats.append(sparse.coo_matrix((bv,(rows,cols)))) 
+        return bimats, linvecs
+           
+
+      
+    
+    def bilinear_loc(self,weight,kernel,trial,test):
+        """
+        Compute the local bilinear form over an element
+        """
+        return np.dot(test.T, np.dot(np.diag(weight*kernel),test))
+    
+    
+    def linear_loc(self,weight,kernel,test):
+        """
+        Compute the local linear form over an element
+        """
+        return np.dot(test.T, weight*kernel)
+    
+        
+    def local_eval(self, form, phi, x):
+        """
+        Evaluates the local kernel, test, and trial functions of a (bi)linear
+        form on a given entity.
+        
+        Inputs:
+        
+            form: (bi)linear form as tuple (f,'trial_type','test_type'), where
+                
+                f: function, or constant
+                
+                trial_type: str, 'u','ux',or 'uy'
+                
+                test_type: str, 'v', 'vx', 'vy'
+                
+            phi: shape functions evaluated at the Gauss points on the reference
+                element.    
+                
+            entity: local cell or edge
+            
+            x: Gauss points on pysical entity
+            
+        
+        Outputs:
+        
+            kernel: function evaluated at the local quadrature nodes (n_quad,) 
+            
+            trial: element trial functionals, evaluated at quad nodes (n_quad, n_dof)
+            
+            test: element test functionals, evaluated at quadrature nodes (n_quad, n_dof)
+                            
+        """
+        dim = x.shape[1]
+        f = form[0]
+        types = list(form[1:])
+                   
+        if dim == 1:
+            #
+            # Determine test and trial functions
+            #
+            tt = []
+            for t_type in types:
+                if t_type in ['u','v']:
+                    tt.append(phi[0])
+                elif t_type in ['ux','vx']:
+                    tt.append(phi[1])
+                else: 
+                    raise Exception('Only "[u,v]" and "[u,v]x" allowed.')  
+            #
+            # Compute kernel
+            # 
+            if callable(f):
+                # f is a function
+                kernel = f(x)
+            else:
+                # f is a constant (TODO: change this)
+                kernel = f
+                
+        elif dim == 2:
+            #
+            # Determine test and trial functions
+            #
+            tt = []
+            for t_type in types:
+                if t_type in ['u','v']:
+                    tt.append(phi[0])
+                elif t_type in ['ux','vx']:
+                    tt.append(phi[1][0])
+                elif t_type in ['uy','vy']:
+                    tt.append(phi[1][1])
+                else:
+                    raise Exception('Only "[u,v]" and "[u,v][x,y]" allowed.')
+            #
+            # Compute kernel
+            #
+            if callable(f):
+                # f is a function
+                kernel = f(x[:,0],x[:,1])
+            else:
+                kernel = f
+        if len(form) == 3:
+            #
+            # Bilinear form         
+            # 
+            return kernel, tt[0], tt[1] # kernel, trial, test
+        elif len(form) == 2:
+            #
+            # Linear form
+            #
+            return kernel, tt[0]  # kernel, test
+        
+    def check_forms(self):
+        """
+        Make sure the (bi)linear forms are correctly formatted
+        """ 
+        

@@ -3,9 +3,9 @@ Created 11/22/2016
 @author: hans-werner
 """
 import unittest
-from finite_element import FiniteElement, QuadFE, TriFE, DofHandler, GaussRule
+from finite_element import FiniteElement, QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
-from numpy import sqrt, sum, dot
+from numpy import sqrt, sum, dot, sin, pi, array
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -76,6 +76,63 @@ class TestGaussRule(unittest.TestCase):
     Test GaussRule class
     """
     
+    def test_assembly(self):
+        
+
+        # One square 
+        mesh = Mesh.newmesh()
+        V = QuadFE(2,'Q1')
+        s = System(mesh,V, n_gauss=(3,9))
+        bilinear_forms = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')];
+        linear_forms = [(1,'v')]
+        A,b = s.assemble(bilinear_forms=bilinear_forms, \
+                       linear_forms=linear_forms, \
+                       bnd_conditions=False, separate_forms=True)
+        
+        A_check = 1/36.0*array([[4,2,2,1],[2,4,1,2],[2,1,4,2],[1,2,2,4]])
+        self.assertAlmostEqual((A[0].toarray()- A_check).all(),0, 12,\
+                                'Incorrect mass matrix')
+        
+        Ax_check = 1/6.0*array([[2,-2,1,-1],[-2,2,-1,1],[1,-1,2,-2],[-1,1,-2,2]])
+        self.assertAlmostEqual((A[1].toarray()-Ax_check).all(), 0, 12, \
+                               'Incorrect stiffness matrix')
+        b_check = 0.25*array([1,1,1,1])
+        self.assertAlmostEqual((b-b_check).all(), 0, 12,\
+                              'Right hand side incorrect')
+        
+        # Use matrices to integrate
+        q = lambda x,y: x*(1-x)*y*(1-y)
+        bilinear_forms = [(q,'u','v')]
+        linear_forms = [(1,'v')]
+        A,_ = s.assemble(bilinear_forms, linear_forms, separate_forms=True) 
+        v = array([1.,1.,1.,1.])
+        AA = A[0].tocsr()
+        print(AA.dot(v))
+        self.assertAlmostEqual(dot(v,AA.dot(v))-1.0/36.0, 0,8,\
+                               'Should integrate to 4/pi^2.')
+        
+        # Two squares
+        mesh = Mesh.newmesh(box=[2.0,2.5,1.0,3.0], grid_size=(2,1))
+        mesh.refine()
+        s = System(mesh,V,n_gauss=(6,9))
+        bilinear_forms = [(1,'u','v')]
+        linear_forms = [(1,'v')]
+        A,_ = s.assemble(bilinear_forms=bilinear_forms, 
+                       linear_forms=linear_forms, 
+                       bnd_conditions=False, separate_forms=True)
+      
+        A_check = 1/36.0*array([[4,2,2,1,0,0],[2,8,1,4,2,1],[2,1,4,2,0,0],
+                               [1,4,2,8,1,2],[0,2,0,1,4,2],[0,1,0,2,2,4]])
+        self.assertAlmostEqual((A[0].toarray()-A_check).all(), 0, 12,\
+                               'Incorrect mass matrix')
+        
+        
+        
+        
+        # Test hanging nodes
+        
+        pass 
+        
     def test_line_integral(self):
         # Define quadrature rule
         rule = GaussRule(2, shape='edge')

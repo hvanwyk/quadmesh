@@ -30,10 +30,10 @@ TODO: Impose Hanging Node Restrictions
 ue = lambda x,y: np.sin(np.pi*x)*np.sin(np.pi*y)
 fe = lambda x,y: np.pi**2*np.sin(np.pi*x)*np.sin(np.pi*y)
 
-mesh = Mesh.newmesh(grid_size=(20,20))
+mesh = Mesh.newmesh(box=[0.,1.,0.,1.], grid_size=(30,30))
 mesh.root_node().mark()
 mesh.refine()
-V = QuadFE(2,'Q2')
+V = QuadFE(2,'Q1')
 n_dofs = V.n_dofs()
 dh = DofHandler(mesh,V)
 dh.distribute_dofs()
@@ -84,7 +84,7 @@ for node in mesh.root_node().find_leaves():
     f_loc = fe(r_phys[:,0],r_phys[:,1])
     
     for i in range(n_dofs):
-        u_vec[node_dofs] = ue(x_ref[:,0],x_ref[:,1])
+        u_vec[node_dofs] = ue(x_phys[:,0],x_phys[:,1])
         f_rhs[node_dofs[i]] = np.sum(f_loc*phi_ref[:,i]*w_phys)
         for j in range(n_dofs):
             rows.append(node_dofs[i])
@@ -100,4 +100,12 @@ f_app = Ax.dot(u_vec)
 print(np.linalg.norm(np.abs(f_app-f_rhs)))
 plt.spy(A,markersize=1)
 plt.spy(Ax,markersize=.1)
+plt.show()
+Acheck_1 = 1/36.0*np.array([[4,2,2,1],[2,4,1,2],[2,1,4,2],[1,2,2,4]])
+Acheck_2 = 1/36.0*np.array([[4,2,2,1,0,0],[2,8,1,4,2,1],[2,1,4,2,0,0],
+                           [1,4,2,8,1,2],[0,2,0,1,4,2],[0,1,0,2,2,4]])
+#print(Acheck_2)
+#print(A.toarray())
+_,ax = plt.subplots()
+mesh.plot_quadmesh(ax, set_axis=True, vertex_numbers=True)
 plt.show()

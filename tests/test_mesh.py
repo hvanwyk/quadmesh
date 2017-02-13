@@ -86,14 +86,14 @@ class TestMesh(unittest.TestCase):
         # Define new mesh and refine
         # 
         mesh = Mesh.newmesh(box=[0.,3.,0.,2], grid_size=(3,2))
-        mesh.root_node().mark()
-        mesh.refine()
+        mesh.root_node().mark('split')
+        mesh.refine('split')
         child_10 = mesh.root_node().children[(1,0)]
-        child_10.mark()
-        mesh.refine()
+        child_10.mark('split')
+        mesh.refine('split')
         child_10_ne = child_10.children['NE']
-        child_10_ne.mark()
-        mesh.refine()
+        child_10_ne.mark('split')
+        mesh.refine('split')
         
         # Iterate quadcells
         mesh_quadcells = mesh.iter_quadcells()
@@ -112,16 +112,16 @@ class TestMesh(unittest.TestCase):
         # Define new mesh and refine
         # 
         mesh = Mesh.newmesh(box=[0.,3.,0.,2], grid_size=(3,2))
-        mesh.root_node().mark()
-        mesh.refine()
+        mesh.root_node().mark('split')
+        mesh.refine('split')
         
         child_10 = mesh.root_node().children[(1,0)] 
-        child_10.mark()
-        mesh.refine()
+        child_10.mark('split')
+        mesh.refine('split')
         
         child_10_ne = child_10.children['NE']
-        child_10_ne.mark()        
-        mesh.refine()
+        child_10_ne.mark('split')        
+        mesh.refine('split')
           
         # Iterate quadcells
         mesh_quadedges = mesh.iter_quadedges()
@@ -146,14 +146,14 @@ class TestMesh(unittest.TestCase):
         # Define new mesh and refine
         # 
         mesh = Mesh.newmesh(box=[0.,3.,0.,2], grid_size=(3,2))
-        mesh.root_node().mark()
-        mesh.refine()
+        mesh.root_node().mark('split')
+        mesh.refine('split')
         child_10 = mesh.root_node().children[(1,0)]
-        child_10.mark()
-        mesh.refine()
+        child_10.mark('split')
+        mesh.refine('split')
         child_10_ne = child_10.children['NE']
-        child_10_ne.mark()
-        mesh.refine()
+        child_10_ne.mark('split')
+        mesh.refine('split')
         
         quadvertices = mesh.iter_quadvertices()    
     
