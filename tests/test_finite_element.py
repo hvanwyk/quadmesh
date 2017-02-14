@@ -5,7 +5,7 @@ Created 11/22/2016
 import unittest
 from finite_element import FiniteElement, QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
-from numpy import sqrt, sum, dot, sin, pi, array
+from numpy import sqrt, sum, dot, sin, pi, array, abs
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -78,8 +78,9 @@ class TestGaussRule(unittest.TestCase):
     
     def test_assembly(self):
         
-
+        #
         # One square 
+        #
         mesh = Mesh.newmesh()
         V = QuadFE(2,'Q1')
         s = System(mesh,V, n_gauss=(3,9))
@@ -99,8 +100,9 @@ class TestGaussRule(unittest.TestCase):
         b_check = 0.25*array([1,1,1,1])
         self.assertAlmostEqual((b-b_check).all(), 0, 12,\
                               'Right hand side incorrect')
-        
+        #
         # Use matrices to integrate
+        #
         q = lambda x,y: x*(1-x)*y*(1-y)
         bilinear_forms = [(q,'u','v')]
         linear_forms = [(1,'v')]
@@ -111,7 +113,51 @@ class TestGaussRule(unittest.TestCase):
         self.assertAlmostEqual(dot(v,AA.dot(v))-1.0/36.0, 0,8,\
                                'Should integrate to 4/pi^2.')
         
+        #
+        # Boundary conditions
+        # 
+        def m_dirichlet(x):
+            """
+            Dirichlet Node Marker: x = 0
+            """
+            return (x[:,0]-0<1e-10)
+        
+        def m_neumann(edge):
+            """
+            Neumann Edge Marker: x = 1
+            """
+            x = edge.vertex_coordinates()
+            return (abs(x[:,0]-1)<1e-9).all()
+                
+        def m_robin(edge):
+            """
+            Robin Edge Marker: y = 0 or y = 1 
+            """
+            x = edge.vertex_coordinates()
+            return ( (abs(x[:,1]-0)<1e-9).all() or (abs(x[:,1]-1)<1e-9).all() ) 
+        
+        cell = mesh.quadcell()
+        node = mesh.root_node()
+        dofhandler = DofHandler(mesh,V)
+        dofhandler.distribute_dofs()
+        celldofs = dofhandler.get_cell_dofs(node)
+        edofs = dofhandler.get_edge_dofs(node, 'W')
+        print(edofs)
+        for direction in ['W','E','S','N']:
+            edge = cell.get_edges(direction)
+            if m_neumann(edge):
+                print('%s-Edge is Neumann'%(direction))
+            elif m_robin(edge):
+                print('%s-Edge is Robin'%(direction))
+            x = edge.vertex_coordinates()
+            is_dirichlet = m_dirichlet(x)
+            if is_dirichlet.any():
+                for y in x[is_dirichlet,:]:
+                    print('Node (%.2f,%.2f) is Dirichlet'%(y[0],y[1]))
+        
+        #
         # Two squares
+        #
         mesh = Mesh.newmesh(box=[2.0,2.5,1.0,3.0], grid_size=(2,1))
         mesh.refine()
         s = System(mesh,V,n_gauss=(6,9))
@@ -125,8 +171,6 @@ class TestGaussRule(unittest.TestCase):
                                [1,4,2,8,1,2],[0,2,0,1,4,2],[0,1,0,2,2,4]])
         self.assertAlmostEqual((A[0].toarray()-A_check).all(), 0, 12,\
                                'Incorrect mass matrix')
-        
-        
         
         
         # Test hanging nodes

@@ -2571,7 +2571,14 @@ class Edge(object):
         """
         return self.__vertices
     
-    
+    def vertex_coordinates(self):
+        """
+        Returns the vertex coordinates as numpy array
+        """        
+        x0,y0 = list(self.__vertices)[0].coordinate()
+        x1,y1 = list(self.__vertices)[1].coordinate()
+        return numpy.array([[x0,y0],[x1,y1]])
+        
     def length(self):
         """
         Returns the length of the edge

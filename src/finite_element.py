@@ -680,6 +680,19 @@ class DofHandler(object):
         Return all dofs corresponding to a given tree node 
         """
         return self.__global_dofs[node]
+    
+    
+    def get_edge_dofs(self, node, direction):
+        """
+        Return all dofs on a given edge of a cell 
+        """
+        cell_dofs = self.__global_dofs[node]
+        edge_dofs = []
+        for i in range(self.__n_dofs):
+            if direction in self.__pattern[i]:
+                edge_dofs.append(cell_dofs[i])
+        return edge_dofs
+        
         
     def make_hanging_node_constraints(self):
         """
@@ -1246,8 +1259,8 @@ class System(object):
             for direction in ['W','E','S','N']:
                 edge = cell.get_edges(direction)
                 for key in ['dirichlet','neumann','robin','periodic']:
-                    if self.__bnd_markers[key](edge):
-                        pass
+                    #if self.__bnd_markers[key](edge):
+                    pass
             #
             # Local to global mapping
             #
