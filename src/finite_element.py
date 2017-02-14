@@ -1119,11 +1119,11 @@ class System(object):
                         
             bnd_markers: dictionary of boolean functions for marking boundaries 
                 {'dirichlet':m_d,'neumann':m_n,'robin':m_r, 'periodic':m_p},
-                where m_i maps a node/edge? to a boolean 
+                where m_i maps a node/edge to a boolean 
                 
             bnd_functions: dictionary of functions corresponding to the 
                 boundary conditions, i.e.
-                {'dirichlet':g_d,'neumann':g_n,'robin':g_r, 'periodic':g_p},
+                {'dirichlet':g_d,'neumann':g_n,'robin':(gamm,g_r), 'periodic':g_p},
         """
         self.__mesh = mesh
         self.__element = element

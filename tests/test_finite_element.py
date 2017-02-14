@@ -5,7 +5,7 @@ Created 11/22/2016
 import unittest
 from finite_element import FiniteElement, QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
-from numpy import sqrt, sum, dot, sin, pi, array, abs
+from numpy import sqrt, sum, dot, sin, pi, array, abs, empty
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -129,13 +129,53 @@ class TestGaussRule(unittest.TestCase):
             x = edge.vertex_coordinates()
             return (abs(x[:,0]-1)<1e-9).all()
                 
-        def m_robin(edge):
+        def m_robin_1(edge):
             """
-            Robin Edge Marker: y = 0 or y = 1 
+            Robin Edge Marker: y = 0 
             """
             x = edge.vertex_coordinates()
-            return ( (abs(x[:,1]-0)<1e-9).all() or (abs(x[:,1]-1)<1e-9).all() ) 
+            return (abs(x[:,1]-0)<1e-9).all()  
         
+        def m_robin_2(edge):
+            """
+            Robin Edge Marker: y = 1
+            """
+            x = edge.vertex_coordinates()
+            return (abs(x[:,1]-1)<1e-9).all() 
+            
+        def g_dirichlet(x):
+            """
+            Dirichlet function
+            """
+            return 0*x[:,0]
+        
+        def g_neumann(x):
+            """
+            Neumann function
+            """        
+            return x[:,1]*(1-x[:,1])
+        
+        def g_robin_1(x):
+            """
+            Robin boundary conditions for y = 0
+            """
+            return -(x[:,0]*(1-x[:,0])) 
+        
+        def g_robin_2(x):
+            """
+            Robin boundary conditions for y = 1
+            """
+            return -0.5*x[:,0]*(1-x[:,0])
+            
+        gamma_1 = 1.0
+        gamma_2 = 2.0
+        bnd_conditions = {'dirichlet': [(m_dirichlet,g_dirichlet)],\
+                          'neumann': [(m_neumann,g_neumann)], \
+                          'robin': [(m_robin_1, (gamma_1, g_robin_1)),\
+                                    (m_robin_2,(gamma_2,g_robin_2))],\
+                          'periodic': None}
+        
+        bnd_functions = {'dirichlet':g_dirichlet,'neumann':g_neumann,'robin':(())} 
         cell = mesh.quadcell()
         node = mesh.root_node()
         dofhandler = DofHandler(mesh,V)
@@ -147,7 +187,7 @@ class TestGaussRule(unittest.TestCase):
             edge = cell.get_edges(direction)
             if m_neumann(edge):
                 print('%s-Edge is Neumann'%(direction))
-            elif m_robin(edge):
+            elif m_robin_1(edge):
                 print('%s-Edge is Robin'%(direction))
             x = edge.vertex_coordinates()
             is_dirichlet = m_dirichlet(x)
