@@ -441,19 +441,44 @@ class DofHandler(object):
         """
         etype = element.element_type()
         if etype == 'Q1':
+            """
+            2---3
+            |   |
+            0---1
+            """
             dofs_per_vertex = 1
             dofs_per_edge = 0
             dofs_per_cell = 0
             n_dofs = 4
             pattern = ['SW','SE','NW','NE']
+            ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0]])
         elif etype == 'Q2':
+            """
+            2---7---3
+            |       |
+            4   8   5 
+            |       |
+            0---6---1
+            """
             dofs_per_vertex = 1
             dofs_per_edge = 1
             dofs_per_cell = 1
             n_dofs = 9
             pattern = ['SW','SE','NW','NE',
                        'W','E','S','N','I']
+            ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0],
+                                  [0.0,0.5],[1.0,0.5],[0.5,0.0],[0.5,1.0],
+                                  [0.5,0.5]])
         elif etype == 'Q3':
+            """
+            2---10---11---3
+            |             |
+            5   14   15   7
+            |             |
+            4   12   13   6
+            |             |
+            0----8---9----1 
+            """
             dofs_per_vertex = 1
             dofs_per_edge = 2
             dofs_per_cell = 4
@@ -461,6 +486,13 @@ class DofHandler(object):
             pattern = ['SW','SE','NW','NE',
                        'W','W','E','E','S','S','N','N',
                        'I','I','I','I']
+            ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0],
+                                  [0.0,1./3.],[0.0,2./3.],
+                                  [1.0,1./3.],[1.0,2./3.], 
+                                  [1./3.,0.0],[2./3.,0.0], 
+                                  [1./3.,1.0],[2./3.,1.0],
+                                  [1./3.,1./3.],[2./3.,1./3.],
+                                  [1./3.,2./3.],[2./3.,2./3.]])
         else:
             raise Exception('Only Q1, Q2, or Q3 supported.')
         self.__element_type = etype
@@ -474,6 +506,7 @@ class DofHandler(object):
         self.__root_node = mesh.root_node()
         self.__hanging_nodes = []  
         self.__constraint_coefficients = element.constraint_coefficients()
+        self.__reference_nodes = ref_nodes
         
     def distribute_dofs(self):
         """
@@ -563,6 +596,13 @@ class DofHandler(object):
                                 to_dofs.append(dofs[j]) 
                         self.assign_dofs(nb, to_pos, to_dofs)
         self.n_global_dofs = count
+    
+    
+    def reference_nodes(self):
+        """
+        Return the nodes on the reference element
+        """
+        return self.__reference_nodes
     
     
     def n_nodes(self):
@@ -682,9 +722,20 @@ class DofHandler(object):
         return self.__global_dofs[node]
     
     
-    def get_edge_dofs(self, node, direction):
+    def get_local_edge_dofs(self, direction):
         """
         Return all dofs on a given edge of a cell 
+        """
+        edge_dofs = []
+        for i in range(self.__n_dofs):
+            if direction in self.__pattern[i]:
+                edge_dofs.append(i)
+        return edge_dofs
+        
+    
+    def get_global_edge_dofs(self, node, direction):
+        """
+        Return all global dofs of a given edge of a cell
         """
         cell_dofs = self.__global_dofs[node]
         edge_dofs = []
@@ -692,8 +743,8 @@ class DofHandler(object):
             if direction in self.__pattern[i]:
                 edge_dofs.append(cell_dofs[i])
         return edge_dofs
-        
-        
+    
+                
     def make_hanging_node_constraints(self):
         """
         Return the constraint matrix satisfied by the mesh's hanging nodes.
@@ -1104,8 +1155,7 @@ class System(object):
     """
     (Non)linear system to be defined and solved 
     """
-    def __init__(self, mesh, element, n_gauss=(3,9), 
-                 bnd_markers=None, bnd_functions=None):
+    def __init__(self, mesh, element, n_gauss=(3,9),bnd_conditions=None):
         """
         Set up linear system
         
@@ -1117,24 +1167,24 @@ class System(object):
             
             n_gauss: int tuple, number of quadrature nodes in 1d and 2d respectively
                         
-            bnd_markers: dictionary of boolean functions for marking boundaries 
-                {'dirichlet':m_d,'neumann':m_n,'robin':m_r, 'periodic':m_p},
-                where m_i maps a node/edge to a boolean 
+            bnd_conditions: dictionary of boolean functions for marking boundaries
+                and boundary data in the form
+                {'dirichlet':[m_d,g_d],'neumann':[m_n,g_n], 
+                 'robin':[m_r,(gamma,g_r)], 'periodic':m_p}
+                where m_i maps a node/edge to a boolean and  
                 
-            bnd_functions: dictionary of functions corresponding to the 
-                boundary conditions, i.e.
-                {'dirichlet':g_d,'neumann':g_n,'robin':(gamm,g_r), 'periodic':g_p},
+    
         """
         self.__mesh = mesh
         self.__element = element
         self.__n_gauss_2d = n_gauss[1]
         self.__n_gauss_1d = n_gauss[0]
-        self.__bnd_markers = bnd_markers
-        self.__bnd_functions = bnd_functions
+        self.__bnd_conditions = bnd_conditions
+        
           
     
     def assemble(self, bilinear_forms=None, linear_forms=None, 
-                 bnd_conditions=False, separate_forms=False):
+                 bnd_conditions=False):
         """
         
         Inputs: 
@@ -1144,9 +1194,6 @@ class System(object):
             linear_forms: (f,v)
             
             bnd_conditions: bool, True if boundary conditions should be applied 
-            
-            separate_forms: bool, False if (bi)linear forms should be added to
-                form a linear system.
             
         Outputs:
         
@@ -1189,9 +1236,7 @@ class System(object):
             phi_ref_1d[1][:,i] = element_1d.dphi(i,r_ref_1d)
      
         # 2D
-        n_dofs_2d = element_2d.n_dofs()  
-        print('n_dofs per cell %i'%(n_dofs_2d))
-        print('n_dofs per edge %i'%(n_dofs_1d))    
+        n_dofs_2d = element_2d.n_dofs()   
         phi_ref_2d = [np.empty((self.__n_gauss_2d,n_dofs_2d)), 
                       [np.empty((self.__n_gauss_2d,n_dofs_2d)),
                        np.empty((self.__n_gauss_2d,n_dofs_2d))]]
@@ -1212,7 +1257,6 @@ class System(object):
                 assert (type(bilinear_forms) is tuple and \
                         len(bilinear_forms)==3), bilinear_error_msg   
                 bivals = [[]]
-        print(bivals)
         
         if linear_forms is not None:
             if type(linear_forms) is list:
@@ -1224,7 +1268,13 @@ class System(object):
                 linvecs = [np.empty((n_nodes,))]
         
 
-        
+        #
+        # Unpack boundary data
+        # 
+        bc_dirichlet = self.__bnd_conditions['dirichlet']
+        bc_neumann = self.__bnd_conditions['neumann']
+        bc_robin = self.__bnd_conditions['robin']
+         
         rows = []
         cols = []
         for node in mesh.root_node().find_leaves():
@@ -1241,31 +1291,40 @@ class System(object):
             # Assemble local system matrices/vectors
             # 
             if bilinear_forms is not None:
-                bf_loc = []
+                bf_loc = np.zeros((n_dofs_2d,n_dofs_2d))
                 for bf in bilinear_forms:
                     kernel, trial, test = \
                         self.local_eval(bf, phi_ref_2d, r_phys_2d)
-                    bf_loc.append(self.bilinear_loc(w_phys_2d, kernel, \
-                                                    trial, test)) 
+                    bf_loc += self.bilinear_loc(w_phys_2d,kernel,\
+                                                    trial,test)
+                    
             if linear_forms is not None:
-                lf_loc = []
+                lf_loc = np.zeros((n_dofs_2d,))
                 for lf in linear_forms:
                     kernel, test = self.local_eval(lf, phi_ref_2d, r_phys_2d)
-                    lf_loc.append(self.linear_loc(w_phys_2d, kernel, test))
+                    lf_loc += self.linear_loc(w_phys_2d, kernel, test)
           
             #
             # Boundary conditions
             # 
             for direction in ['W','E','S','N']:
                 edge = cell.get_edges(direction)
-                for key in ['dirichlet','neumann','robin','periodic']:
+                edge_dofs = dof_handler.get_local_edge_dofs(direction)
+                x_ref = dof_handler.reference_nodes()
+                x_phys = rule_2d.map(cell,x_ref) 
+                #
+                # Check for Neumann conditions
+                # 
+                for bc_neu in bc_neumann:
+                    m_neu,g_neu = bc_neu 
+                    if m_neu(edge):
+                        # Neumann edge
+                        pass
                     #if self.__bnd_markers[key](edge):
-                    pass
+                    
             #
             # Local to global mapping
             #
-            for i in range(n_dofs_2d):
-
                 #
                 # Test Dofs
                 #

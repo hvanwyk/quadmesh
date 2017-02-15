@@ -114,7 +114,7 @@ class TestGaussRule(unittest.TestCase):
                                'Should integrate to 4/pi^2.')
         
         #
-        # Boundary conditions
+        # Elaborate test with Boundary conditions
         # 
         def m_dirichlet(x):
             """
@@ -171,17 +171,22 @@ class TestGaussRule(unittest.TestCase):
         gamma_2 = 2.0
         bnd_conditions = {'dirichlet': [(m_dirichlet,g_dirichlet)],\
                           'neumann': [(m_neumann,g_neumann)], \
-                          'robin': [(m_robin_1, (gamma_1, g_robin_1)),\
+                          'robin': [(m_robin_1, (gamma_1,g_robin_1)),\
                                     (m_robin_2,(gamma_2,g_robin_2))],\
                           'periodic': None}
+        f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))
+        bf = [(-1,'ux','vx'),(1,'uy','vy'),(1,'u','v')]
+        lf = [(f,'v')]
+        s = System(mesh, V, n_gauss=(3,9),bnd_conditions=bnd_conditions)
+        s.assemble(bilinear_forms=bf, linear_forms=lf, bnd_conditions=True)
         
-        bnd_functions = {'dirichlet':g_dirichlet,'neumann':g_neumann,'robin':(())} 
+        
         cell = mesh.quadcell()
         node = mesh.root_node()
         dofhandler = DofHandler(mesh,V)
         dofhandler.distribute_dofs()
         celldofs = dofhandler.get_cell_dofs(node)
-        edofs = dofhandler.get_edge_dofs(node, 'W')
+        edofs = dofhandler.get_local_edge_dofs(node, 'W')
         print(edofs)
         for direction in ['W','E','S','N']:
             edge = cell.get_edges(direction)
