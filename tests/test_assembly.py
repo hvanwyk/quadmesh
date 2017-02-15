@@ -6,17 +6,7 @@ import scipy.sparse as sp
 # -------------------
 # Helper functions
 # -------------------
-def DirichletBoundary(x,on_boundary):
-    """
-    Return true if 
-    """
-    return on_boundary
 
-def NeumannBoundary(x):
-    pass
-
-def RobinBoundary(x):
-    pass
 
 """
 Test solution of simple Dirichlet problem.

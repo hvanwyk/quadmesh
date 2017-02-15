@@ -1184,7 +1184,7 @@ class System(object):
           
     
     def assemble(self, bilinear_forms=None, linear_forms=None, 
-                 bnd_conditions=False):
+                 bc=False):
         """
         
         Inputs: 
@@ -1229,7 +1229,8 @@ class System(object):
         # ---------------------------------------------------------------------
         # 1D
         n_dofs_1d = element_1d.n_dofs()
-        phi_ref_1d = [np.empty((self.__n_gauss_1d,n_dofs_1d))]*2 
+        phi_ref_1d = [np.empty((self.__n_gauss_1d,n_dofs_1d)),\
+                      np.empty((self.__n_gauss_1d,n_dofs_1d))] 
 
         for i in range(n_dofs_1d):
             phi_ref_1d[0][:,i] = element_1d.phi(i,r_ref_1d)
@@ -1267,13 +1268,13 @@ class System(object):
                        len(linear_forms)==2), linear_error_msg 
                 linvecs = [np.empty((n_nodes,))]
         
-
-        #
-        # Unpack boundary data
-        # 
-        bc_dirichlet = self.__bnd_conditions['dirichlet']
-        bc_neumann = self.__bnd_conditions['neumann']
-        bc_robin = self.__bnd_conditions['robin']
+        if bc:
+            #
+            # Unpack boundary data
+            # 
+            bc_dirichlet = self.__bnd_conditions['dirichlet']
+            bc_neumann = self.__bnd_conditions['neumann']
+            bc_robin = self.__bnd_conditions['robin']
          
         rows = []
         cols = []
@@ -1303,25 +1304,64 @@ class System(object):
                 for lf in linear_forms:
                     kernel, test = self.local_eval(lf, phi_ref_2d, r_phys_2d)
                     lf_loc += self.linear_loc(w_phys_2d, kernel, test)
-          
-            #
-            # Boundary conditions
-            # 
-            for direction in ['W','E','S','N']:
-                edge = cell.get_edges(direction)
-                edge_dofs = dof_handler.get_local_edge_dofs(direction)
-                x_ref = dof_handler.reference_nodes()
-                x_phys = rule_2d.map(cell,x_ref) 
-                #
-                # Check for Neumann conditions
-                # 
-                for bc_neu in bc_neumann:
-                    m_neu,g_neu = bc_neu 
-                    if m_neu(edge):
-                        # Neumann edge
-                        pass
-                    #if self.__bnd_markers[key](edge):
                     
+            if bc:
+                #
+                # Boundary conditions
+                # 
+                for direction in ['W','E','S','N']:
+                    edge = cell.get_edges(direction)
+                    edge_dofs = dof_handler.get_local_edge_dofs(direction)
+                    x_ref = dof_handler.reference_nodes()
+                    x_edge = rule_1d.map(edge,x=x_ref)
+                    r_phys_1d = rule_1d.map(edge,r_ref_1d)
+                    w_phys_1d = w_ref_1d*rule_1d.jacobian(edge)
+                    
+                    #
+                    # Check for Neumann conditions
+                    # 
+                    neumann_edge = False
+                    for bc_neu in bc_neumann:
+                        m_neu,g_neu = bc_neu 
+                        if m_neu(edge):
+                            # Neumann edge
+                            neumann_edge = True
+                            kernel, test = \
+                                self.local_eval((g_neu,'v'), phi_ref_1d, r_phys_1d)
+                            lf_loc += self.linear_loc(w_phys_1d, kernel, test)
+                            break
+                    #
+                    # Else Check Robin Edge
+                    #
+                    if not neumann_edge:                    
+                        for bc_rob in bc_robin:
+                            m_rob, data_rob = bc_rob
+                            if m_rob(edge):
+                                # Robin edge
+                                
+                                gamma_rob, g_rob = data_rob
+                                # Update local bilinear form
+                                bf = (g_rob,'u','v')
+                                kernel, trial, test = \
+                                    self.local_eval(bf, phi_ref_1d, r_phys_1d)
+                                bf_loc += gamma_rob* \
+                                    self.bilinear_loc(w_phys_1d, kernel,trial,test)
+                                
+                                # Update local linear form
+                                kernel, trial, test = \
+                                    self.local_eval((g_rob,'v'), \
+                                                    phi_ref_1d, r_phys_1d)
+                                lf_loc += gamma_rob* \
+                                    self.linear_loc(w_phys_1d, kernel, test)
+                                break    
+                                 
+                    #
+                    # Check Dirichlet Nodes
+                    # 
+                    for bc_dir in bc_dirichlet:
+                        m_dir,g_dir = bc_dir
+                        if m_dir(x_edge).any():
+                            pass    
             #
             # Local to global mapping
             #
@@ -1352,9 +1392,7 @@ class System(object):
         for bv in bivals:
             bimats.append(sparse.coo_matrix((bv,(rows,cols)))) 
         return bimats, linvecs
-           
-
-      
+                 
     
     def bilinear_loc(self,weight,kernel,trial,test):
         """

@@ -85,30 +85,31 @@ class TestGaussRule(unittest.TestCase):
         V = QuadFE(2,'Q1')
         s = System(mesh,V, n_gauss=(3,9))
         bilinear_forms = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')];
-        linear_forms = [(1,'v')]
-        A,b = s.assemble(bilinear_forms=bilinear_forms, \
-                       linear_forms=linear_forms, \
-                       bnd_conditions=False, separate_forms=True)
+        lf = [(1,'v')]
+        bf = [(1,'u','v')]
+        A,b = s.assemble(bf,lf,False)
         
         A_check = 1/36.0*array([[4,2,2,1],[2,4,1,2],[2,1,4,2],[1,2,2,4]])
-        self.assertAlmostEqual((A[0].toarray()- A_check).all(),0, 12,\
+        self.assertAlmostEqual((A.toarray()- A_check).all(),0, 12,\
                                 'Incorrect mass matrix')
-        
-        Ax_check = 1/6.0*array([[2,-2,1,-1],[-2,2,-1,1],[1,-1,2,-2],[-1,1,-2,2]])
-        self.assertAlmostEqual((A[1].toarray()-Ax_check).all(), 0, 12, \
-                               'Incorrect stiffness matrix')
+    
         b_check = 0.25*array([1,1,1,1])
         self.assertAlmostEqual((b-b_check).all(), 0, 12,\
-                              'Right hand side incorrect')
+                              'Righ hand side incorrect')
+        bf = [(1,'ux','vx')]
+        Ax, b = s.assemble(bf, None, False)
+        Ax_check = 1/6.0*array([[2,-2,1,-1],[-2,2,-1,1],[1,-1,2,-2],[-1,1,-2,2]])
+        self.assertAlmostEqual((Ax.toarray()-Ax_check).all(), 0, 12, \
+                               'Incorrect stiffness matrix')
         #
         # Use matrices to integrate
         #
         q = lambda x,y: x*(1-x)*y*(1-y)
         bilinear_forms = [(q,'u','v')]
         linear_forms = [(1,'v')]
-        A,_ = s.assemble(bilinear_forms, linear_forms, separate_forms=True) 
+        A,_ = s.assemble(bilinear_forms, linear_forms) 
         v = array([1.,1.,1.,1.])
-        AA = A[0].tocsr()
+        AA = A.tocsr()
         print(AA.dot(v))
         self.assertAlmostEqual(dot(v,AA.dot(v))-1.0/36.0, 0,8,\
                                'Should integrate to 4/pi^2.')
