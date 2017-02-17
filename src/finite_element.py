@@ -598,12 +598,20 @@ class DofHandler(object):
         self.n_global_dofs = count
     
     
-    def reference_nodes(self):
+    def reference_nodes(self, key='cell'):
         """
         Return the nodes on the reference element
+        
+        Inputs: 
+        
+            key ['cell']: str, 'edge' 
         """
-        return self.__reference_nodes
-    
+        if key == 'cell':
+            return self.__reference_nodes
+        elif key == 'edge':
+            n_nodes = self.dofs_per_edge + 2*self.dofs_per_vertex
+            return np.linspace(0.0, 1.0, n_nodes) 
+        
     
     def n_nodes(self):
         """
@@ -1155,7 +1163,7 @@ class System(object):
     """
     (Non)linear system to be defined and solved 
     """
-    def __init__(self, mesh, element, n_gauss=(3,9),bnd_conditions=None):
+    def __init__(self, mesh, element, n_gauss=(3,9)):
         """
         Set up linear system
         
@@ -1179,12 +1187,12 @@ class System(object):
         self.__element = element
         self.__n_gauss_2d = n_gauss[1]
         self.__n_gauss_1d = n_gauss[0]
-        self.__bnd_conditions = bnd_conditions
+        
         
           
     
     def assemble(self, bilinear_forms=None, linear_forms=None, 
-                 bc=False):
+                 boundary_conditions=None):
         """
         
         Inputs: 
@@ -1204,7 +1212,6 @@ class System(object):
         # Set Element Spaces, Mesh, and DofHandler
         # ---------------------------------------------------------------------
         element_2d = self.__element
-        print(element_2d.element_type())
         element_1d = QuadFE(1,element_2d.element_type())
         mesh = self.__mesh
         dof_handler = DofHandler(mesh,element_2d)
@@ -1251,33 +1258,39 @@ class System(object):
         # Determine the forms to assemble
         #
         if bilinear_forms is not None:
+            bivals = []
+        """
             if type(bilinear_forms) is list:
                 bivals = [[] for i in range(len(bilinear_forms))]
             else:
                 bilinear_error_msg = 'bilinear_form should be a 3-tuple.'
                 assert (type(bilinear_forms) is tuple and \
                         len(bilinear_forms)==3), bilinear_error_msg   
-                bivals = [[]]
+                bivals = []
+        """
         
         if linear_forms is not None:
+            linvec = np.empty((n_nodes,))
+        """
             if type(linear_forms) is list:
                 linvecs = [np.empty((n_nodes,)) for i in range(len(linear_forms))]
             else:
                 linear_error_msg = 'linear_form should be a 2-tuple.'
                 assert(type(linear_forms) is tuple and \
                        len(linear_forms)==2), linear_error_msg 
-                linvecs = [np.empty((n_nodes,))]
-        
-        if bc:
+                linvecs
+        """
+        if boundary_conditions is not None:
             #
             # Unpack boundary data
             # 
-            bc_dirichlet = self.__bnd_conditions['dirichlet']
-            bc_neumann = self.__bnd_conditions['neumann']
-            bc_robin = self.__bnd_conditions['robin']
+            bc_dirichlet = boundary_conditions['dirichlet']
+            bc_neumann = boundary_conditions['neumann']
+            bc_robin = boundary_conditions['robin']
          
         rows = []
         cols = []
+        dir_nodes_encountered = []
         for node in mesh.root_node().find_leaves():
             node_dofs = dof_handler.get_cell_dofs(node)
             cell = node.quadcell()
@@ -1305,7 +1318,7 @@ class System(object):
                     kernel, test = self.local_eval(lf, phi_ref_2d, r_phys_2d)
                     lf_loc += self.linear_loc(w_phys_2d, kernel, test)
                     
-            if bc:
+            if boundary_conditions:
                 #
                 # Boundary conditions
                 # 
@@ -1381,49 +1394,85 @@ class System(object):
                     #
                     # (Always) Check for Dirichlet Nodes
                     #
-                    x_ref = dof_handler.reference_nodes()
-                    x_edge = rule_1d.map(edge,x=x_ref[edge_dofs_loc,:]) 
+                    x_ref = dof_handler.reference_nodes('edge')
+                    x_edge = rule_1d.map(edge,x=x_ref) 
                     for bc_dir in bc_dirichlet:
                         m_dir,g_dir = bc_dir
-                        if m_dir(x_edge).any():
-                            pass    
+                        is_dirichlet = m_dir(x_edge)
+                        if is_dirichlet.any():
+                            dir_nodes_loc = x_edge[is_dirichlet,:]
+                            for j in np.array(edge_dofs_loc)[is_dirichlet]:
+                                #
+                                # Modify jth row 
+                                #
+                                notj = np.arange(n_dofs_2d)!=j
+                                uj = g_dir(dir_nodes_loc[j,:])
+                                if node_dofs[j] not in dir_nodes_encountered: 
+                                    bf_loc[j,j] = 1.0
+                                    bf_loc[j,notj]=0.0
+                                    lf_loc[j] = uj
+                                    dir_nodes_encountered.append(node_dofs[j])
+                                else:
+                                    bf_loc[j,:] = 0.0
+                                    lf_loc[j] = 0.0
+                                #
+                                # Modify jth column and right hand side
+                                #
+                                lf_loc[notj] -= bf_loc[notj,j]*uj 
+                                bf_loc[notj,j] = 0.0
+                            
+                            """
+                            for i_col = 1:n_dof
+                                if i_col is a dirichlet node:
+                                    # modify the ith row (test function)
+                                    if not already done:
+                                        make the (i,i)th entry = 1
+                                        make (i,~i) entries 0
+                                        replace ith entry in rhs with ui = g_dir(x_edge[i])
+                                    else:
+                                        make row i = 0 (nothing to add)
+                                        
+                                    # modify other rows
+                                    for all i'~=i:
+                                        subtract rhs(i') -= aloc(i',i)*ui
+                                
+                                        
+                            """
             #
             # Local to global mapping
             #
+            for i in range(n_dofs_2d):
                 #
-                # Test Dofs
+                # Update linear form
                 #
-                # Update linear forms
-                # 
-                for k in range(len(linvecs)):
-                    linvecs[k][node_dofs[i]] = lf_loc[k][i]
-                     
-                for j in range(n_dofs_2d):
-                    #
-                    # Trial Dofs
-                    #
-                    rows.append(node_dofs[i]) 
-                    cols.append(node_dofs[j])
-                    #
-                    # Update bilinear forms
-                    # 
-                    for k in range(len(bivals)):
-                        bivals[k].append(bf_loc[k][i,j])
-                        
+                if linear_forms is not None:
+                    linvec[node_dofs[i]] += lf_loc[i]
+                
+                if bilinear_forms is not None:
+                    for j in range(n_dofs_2d):
+                        rows.append(node_dofs[i]) 
+                        cols.append(node_dofs[j]) 
+                        bivals.append(bf_loc[i,j])                                           
         #            
-        # Save results as sparse matrices 
+        # Save results as a sparse matrix 
         #
-        bimats = []
-        for bv in bivals:
-            bimats.append(sparse.coo_matrix((bv,(rows,cols)))) 
-        return bimats, linvecs
+        out = []
+        if bilinear_forms is not None:
+            A = sparse.coo_matrix((bivals,(rows,cols)))
+            out.append(A) 
+        if linear_forms is not None:
+            out.append(linvec) 
+        if len(out) == 1:
+            return out[0]
+        elif len(out) == 2:
+            return tuple(out)
                  
     
     def bilinear_loc(self,weight,kernel,trial,test):
         """
         Compute the local bilinear form over an element
         """
-        return np.dot(test.T, np.dot(np.diag(weight*kernel),test))
+        return np.dot(test.T, np.dot(np.diag(weight*kernel),trial))
     
     
     def linear_loc(self,weight,kernel,test):

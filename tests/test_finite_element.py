@@ -87,7 +87,7 @@ class TestGaussRule(unittest.TestCase):
         bilinear_forms = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')];
         lf = [(1,'v')]
         bf = [(1,'u','v')]
-        A,b = s.assemble(bf,lf,False)
+        A,b = s.assemble(bf,lf)
         
         A_check = 1/36.0*array([[4,2,2,1],[2,4,1,2],[2,1,4,2],[1,2,2,4]])
         self.assertAlmostEqual((A.toarray()- A_check).all(),0, 12,\
@@ -97,7 +97,7 @@ class TestGaussRule(unittest.TestCase):
         self.assertAlmostEqual((b-b_check).all(), 0, 12,\
                               'Righ hand side incorrect')
         bf = [(1,'ux','vx')]
-        Ax, b = s.assemble(bf, None, False)
+        Ax = s.assemble(bilinear_forms=bf)
         Ax_check = 1/6.0*array([[2,-2,1,-1],[-2,2,-1,1],[1,-1,2,-2],[-1,1,-2,2]])
         self.assertAlmostEqual((Ax.toarray()-Ax_check).all(), 0, 12, \
                                'Incorrect stiffness matrix')
@@ -121,7 +121,7 @@ class TestGaussRule(unittest.TestCase):
             """
             Dirichlet Node Marker: x = 0
             """
-            return (x[:,0]-0<1e-10)
+            return (abs(x[:,0])<1e-10)
         
         def m_neumann(edge):
             """
@@ -148,25 +148,25 @@ class TestGaussRule(unittest.TestCase):
             """
             Dirichlet function
             """
-            return 0*x[:,0]
+            return 0.0
         
         def g_neumann(x):
             """
             Neumann function
             """        
-            return x[:,1]*(1-x[:,1])
+            return x[1]*(1-x[1])
         
         def g_robin_1(x):
             """
             Robin boundary conditions for y = 0
             """
-            return -(x[:,0]*(1-x[:,0])) 
+            return -(x[0]*(1-x[0])) 
         
         def g_robin_2(x):
             """
             Robin boundary conditions for y = 1
             """
-            return -0.5*x[:,0]*(1-x[:,0])
+            return -0.5*x[0]*(1-x[0])
             
         gamma_1 = 1.0
         gamma_2 = 2.0
@@ -178,8 +178,9 @@ class TestGaussRule(unittest.TestCase):
         f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))
         bf = [(-1,'ux','vx'),(1,'uy','vy'),(1,'u','v')]
         lf = [(f,'v')]
-        s = System(mesh, V, n_gauss=(3,9),bnd_conditions=bnd_conditions)
-        s.assemble(bilinear_forms=bf, linear_forms=lf, bnd_conditions=True)
+        s = System(mesh, V, n_gauss=(3,9))
+        s.assemble(bilinear_forms=bf, linear_forms=lf, \
+                   boundary_conditions=bnd_conditions)
         
         
         cell = mesh.quadcell()
@@ -220,8 +221,7 @@ class TestGaussRule(unittest.TestCase):
         
         
         # Test hanging nodes
-        
-        pass 
+         
         
     def test_line_integral(self):
         # Define quadrature rule
