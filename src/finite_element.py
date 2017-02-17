@@ -1311,9 +1311,9 @@ class System(object):
                 # 
                 for direction in ['W','E','S','N']:
                     edge = cell.get_edges(direction)
-                    edge_dofs = dof_handler.get_local_edge_dofs(direction)
-                    x_ref = dof_handler.reference_nodes()
-                    x_edge = rule_1d.map(edge,x=x_ref)
+                    edge_dofs_loc = dof_handler.get_local_edge_dofs(direction)
+                    
+                    # Gaussian rule on edge
                     r_phys_1d = rule_1d.map(edge,r_ref_1d)
                     w_phys_1d = w_ref_1d*rule_1d.jacobian(edge)
                     
@@ -1324,11 +1324,17 @@ class System(object):
                     for bc_neu in bc_neumann:
                         m_neu,g_neu = bc_neu 
                         if m_neu(edge):
+                            # -------------------------------------------------
                             # Neumann edge
+                            # -------------------------------------------------
                             neumann_edge = True
                             kernel, test = \
                                 self.local_eval((g_neu,'v'), phi_ref_1d, r_phys_1d)
-                            lf_loc += self.linear_loc(w_phys_1d, kernel, test)
+                            #
+                            # Update local linear form
+                            # 
+                            lf_loc[edge_dofs_loc] += \
+                                self.linear_loc(w_phys_1d, kernel, test)
                             break
                     #
                     # Else Check Robin Edge
@@ -1337,27 +1343,46 @@ class System(object):
                         for bc_rob in bc_robin:
                             m_rob, data_rob = bc_rob
                             if m_rob(edge):
+                                # ---------------------------------------------
                                 # Robin edge
-                                
+                                # ---------------------------------------------
                                 gamma_rob, g_rob = data_rob
-                                # Update local bilinear form
+                                #
+                                # Contribution to local bilinear form
+                                #
                                 bf = (g_rob,'u','v')
                                 kernel, trial, test = \
-                                    self.local_eval(bf, phi_ref_1d, r_phys_1d)
-                                bf_loc += gamma_rob* \
+                                    self.local_eval(bf, phi_ref_1d, r_phys_1d)    
+                                #
+                                # Get local matrix indices
+                                #
+                                ii,jj = np.meshgrid(edge_dofs_loc)
+                                ii=ii.ravel()
+                                jj=jj.ravel()
+                                #
+                                # Update local bilinear form
+                                #
+                                bf_loc[ii,jj] += gamma_rob* \
                                     self.bilinear_loc(w_phys_1d, kernel,trial,test)
                                 
-                                # Update local linear form
+                                #
+                                # Contribution to local linear form
+                                #
                                 kernel, trial, test = \
                                     self.local_eval((g_rob,'v'), \
                                                     phi_ref_1d, r_phys_1d)
-                                lf_loc += gamma_rob* \
+                                #
+                                # Update local linear form
+                                # 
+                                lf_loc[edge_dofs_loc] += gamma_rob* \
                                     self.linear_loc(w_phys_1d, kernel, test)
                                 break    
                                  
                     #
-                    # Check Dirichlet Nodes
-                    # 
+                    # (Always) Check for Dirichlet Nodes
+                    #
+                    x_ref = dof_handler.reference_nodes()
+                    x_edge = rule_1d.map(edge,x=x_ref[edge_dofs_loc,:]) 
                     for bc_dir in bc_dirichlet:
                         m_dir,g_dir = bc_dir
                         if m_dir(x_edge).any():
