@@ -55,7 +55,7 @@ class Mesh(object):
         """
         Return the dimensions of the rectangular domain
         """
-        return self.quadcell().box()
+        return self.root_quadcell().box()
         
     def grid_size(self):
         """
@@ -135,9 +135,9 @@ class Mesh(object):
                                 vertex.unmark()
                 
         
-    def quadcell(self):
+    def root_quadcell(self):
         """
-        Return the quadcell
+        Return the root_quadcell
         """    
         return self.__quadcell
      

@@ -24,7 +24,7 @@ class TestMesh(unittest.TestCase):
         quadcell = QuadCell(box=box)
         mesh = Mesh(quadcell=quadcell, root_node=node)
         self.assertTrue(mesh.root_node()==node, 'Node not associated with mesh.')
-        self.assertTrue(mesh.quadcell()==quadcell, 'QuadCell not associated with mesh.')
+        self.assertTrue(mesh.root_quadcell()==quadcell, 'QuadCell not associated with mesh.')
         
         #
         # Node and Quadcell incompatible

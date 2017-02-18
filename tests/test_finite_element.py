@@ -3,9 +3,9 @@ Created 11/22/2016
 @author: hans-werner
 """
 import unittest
-from finite_element import FiniteElement, QuadFE, DofHandler, GaussRule, System
+from finite_element import QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
-from numpy import sqrt, sum, dot, sin, pi, array, abs, empty
+from numpy import sqrt, sum, dot, sin, pi, array, abs, empty, zeros
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -84,7 +84,7 @@ class TestGaussRule(unittest.TestCase):
         mesh = Mesh.newmesh()
         V = QuadFE(2,'Q1')
         s = System(mesh,V, n_gauss=(3,9))
-        bilinear_forms = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')];
+        # bilinear_forms = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')];
         lf = [(1,'v')]
         bf = [(1,'u','v')]
         A,b = s.assemble(bf,lf)
@@ -117,11 +117,11 @@ class TestGaussRule(unittest.TestCase):
         #
         # Elaborate test with Boundary conditions
         # 
-        def m_dirichlet(x):
+        def m_dirichlet(x,y):
             """
             Dirichlet Node Marker: x = 0
             """
-            return (abs(x[:,0])<1e-10)
+            return (abs(x)<1e-10)
         
         def m_neumann(edge):
             """
@@ -144,29 +144,29 @@ class TestGaussRule(unittest.TestCase):
             x = edge.vertex_coordinates()
             return (abs(x[:,1]-1)<1e-9).all() 
             
-        def g_dirichlet(x):
+        def g_dirichlet(x,y):
             """
             Dirichlet function
             """
-            return 0.0
+            return zeros(shape=x.shape)
         
-        def g_neumann(x):
+        def g_neumann(x,y):
             """
             Neumann function
             """        
-            return x[1]*(1-x[1])
+            return y*(1-y)
         
-        def g_robin_1(x):
+        def g_robin_1(x,y):
             """
             Robin boundary conditions for y = 0
             """
-            return -(x[0]*(1-x[0])) 
+            return -(x*(1-x)) 
         
-        def g_robin_2(x):
+        def g_robin_2(x,y):
             """
             Robin boundary conditions for y = 1
             """
-            return -0.5*x[0]*(1-x[0])
+            return -0.5*x*(1-x)
             
         gamma_1 = 1.0
         gamma_2 = 2.0
@@ -175,21 +175,18 @@ class TestGaussRule(unittest.TestCase):
                           'robin': [(m_robin_1, (gamma_1,g_robin_1)),\
                                     (m_robin_2,(gamma_2,g_robin_2))],\
                           'periodic': None}
+        u = lambda x,y: x*(1-x)*y*(1-y)
         f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))
         bf = [(-1,'ux','vx'),(1,'uy','vy'),(1,'u','v')]
         lf = [(f,'v')]
         s = System(mesh, V, n_gauss=(3,9))
-        s.assemble(bilinear_forms=bf, linear_forms=lf, \
+        A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
                    boundary_conditions=bnd_conditions)
         
         
-        cell = mesh.quadcell()
-        node = mesh.root_node()
+        cell = mesh.root_quadcell()
         dofhandler = DofHandler(mesh,V)
         dofhandler.distribute_dofs()
-        celldofs = dofhandler.get_cell_dofs(node)
-        edofs = dofhandler.get_local_edge_dofs(node, 'W')
-        print(edofs)
         for direction in ['W','E','S','N']:
             edge = cell.get_edges(direction)
             if m_neumann(edge):
@@ -197,11 +194,17 @@ class TestGaussRule(unittest.TestCase):
             elif m_robin_1(edge):
                 print('%s-Edge is Robin'%(direction))
             x = edge.vertex_coordinates()
-            is_dirichlet = m_dirichlet(x)
+            is_dirichlet = m_dirichlet(x[:,0],x[1,:])
             if is_dirichlet.any():
                 for y in x[is_dirichlet,:]:
                     print('Node (%.2f,%.2f) is Dirichlet'%(y[0],y[1]))
-        
+        x = dofhandler.mesh_nodes()
+        ui = u(x[:,0],x[:,1])
+        fi = f(x[:,0],x[:,1])
+        A = A.toarray()
+        print(A)
+        print(b)
+        self.assertAlmostEqual((A.dot(ui)-b).all(),0, 10, 'Ax-b should be zero')
         #
         # Two squares
         #
@@ -211,12 +214,11 @@ class TestGaussRule(unittest.TestCase):
         bilinear_forms = [(1,'u','v')]
         linear_forms = [(1,'v')]
         A,_ = s.assemble(bilinear_forms=bilinear_forms, 
-                       linear_forms=linear_forms, 
-                       bnd_conditions=False, separate_forms=True)
+                       linear_forms=linear_forms)
       
         A_check = 1/36.0*array([[4,2,2,1,0,0],[2,8,1,4,2,1],[2,1,4,2,0,0],
                                [1,4,2,8,1,2],[0,2,0,1,4,2],[0,1,0,2,2,4]])
-        self.assertAlmostEqual((A[0].toarray()-A_check).all(), 0, 12,\
+        self.assertAlmostEqual((A.toarray()-A_check).all(), 0, 12,\
                                'Incorrect mass matrix')
         
         

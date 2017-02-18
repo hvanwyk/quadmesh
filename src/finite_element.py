@@ -617,14 +617,25 @@ class DofHandler(object):
         """
         Return the total number of nodes
         """
-        print(self.n_global_dofs)
         self.__getattribute__('n_global_dofs')
         if hasattr(self, 'n_global_dofs'):
             return self.n_global_dofs
         else:
             raise Exception('Dofs have not been distributed yet.')
             
-            
+     
+    def mesh_nodes(self):
+        """
+        Return the mesh nodes
+        """
+        x = np.empty((self.n_global_dofs,2))
+        rule = GaussRule(1,shape='quadrilateral')
+        x_ref = self.reference_nodes()
+        for leaf in self.__root_node.find_leaves():
+            g_dofs = self.get_cell_dofs(leaf)
+            x[g_dofs,:] = rule.map(leaf.quadcell(),x=x_ref)
+        return x
+                
     def fill_in_dofs(self,node_dofs, count):
         """
         Fill in node's dofs 
@@ -1369,9 +1380,8 @@ class System(object):
                                 #
                                 # Get local matrix indices
                                 #
-                                ii,jj = np.meshgrid(edge_dofs_loc)
-                                ii=ii.ravel()
-                                jj=jj.ravel()
+                                ii,jj = np.meshgrid(edge_dofs_loc,edge_dofs_loc,indexing='ij')
+                            
                                 #
                                 # Update local bilinear form
                                 #
@@ -1381,8 +1391,8 @@ class System(object):
                                 #
                                 # Contribution to local linear form
                                 #
-                                kernel, trial, test = \
-                                    self.local_eval((g_rob,'v'), \
+                                kernel, test = \
+                                    self.local_eval((g_rob,'v'),\
                                                     phi_ref_1d, r_phys_1d)
                                 #
                                 # Update local linear form
@@ -1398,15 +1408,16 @@ class System(object):
                     x_edge = rule_1d.map(edge,x=x_ref) 
                     for bc_dir in bc_dirichlet:
                         m_dir,g_dir = bc_dir
-                        is_dirichlet = m_dir(x_edge)
+                        is_dirichlet = m_dir(x_edge[:,0],x_edge[:,1])
                         if is_dirichlet.any():
                             dir_nodes_loc = x_edge[is_dirichlet,:]
-                            for j in np.array(edge_dofs_loc)[is_dirichlet]:
+                            dir_dofs_loc = np.array(edge_dofs_loc)[is_dirichlet] 
+                            for j,x_dir in zip(dir_dofs_loc,dir_nodes_loc):
                                 #
                                 # Modify jth row 
                                 #
                                 notj = np.arange(n_dofs_2d)!=j
-                                uj = g_dir(dir_nodes_loc[j,:])
+                                uj = g_dir(x_dir[0],x_dir[1])
                                 if node_dofs[j] not in dir_nodes_encountered: 
                                     bf_loc[j,j] = 1.0
                                     bf_loc[j,notj]=0.0
@@ -1535,7 +1546,7 @@ class System(object):
             # 
             if callable(f):
                 # f is a function
-                kernel = f(x)
+                kernel = f(x[:,0],x[:,1])
             else:
                 # f is a constant (TODO: change this)
                 kernel = f
@@ -1573,8 +1584,4 @@ class System(object):
             #
             return kernel, tt[0]  # kernel, test
         
-    def check_forms(self):
-        """
-        Make sure the (bi)linear forms are correctly formatted
-        """ 
         
