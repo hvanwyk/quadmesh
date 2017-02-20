@@ -268,7 +268,8 @@ class TestSystem(unittest.TestCase):
         element = QuadFE(2,'Q2')
         s = System(mesh,element,n_gauss=(3,9))
         bf = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')]
-        A = s.assemble(bilinear_forms=bf)
+        lf = [(f,'v')]
+        A, b = s.assemble(bilinear_forms=bf, linear_forms=lf)
         rule2d = GaussRule(9,shape='quadrilateral')
         r = rule2d.nodes()
         w = rule2d.weights()
@@ -288,6 +289,103 @@ class TestSystem(unittest.TestCase):
                 AAx[i,j] = sum(w*phiix*phijx)
                 AAy[i,j] = sum(w*phiiy*phijy)
         self.assertTrue(allclose(AA+AAx+AAy,A.toarray()),'Mass matrix not correct.')
+        
+        #
+        # Test Neumann condition
+        # 
+        rule_1d = GaussRule(3,shape='edge')
+        e_neu = mesh.root_quadcell().get_edges('W')
+        r_ref_1d = rule_1d.nodes()
+        r_phys_1d = rule_1d.map(e_neu, r_ref_1d)
+        w_ref_1d = rule_1d.weights()
+        element_1d = QuadFE(1,element.element_type())
+        phi0 = element_1d.phi(0,r_ref_1d)
+        phi2 = element_1d.phi(2,r_ref_1d)
+        phi1 = element_1d.phi(1,r_ref_1d)
+        
+        w_neu = w_ref_1d*rule_1d.jacobian(e_neu)
+        g_neu = g_neumann(r_phys_1d[:,0],r_phys_1d[:,1])
+        
+        bb_neu = zeros((n_dofs,))
+        bb_neu[1] = sum(w_neu*phi0*g_neu)
+        bb_neu[5] = sum(w_neu*phi2*g_neu)
+        bb_neu[3] = sum(w_neu*phi1*g_neu)
+        self.assertTrue(allclose(bb_neu,array([0,-1/60.,0,-1/60.,0,-2./15.,0,0,0])),\
+                        'Integration over Neumann boundary incorrect')
+        
+        A_neu,b_neu = s.assemble(bilinear_forms=bf, linear_forms=lf, \
+                             boundary_conditions={'dirichlet': None, 
+                                                  'neumann': [(m_neumann,g_neumann)],
+                                                  'robin': None})
+        self.assertTrue(allclose(b_neu,bb_neu+b),'Right hand side incorrect.')
+        self.assertTrue(allclose(A_neu.toarray(),AA+AAx+AAy))
+        
+        #
+        # Test Robin 1 conditions       
+        #
+        e_r1 = mesh.root_quadcell().get_edges('S') 
+        
+        r_phys_1d = rule_1d.map(e_r1,r_ref_1d)
+        w_r1 = w_ref_1d*rule_1d.jacobian(e_r1)
+        g_r1 = g_robin_1(r_phys_1d[:,0], r_phys_1d[:,1])
+        bb_r1 = zeros((n_dofs,))
+        bb_r1[0] = sum(w_r1*phi0*g_r1)
+        bb_r1[1] = sum(w_r1*phi1*g_r1)
+        bb_r1[6] = sum(w_r1*phi2*g_r1)
+        
+        R1 = zeros((n_dofs,n_dofs))
+        R1[0,0] = sum(w_r1*phi0*phi0)
+        R1[0,1] = sum(w_r1*phi0*phi1)
+        R1[1,1] = sum(w_r1*phi1*phi1)
+        R1[1,0] = R1[0,1]
+        R1[0,6] = sum(w_r1*phi0*phi2)
+        R1[6,0] = R1[0,6]
+        R1[6,6] = sum(w_r1*phi2*phi2)
+        R1[1,6] = sum(w_r1*phi1*phi2)
+        R1[6,1] = sum(w_r1*phi1*phi2)
+        
+        A_r1, b_r1 = \
+            s.assemble(bilinear_forms=bf,linear_forms=lf,\
+                       boundary_conditions={'dirichlet': None,
+                                            'neumann':[(m_neumann,g_neumann)],
+                                            'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
+        print(AA+AAx+AAy+R1-A_r1.toarray())
+        self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
+        self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
+        
+        #
+        # Test Robin 2 conditions
+        # 
+        e_r2 = mesh.root_quadcell().get_edges('N') 
+        
+        r_phys_1d = rule_1d.map(e_r2,r_ref_1d)
+        w_r1 = w_ref_1d*rule_1d.jacobian(e_r2)
+        g_r1 = g_robin_1(r_phys_1d[:,0], r_phys_1d[:,1])
+        bb_r1 = zeros((n_dofs,))
+        bb_r1[0] = sum(w_r1*phi0*g_r1)
+        bb_r1[1] = sum(w_r1*phi1*g_r1)
+        bb_r1[6] = sum(w_r1*phi2*g_r1)
+        
+        R1 = zeros((n_dofs,n_dofs))
+        R1[0,0] = sum(w_r1*phi0*phi0)
+        R1[0,1] = sum(w_r1*phi0*phi1)
+        R1[1,1] = sum(w_r1*phi1*phi1)
+        R1[1,0] = R1[0,1]
+        R1[0,6] = sum(w_r1*phi0*phi2)
+        R1[6,0] = R1[0,6]
+        R1[6,6] = sum(w_r1*phi2*phi2)
+        R1[1,6] = sum(w_r1*phi1*phi2)
+        R1[6,1] = sum(w_r1*phi1*phi2)
+        
+        A_r1, b_r1 = \
+            s.assemble(bilinear_forms=bf,linear_forms=lf,\
+                       boundary_conditions={'dirichlet': None,
+                                            'neumann':[(m_neumann,g_neumann)],
+                                            'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
+        print(AA+AAx+AAy+R1-A_r1.toarray())
+        self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
+        self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
+         
         dofhandler = DofHandler(mesh,element)
         dofhandler.distribute_dofs()
         x = dofhandler.mesh_nodes()
