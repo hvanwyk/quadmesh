@@ -39,12 +39,13 @@ class QuadFE(FiniteElement):
                 dofs_per_edge = 0
                 dofs_per_cell = 0
                 basis_index  = [0,1]
-                
+                ref_nodes = [0.0,1.0]
             elif dim == 2:
                 dofs_per_vertex = 1
                 dofs_per_edge = 0
                 dofs_per_cell = 0
                 basis_index = [(0,0),(1,0),(0,1),(1,1)]
+                ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0]])
         #
         # Quadratic Elements 
         #        
@@ -63,13 +64,16 @@ class QuadFE(FiniteElement):
                 dofs_per_edge = 0
                 dofs_per_cell = 1
                 basis_index = [0,1,2]
-                
+                ref_nodes = np.array([0.0,1.0,0.5])
             elif dim == 2:
                 dofs_per_vertex = 1 
                 dofs_per_edge = 1
                 dofs_per_cell = 1
                 basis_index = [(0,0),(1,0),(0,1),(1,1),
                                (0,2),(1,2),(2,0),(2,1),(2,2)]
+                ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0],
+                                  [0.0,0.5],[1.0,0.5],[0.5,0.0],[0.5,1.0],
+                                  [0.5,0.5]])
             else:
                 raise Exception('Only 1D and 2D currently supported.')
         
@@ -92,7 +96,8 @@ class QuadFE(FiniteElement):
                 dofs_per_vertex = 1
                 dofs_per_edge = 0
                 dofs_per_cell = 2
-                
+                basis_index = [0,1,2,3]
+                ref_nodes = np.array([0.0,1.0,1/3.0,2/3.0])
             elif dim == 2:
                 dofs_per_vertex = 1 
                 dofs_per_edge = 2
@@ -100,12 +105,20 @@ class QuadFE(FiniteElement):
                 basis_index = [(0,0),(1,0),(0,1),(1,1),
                                (0,2),(0,3),(1,2),(1,3),(2,0),(3,0),(2,1),(3,1),
                                (2,2),(3,2),(2,3),(3,3)]
+                ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0],
+                                  [0.0,1./3.],[0.0,2./3.],
+                                  [1.0,1./3.],[1.0,2./3.], 
+                                  [1./3.,0.0],[2./3.,0.0], 
+                                  [1./3.,1.0],[2./3.,1.0],
+                                  [1./3.,1./3.],[2./3.,1./3.],
+                                  [1./3.,2./3.],[2./3.,2./3.]])
         self.__cell_type = 'quadrilateral' 
         self.__dofs = {'vertex':dofs_per_vertex, 'edge':dofs_per_edge,'cell':dofs_per_cell}               
         self.__basis_index = basis_index
         self.__p = p
         self.__px = px
         self.__element_type = element_type
+        self.__ref_nodes = ref_nodes
     
       
     def cell_type(self):
@@ -144,13 +157,10 @@ class QuadFE(FiniteElement):
         """
         Returns vertices used to define nodal basis functions on reference cell
         """
-        p = np.array(self.__basis_index)
-        if list(self.__element_type)[0] == 'Q':
-            n_dofs_per_dim = self.n_dofs('edge')+2
-            x = np.linspace(0.0,1.0,n_dofs_per_dim)
-            return x[p] 
-        else:
-            raise Exception('Only Q type elements currently supported.')
+        return self.__ref_nodes
+        
+        
+        
      
         
     def phi(self, n, x):
@@ -507,7 +517,22 @@ class DofHandler(object):
         self.__hanging_nodes = []  
         self.__constraint_coefficients = element.constraint_coefficients()
         self.__reference_nodes = ref_nodes
+     
+    def n_dofs(self,key='cell'):
+        """
+        Return the number of dof's of cell
         
+        Inputs: 
+        
+            key: str, specifying entity ['cell'],'edge', or 'vertex' 
+        """
+        if key == 'cell':
+            return self.__n_dofs
+        elif key == 'edge':
+            return self.dofs_per_edge
+        elif key == 'vertex':
+            return 1
+            
     def distribute_dofs(self):
         """
         global enumeration of degrees of freedom
@@ -1205,18 +1230,40 @@ class System(object):
     def assemble(self, bilinear_forms=None, linear_forms=None, 
                  boundary_conditions=None):
         """
+        Assembles linear system associated with a weak form and accompanying
+        boundary conditions. 
         
         Inputs: 
         
-            bilinear_forms: (q*u,v), where u,v can denote phi,phi_x, or phi_y 
+            bilinear_forms: 3-tuples (function,string,string), where
+                function is the kernel function, the first string 
+                ('u','ux',or 'uy) is the form of the trial function, and
+                the second string ('v','vx','vy') is the form of the test
+                functions. 
             
-            linear_forms: (f,v)
+            linear_forms: 2-tuples (function, string), where the function
+                is the kernel function, and the string ('v','vx','vy')
+                is the form of the test function.
             
-            bnd_conditions: bool, True if boundary conditions should be applied 
+            boundary_conditions: dictionary whose keys are
+                'dirichlet', 'neumann', 'robin', and 'periodic' (not implemented)
+                and whose values are lists of tuples (m_bnd, d_bnd), where
+                m_fun is used to identify a specific boundary (from either the
+                eddge [the case for neumann and robin conditions] or from nodal
+                values [the case for dirichlet conditions], and d_bnd is the 
+                data associated with the given boundary condition: 
+                For 'dirichlet': u(x,y) = d_bnd(x,y) on bnd
+                    'neumann'  : -n.nabla(u) = d_bnd(x,y) on bnd
+                    'robin'    : d_bnd = (gamma, g_rob), so that 
+                                -n.nabla(u) = gamma*(u(x,y)-d_bnd(x,y))
             
         Outputs:
         
-            b
+            A: double coo_matrix, system matrix determined by bilinear forms and 
+                boundary conditions.
+                
+            b: double, right hand side vector determined by linear forms and 
+                boundary conditions.
             
         """
         # ---------------------------------------------------------------------
@@ -1270,27 +1317,10 @@ class System(object):
         #
         if bilinear_forms is not None:
             bivals = []
-        """
-            if type(bilinear_forms) is list:
-                bivals = [[] for i in range(len(bilinear_forms))]
-            else:
-                bilinear_error_msg = 'bilinear_form should be a 3-tuple.'
-                assert (type(bilinear_forms) is tuple and \
-                        len(bilinear_forms)==3), bilinear_error_msg   
-                bivals = []
-        """
         
         if linear_forms is not None:
-            linvec = np.empty((n_nodes,))
-        """
-            if type(linear_forms) is list:
-                linvecs = [np.empty((n_nodes,)) for i in range(len(linear_forms))]
-            else:
-                linear_error_msg = 'linear_form should be a 2-tuple.'
-                assert(type(linear_forms) is tuple and \
-                       len(linear_forms)==2), linear_error_msg 
-                linvecs
-        """
+            linvec = np.zeros((n_nodes,))
+ 
         if boundary_conditions is not None:
             #
             # Unpack boundary data
@@ -1363,7 +1393,7 @@ class System(object):
                     #
                     # Else Check Robin Edge
                     #
-                    if not neumann_edge:                    
+                    if not neumann_edge and bc_robin is not None:                    
                         for bc_rob in bc_robin:
                             m_rob, data_rob = bc_rob
                             if m_rob(edge):
@@ -1374,9 +1404,10 @@ class System(object):
                                 #
                                 # Contribution to local bilinear form
                                 #
-                                bf = (g_rob,'u','v')
+                                bf = (1,'u','v')
                                 kernel, trial, test = \
                                     self.local_eval(bf, phi_ref_1d, r_phys_1d)    
+                                
                                 #
                                 # Get local matrix indices
                                 #
@@ -1386,8 +1417,7 @@ class System(object):
                                 # Update local bilinear form
                                 #
                                 bf_loc[ii,jj] += gamma_rob* \
-                                    self.bilinear_loc(w_phys_1d, kernel,trial,test)
-                                
+                                    self.bilinear_loc(w_phys_1d, kernel,trial,test)                                
                                 #
                                 # Contribution to local linear form
                                 #
@@ -1399,19 +1429,22 @@ class System(object):
                                 # 
                                 lf_loc[edge_dofs_loc] += gamma_rob* \
                                     self.linear_loc(w_phys_1d, kernel, test)
+                
                                 break    
                                  
-                    #
-                    # (Always) Check for Dirichlet Nodes
-                    #
-                    x_ref = dof_handler.reference_nodes('edge')
-                    x_edge = rule_1d.map(edge,x=x_ref) 
+                #
+                #  Check for Dirichlet Nodes
+                #
+                x_ref = dof_handler.reference_nodes()
+                x_cell = rule_2d.map(cell,x=x_ref) 
+                cell_dofs = np.arange(dof_handler.n_dofs())
+                if bc_dirichlet is not None:
                     for bc_dir in bc_dirichlet:
                         m_dir,g_dir = bc_dir
-                        is_dirichlet = m_dir(x_edge[:,0],x_edge[:,1])
+                        is_dirichlet = m_dir(x_cell[:,0],x_cell[:,1])
                         if is_dirichlet.any():
-                            dir_nodes_loc = x_edge[is_dirichlet,:]
-                            dir_dofs_loc = np.array(edge_dofs_loc)[is_dirichlet] 
+                            dir_nodes_loc = x_cell[is_dirichlet,:]
+                            dir_dofs_loc = cell_dofs[is_dirichlet] 
                             for j,x_dir in zip(dir_dofs_loc,dir_nodes_loc):
                                 #
                                 # Modify jth row 
@@ -1424,31 +1457,14 @@ class System(object):
                                     lf_loc[j] = uj
                                     dir_nodes_encountered.append(node_dofs[j])
                                 else:
-                                    bf_loc[j,:] = 0.0
+                                    bf_loc[j,:] = 0.0  # make entire row 0
                                     lf_loc[j] = 0.0
                                 #
                                 # Modify jth column and right hand side
                                 #
                                 lf_loc[notj] -= bf_loc[notj,j]*uj 
-                                bf_loc[notj,j] = 0.0
-                            
-                            """
-                            for i_col = 1:n_dof
-                                if i_col is a dirichlet node:
-                                    # modify the ith row (test function)
-                                    if not already done:
-                                        make the (i,i)th entry = 1
-                                        make (i,~i) entries 0
-                                        replace ith entry in rhs with ui = g_dir(x_edge[i])
-                                    else:
-                                        make row i = 0 (nothing to add)
-                                        
-                                    # modify other rows
-                                    for all i'~=i:
-                                        subtract rhs(i') -= aloc(i',i)*ui
-                                
-                                        
-                            """
+                                bf_loc[notj,j] = 0.0            
+                
             #
             # Local to global mapping
             #
@@ -1458,12 +1474,15 @@ class System(object):
                 #
                 if linear_forms is not None:
                     linvec[node_dofs[i]] += lf_loc[i]
-                
                 if bilinear_forms is not None:
                     for j in range(n_dofs_2d):
                         rows.append(node_dofs[i]) 
                         cols.append(node_dofs[j]) 
-                        bivals.append(bf_loc[i,j])                                           
+                        bivals.append(bf_loc[i,j]) 
+                        
+            bf_loc = np.zeros((n_dofs_2d,n_dofs_2d))
+            lf_loc = np.zeros((n_dofs_2d,))
+                                
         #            
         # Save results as a sparse matrix 
         #

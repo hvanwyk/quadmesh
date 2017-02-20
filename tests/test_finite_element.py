@@ -5,7 +5,9 @@ Created 11/22/2016
 import unittest
 from finite_element import QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
-from numpy import sqrt, sum, dot, sin, pi, array, abs, empty, zeros
+from numpy import sqrt, sum, dot, sin, pi, array, abs, empty, zeros, max, \
+                  allclose, eye
+
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -17,7 +19,15 @@ class TestQuadFE(unittest.TestCase):
     """
     Test QuadFE class
     """
-    pass
+    def test_shape_functions(self):
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            n_dofs = element.n_dofs()
+            I = eye(n_dofs)
+            x = element.ref_vertices()
+            for n in range(n_dofs):
+                self.assertTrue(allclose(element.phi(n,x),I[:,n]),\
+                                'Shape function evaluation incorrect')
 
 class TestTriFE(unittest.TestCase):
     """
@@ -75,32 +85,47 @@ class TestGaussRule(unittest.TestCase):
     """
     Test GaussRule class
     """
-    
+    pass
+
+class TestSystem(unittest.TestCase):
+    """
+    Test System class
+    """
     def test_assembly(self):
         
-        #
+        # ---------------------------------------------------------------------
         # One square 
+        # ---------------------------------------------------------------------
         #
+        # Mass Matrix
+        # 
         mesh = Mesh.newmesh()
         V = QuadFE(2,'Q1')
         s = System(mesh,V, n_gauss=(3,9))
-        # bilinear_forms = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')];
         lf = [(1,'v')]
         bf = [(1,'u','v')]
         A,b = s.assemble(bf,lf)
-        
-        A_check = 1/36.0*array([[4,2,2,1],[2,4,1,2],[2,1,4,2],[1,2,2,4]])
-        self.assertAlmostEqual((A.toarray()- A_check).all(),0, 12,\
-                                'Incorrect mass matrix')
-    
+        AA = 1/36.0*array([[4,2,2,1],[2,4,1,2],[2,1,4,2],[1,2,2,4]])
+        self.assertTrue(allclose(A.toarray(),AA),'Incorrect mass matrix')
         b_check = 0.25*array([1,1,1,1])
-        self.assertAlmostEqual((b-b_check).all(), 0, 12,\
-                              'Righ hand side incorrect')
+        self.assertTrue(allclose(b,b_check),'Right hand side incorrect')
+        #
+        # Stiffness Ax
+        # 
         bf = [(1,'ux','vx')]
         Ax = s.assemble(bilinear_forms=bf)
-        Ax_check = 1/6.0*array([[2,-2,1,-1],[-2,2,-1,1],[1,-1,2,-2],[-1,1,-2,2]])
-        self.assertAlmostEqual((Ax.toarray()-Ax_check).all(), 0, 12, \
+        AAx = 1/6.0*array([[2,-2,1,-1],[-2,2,-1,1],[1,-1,2,-2],[-1,1,-2,2]])
+        self.assertTrue(allclose(Ax.toarray(),AAx),
                                'Incorrect stiffness matrix')
+        #
+        # Stiffness Ay
+        # 
+        bf = [(1,'uy','vy')]
+        A = s.assemble(bilinear_forms=bf)
+        AAy = 1/6.0*array([[2,1,-2,-1],[1,2,-1,-2],[-2,-1,2,1],[-1,-2,1,2]])
+        self.assertTrue(allclose(A.toarray(),AAy), 'Ay incorrect')
+
+
         #
         # Use matrices to integrate
         #
@@ -109,14 +134,12 @@ class TestGaussRule(unittest.TestCase):
         linear_forms = [(1,'v')]
         A,_ = s.assemble(bilinear_forms, linear_forms) 
         v = array([1.,1.,1.,1.])
-        AA = A.tocsr()
-        print(AA.dot(v))
-        self.assertAlmostEqual(dot(v,AA.dot(v))-1.0/36.0, 0,8,\
+        self.assertAlmostEqual(dot(v,A.tocsr().dot(v))-1.0/36.0, 0,8,\
                                'Should integrate to 4/pi^2.')
         
-        #
-        # Elaborate test with Boundary conditions
-        # 
+        # ---------------------------------------------------------------------
+        # Elaborate tests with Boundary conditions
+        # ---------------------------------------------------------------------
         def m_dirichlet(x,y):
             """
             Dirichlet Node Marker: x = 0
@@ -154,13 +177,13 @@ class TestGaussRule(unittest.TestCase):
             """
             Neumann function
             """        
-            return y*(1-y)
+            return -y*(1-y)
         
         def g_robin_1(x,y):
             """
             Robin boundary conditions for y = 0
             """
-            return -(x*(1-x)) 
+            return -x*(1-x)      
         
         def g_robin_2(x,y):
             """
@@ -170,41 +193,109 @@ class TestGaussRule(unittest.TestCase):
             
         gamma_1 = 1.0
         gamma_2 = 2.0
-        bnd_conditions = {'dirichlet': [(m_dirichlet,g_dirichlet)],\
-                          'neumann': [(m_neumann,g_neumann)], \
-                          'robin': [(m_robin_1, (gamma_1,g_robin_1)),\
-                                    (m_robin_2,(gamma_2,g_robin_2))],\
-                          'periodic': None}
-        u = lambda x,y: x*(1-x)*y*(1-y)
-        f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))
-        bf = [(-1,'ux','vx'),(1,'uy','vy'),(1,'u','v')]
-        lf = [(f,'v')]
+        
+        u = lambda x,y: x*(1-x)*y*(1-y)  # exact solution
+        f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))  # forcing term
+        bf = [(1,'ux','vx'),(1,'uy','vy'),(1,'u','v')]  # bilinear forms
+        lf = [(f,'v')]  # linear forms
         s = System(mesh, V, n_gauss=(3,9))
+        A,b = s.assemble(bilinear_forms=bf,linear_forms=lf,\
+                         boundary_conditions=None)
+        # check system matrix
+        self.assertTrue(allclose(A.toarray(),AA+AAx+AAy),
+                        'System matrix incorrect')
+        # check right hand side
+        bb = 1/6.0*array([1,1,1,1])
+        self.assertTrue(allclose(b,bb), 'Right hand side incorrect')
+        
+        # 
+        # Add Neumann boundary conditions
+        # 
+        bc_1 = {'dirichlet': None, 'neumann': [(m_neumann,g_neumann)],
+                'robin': None}
         A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
-                   boundary_conditions=bnd_conditions)
+                         boundary_conditions=bc_1)
+        # check system matrix
+        self.assertTrue(allclose(A.toarray(),AA+AAx+AAy),
+                               'System matrix incorrect')
+        # check right hand side
+        bneu = -1/12.0*array([0,1,0,1])
+        self.assertTrue(allclose(b,bb+bneu),\
+                        'Right hand side with Neumann incorrect')
         
+        #
+        # Add Robin boundary conditions
+        #
+        bc_2 = {'dirichlet': None,\
+                'neumann': [(m_neumann,g_neumann)], \
+                'robin': [(m_robin_1, (gamma_1,g_robin_1)),\
+                          (m_robin_2,(gamma_2,g_robin_2))],\
+                'periodic': None}
+        A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
+                         boundary_conditions=bc_2)
+        # Check system matrix
+        R1 = 1/6.0*array([[2,1,0,0],[1,2,0,0],[0,0,0,0],[0,0,0,0]])
+        R2 = 1/3.0*array([[0,0,0,0],[0,0,0,0],[0,0,2,1],[0,0,1,2]])
+        self.assertTrue(allclose(A.toarray(),AA+AAx+AAy+R1+R2),'System matrix incorrect')
         
-        cell = mesh.root_quadcell()
-        dofhandler = DofHandler(mesh,V)
+        # check right hand side
+        bR1 = -1/12.0*array([1,1,0,0])
+        bR2 = -1/12.0*array([0,0,1,1])
+        self.assertTrue(allclose(b,bb+bneu+bR1+bR2),\
+                        'Right hand side incorrect.')
+        #
+        # Add Dirichlet boundary conditions 
+        # 
+        bc_3 = {'dirichlet': [(m_dirichlet,g_dirichlet)],\
+                'neumann': [(m_neumann,g_neumann)], \
+                'robin': [(m_robin_1, (gamma_1,g_robin_1)),\
+                          (m_robin_2,(gamma_2,g_robin_2))],\
+                'periodic': None}
+        
+        A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
+                   boundary_conditions=bc_3)
+        # Check system matrix
+        AAdir = array([[1,0,0,0],[0,10.0/9.0,0,-1.0/9.0],
+                       [0,0,1.0,0],[0,-1./9.,0,13./9.]]) 
+        self.assertTrue(allclose(A.toarray(),AAdir),'System matrix incorrect')
+        bbdir = 1/6.0*zeros((4,))
+        self.assertTrue(allclose(b,bbdir),'Right hand side incorrect') 
+        
+        #
+        # Test Q2
+        #
+        mesh = Mesh.newmesh()
+        element = QuadFE(2,'Q2')
+        s = System(mesh,element,n_gauss=(3,9))
+        bf = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')]
+        A = s.assemble(bilinear_forms=bf)
+        rule2d = GaussRule(9,shape='quadrilateral')
+        r = rule2d.nodes()
+        w = rule2d.weights()
+        n_dofs = element.n_dofs()
+        AA = zeros((n_dofs,n_dofs))
+        AAx = zeros((n_dofs,n_dofs))
+        AAy = zeros((n_dofs,n_dofs))
+        for i in range(n_dofs):
+            for j in range(n_dofs):
+                phii = element.phi(i, r)
+                phij = element.phi(j, r)
+                phiix = element.dphi(i, r, var=0)
+                phijx = element.dphi(j, r, var=0)
+                phiiy = element.dphi(i, r, var=1)
+                phijy = element.dphi(j, r, var=1)
+                AA[i,j] = sum(w*phii*phij)
+                AAx[i,j] = sum(w*phiix*phijx)
+                AAy[i,j] = sum(w*phiiy*phijy)
+        self.assertTrue(allclose(AA+AAx+AAy,A.toarray()),'Mass matrix not correct.')
+        dofhandler = DofHandler(mesh,element)
         dofhandler.distribute_dofs()
-        for direction in ['W','E','S','N']:
-            edge = cell.get_edges(direction)
-            if m_neumann(edge):
-                print('%s-Edge is Neumann'%(direction))
-            elif m_robin_1(edge):
-                print('%s-Edge is Robin'%(direction))
-            x = edge.vertex_coordinates()
-            is_dirichlet = m_dirichlet(x[:,0],x[1,:])
-            if is_dirichlet.any():
-                for y in x[is_dirichlet,:]:
-                    print('Node (%.2f,%.2f) is Dirichlet'%(y[0],y[1]))
         x = dofhandler.mesh_nodes()
         ui = u(x[:,0],x[:,1])
-        fi = f(x[:,0],x[:,1])
-        A = A.toarray()
-        print(A)
-        print(b)
-        self.assertAlmostEqual((A.dot(ui)-b).all(),0, 10, 'Ax-b should be zero')
+      
+        #self.assertTrue(allclose(A.dot(ui),b), 
+        #                'Nodal valued function does not solve system')
+      
         #
         # Two squares
         #
@@ -221,6 +312,13 @@ class TestGaussRule(unittest.TestCase):
         self.assertAlmostEqual((A.toarray()-A_check).all(), 0, 12,\
                                'Incorrect mass matrix')
         
+        
+        
+        #
+        # Test a fine mesh (multiple elements ;))
+        # 
+        mesh = Mesh.newmesh(grid_size=(20,20))
+        s = System(mesh,V)
         
         # Test hanging nodes
          
