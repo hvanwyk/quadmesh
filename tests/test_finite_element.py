@@ -91,10 +91,19 @@ class TestSystem(unittest.TestCase):
     """
     Test System class
     """
+    
+    def test_bilinear_loc(self):
+        pass
+    
+    def test_linear_loc(self):
+        pass
+    
+    def test_local_eval(self):
+        pass
+    
     def test_assembly(self):
-        
         # ---------------------------------------------------------------------
-        # One square 
+        # One square
         # ---------------------------------------------------------------------
         #
         # Mass Matrix
@@ -349,7 +358,6 @@ class TestSystem(unittest.TestCase):
                        boundary_conditions={'dirichlet': None,
                                             'neumann':[(m_neumann,g_neumann)],
                                             'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
-        print(AA+AAx+AAy+R1-A_r1.toarray())
         self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
         self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
         
@@ -382,7 +390,6 @@ class TestSystem(unittest.TestCase):
                        boundary_conditions={'dirichlet': None,
                                             'neumann':[(m_neumann,g_neumann)],
                                             'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
-        print(AA+AAx+AAy+R1-A_r1.toarray())
         self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
         self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
          
