@@ -1224,7 +1224,8 @@ class System(object):
         self.__element = element
         self.__n_gauss_2d = n_gauss[1]
         self.__n_gauss_1d = n_gauss[0]
-        
+        self.__rule_1d = GaussRule(self.__n_gauss_1d,shape='edge')
+        self.__rule_2d = GaussRule(self.__n_gauss_2d,shape=element.cell_type())
         
           
     
@@ -1254,9 +1255,9 @@ class System(object):
                 values [the case for dirichlet conditions], and d_bnd is the 
                 data associated with the given boundary condition: 
                 For 'dirichlet': u(x,y) = d_bnd(x,y) on bnd
-                    'neumann'  : -n.nabla(u) = d_bnd(x,y) on bnd
+                    'neumann'  : -n.q*nabla(u) = d_bnd(x,y) on bnd
                     'robin'    : d_bnd = (gamma, g_rob), so that 
-                                -n.nabla(u) = gamma*(u(x,y)-d_bnd(x,y))
+                                -n.q*nabla(u) = gamma*(u(x,y)-d_bnd(x,y))
             
         Outputs:
         
@@ -1514,11 +1515,51 @@ class System(object):
         return np.dot(test.T, weight*kernel)
     
     
-    def eval_shape_functions(self,derivatives,x_ref):
+    def shape_eval(self,derivatives=(0,),entity='cell',x=None):
         """
-        Evaluate shape functions at a set of reference points
-        """    
+        Evaluate shape functions at a set of reference points x. If x is not
+        specified, Gauss quadrature points are used. 
         
+        Inputs: 
+        
+            derivatives: tuple specifying the order of the derivative and 
+                the variable 
+                [(0,)]: function evaluation, 
+                (1,0) : 1st derivative wrt first variable, or 
+                (1,1) : 1st derivative wrt second variable
+        
+            entity: type of entity containing the quadrature points (if x is 
+                not specified).
+                 'cell' : reference cell
+                 ('edge',direction): edge of reference cell
+            
+            x: double, np.array of points in the reference cell
+        
+        Output:
+        
+            phi: (n_points,n_dofs) array, the jth column of which is the jth
+                shape function evaluated at the specified points. 
+        """
+        if x == None:
+            if entity == 'cell':
+                x = self.__rule_2d.nodes()
+            elif type(entity) is tuple and entity[0] == 'edge':
+                x = self.__rule_1d.nodes()
+                
+        x = np.array(x)  # ensure x is an array.        
+        n_points = x.shape[0] 
+        n_dofs = self.__element.n_dofs()
+        phi = np.zeros((n_points,n_dofs))
+        if len(derivatives) == 1:
+            # No derivatives
+            for i in range(n_dofs):
+                phi[:,i]  
+        elif len(derivatives) == 2:
+            i_var = derivatives[1]
+            for i in range(n_dofs):
+                phi[:,i] 
+                
+        return phi
         
           
     def local_eval(self, form, element, x):
