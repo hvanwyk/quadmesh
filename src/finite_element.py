@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import sparse 
+import numbers 
 """
 To do with Finite Element Classes
 """
@@ -1223,7 +1224,8 @@ class System(object):
         self.__element = element
         self.__n_gauss_2d = n_gauss[1]
         self.__n_gauss_1d = n_gauss[0]
-        
+        self.__rule_1d = GaussRule(self.__n_gauss_1d,shape='edge')
+        self.__rule_2d = GaussRule(self.__n_gauss_2d,shape=element.cell_type())
         
           
     
@@ -1253,9 +1255,9 @@ class System(object):
                 values [the case for dirichlet conditions], and d_bnd is the 
                 data associated with the given boundary condition: 
                 For 'dirichlet': u(x,y) = d_bnd(x,y) on bnd
-                    'neumann'  : -n.nabla(u) = d_bnd(x,y) on bnd
+                    'neumann'  : -n.q*nabla(u) = d_bnd(x,y) on bnd
                     'robin'    : d_bnd = (gamma, g_rob), so that 
-                                -n.nabla(u) = gamma*(u(x,y)-d_bnd(x,y))
+                                -n.q*nabla(u) = gamma*(u(x,y)-d_bnd(x,y))
             
         Outputs:
         
@@ -1264,7 +1266,8 @@ class System(object):
                 
             b: double, right hand side vector determined by linear forms and 
                 boundary conditions.
-            
+        
+        TODO: Evaluate shape functions directly at the edge Gauss points.      
         """
         # ---------------------------------------------------------------------
         # Set Element Spaces, Mesh, and DofHandler
@@ -1511,10 +1514,57 @@ class System(object):
         """
         return np.dot(test.T, weight*kernel)
     
-        
-    def local_eval(self, form, phi, x):
+    
+    def shape_eval(self,derivatives=(0,),entity='cell',x=None):
         """
-        Evaluates the local kernel, test, and trial functions of a (bi)linear
+        Evaluate shape functions at a set of reference points x. If x is not
+        specified, Gauss quadrature points are used. 
+        
+        Inputs: 
+        
+            derivatives: tuple specifying the order of the derivative and 
+                the variable 
+                [(0,)]: function evaluation, 
+                (1,0) : 1st derivative wrt first variable, or 
+                (1,1) : 1st derivative wrt second variable
+        
+            entity: type of entity containing the quadrature points (if x is 
+                not specified).
+                 'cell' : reference cell
+                 ('edge',direction): edge of reference cell
+            
+            x: double, np.array of points in the reference cell
+        
+        Output:
+        
+            phi: (n_points,n_dofs) array, the jth column of which is the jth
+                shape function evaluated at the specified points. 
+        """
+        if x == None:
+            if entity == 'cell':
+                x = self.__rule_2d.nodes()
+            elif type(entity) is tuple and entity[0] == 'edge':
+                x = self.__rule_1d.nodes()
+                
+        x = np.array(x)  # ensure x is an array.        
+        n_points = x.shape[0] 
+        n_dofs = self.__element.n_dofs()
+        phi = np.zeros((n_points,n_dofs))
+        if len(derivatives) == 1:
+            # No derivatives
+            for i in range(n_dofs):
+                phi[:,i]  
+        elif len(derivatives) == 2:
+            i_var = derivatives[1]
+            for i in range(n_dofs):
+                phi[:,i] 
+                
+        return phi
+        
+          
+    def local_eval(self, form, element, x):
+        """
+        Evaluates the local kernel, test, (and trial) functions of a (bi)linear
         form on a given entity.
         
         Inputs:
@@ -1527,12 +1577,12 @@ class System(object):
                 
                 test_type: str, 'v', 'vx', 'vy'
                 
-            phi: shape functions evaluated at the Gauss points on the reference
+            *phi: shape functions evaluated at the Gauss points on the reference
                 element.    
                 
-            entity: local cell or edge
+            element: finite element containing the shape functions
             
-            x: Gauss points on pysical entity
+            x: points on reference entity
             
         
         Outputs:
@@ -1543,6 +1593,78 @@ class System(object):
             
             test: element test functionals, evaluated at quadrature nodes (n_quad, n_dof)
                             
+        """
+        n_dofs = element.n_dofs()
+        # 
+        # Evaluate the Kernel
+        # 
+        f = form[0]
+        if callable(f):
+            # f is a function
+            if len(x.shape) == 1:
+                # one dimensional input
+                kernel = f(x)
+            elif len(x.shape) == 2:
+                # two dimensional input
+                kernel = f(x[:,0],x[:,1])
+        elif isinstance(f,numbers.Real):
+            # f is a constant
+            kernel = f
+        elif len(f) == n_dofs:
+            # f is a nodal vector
+            kernel = np.zeros(x.shape)
+            for i in range(n_dofs):
+                kernel += f[i]*element.phi(i,x)
+        if len(form) == 1:
+            return kernel
+        
+        #
+        # Construct test functions               
+        # 
+        n_points = x.shape[0]
+        if len(form) > 1:
+            types = list(form[1:])
+            test = np.zeros((n_points,n_dofs))
+            #
+            # Derivatives
+            # 
+            if len(types[0])==1:
+                #
+                # No derivatives
+                # 
+                for i in range(n_dofs):
+                    test[:,i] = element.phi(i,x)
+            elif len(types[0]) == 2:
+                #
+                # First partial derivatives
+                # 
+                if types[0][1] == 'x':
+                    #
+                    # Partial x derivative
+                    #
+                    for i in range(n_dofs):
+                        test[:,i] = element.dphi(i,x,0)
+                elif types[0][1] == 'y':
+                    #
+                    # Partial y derivative
+                    # 
+                    for i in range(n_dofs):
+                        test[:,i] = element.dphi(i,x,1)
+            elif len(types[0]) >= 3:
+                raise Exception('Only zeroth/first derivatives supported.')
+            if len(form) == 2:
+                return kernel, test
+        #
+        # Construct Trial functions (same as above)   
+        # 
+        if len(form) > 2:
+            trial = np.zeros(n_points,n_dofs)
+            #
+            # Derivatives
+            # 
+            if len(types[1]) == 1: 
+                pass
+            
         """
         dim = x.shape[1]
         f = form[0]
@@ -1567,7 +1689,7 @@ class System(object):
                 # f is a function
                 kernel = f(x[:,0],x[:,1])
             else:
-                # f is a constant (TODO: change this)
+                # f is a constant 
                 kernel = f
                 
         elif dim == 2:
@@ -1603,4 +1725,4 @@ class System(object):
             #
             return kernel, tt[0]  # kernel, test
         
-        
+        """

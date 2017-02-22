@@ -91,19 +91,10 @@ class TestSystem(unittest.TestCase):
     """
     Test System class
     """
-    
-    def test_bilinear_loc(self):
-        pass
-    
-    def test_linear_loc(self):
-        pass
-    
-    def test_local_eval(self):
-        pass
-    
     def test_assembly(self):
+        
         # ---------------------------------------------------------------------
-        # One square
+        # One square 
         # ---------------------------------------------------------------------
         #
         # Mass Matrix
@@ -358,11 +349,9 @@ class TestSystem(unittest.TestCase):
                        boundary_conditions={'dirichlet': None,
                                             'neumann':[(m_neumann,g_neumann)],
                                             'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
-        self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),\
-                        'Robin condition 1, system incorrect.')
-        self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),\
-                        'Robin conditions 1, rhs incorrect.')
-        
+        print(AA+AAx+AAy+R1-A_r1.toarray())
+        self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
+        self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
         
         #
         # Test Robin 2 conditions
@@ -371,11 +360,11 @@ class TestSystem(unittest.TestCase):
         
         r_phys_1d = rule_1d.map(e_r2,r_ref_1d)
         w_r1 = w_ref_1d*rule_1d.jacobian(e_r2)
-        g_r2 = g_robin_2(r_phys_1d[:,0], r_phys_1d[:,1])
-        bb_r2 = zeros((n_dofs,))
-        bb_r2[0] = sum(w_r1*phi0*g_r1)
-        bb_r2[1] = sum(w_r1*phi1*g_r1)
-        bb_r2[6] = sum(w_r1*phi2*g_r1)
+        g_r1 = g_robin_1(r_phys_1d[:,0], r_phys_1d[:,1])
+        bb_r1 = zeros((n_dofs,))
+        bb_r1[0] = sum(w_r1*phi0*g_r1)
+        bb_r1[1] = sum(w_r1*phi1*g_r1)
+        bb_r1[6] = sum(w_r1*phi2*g_r1)
         
         R1 = zeros((n_dofs,n_dofs))
         R1[0,0] = sum(w_r1*phi0*phi0)
@@ -393,10 +382,9 @@ class TestSystem(unittest.TestCase):
                        boundary_conditions={'dirichlet': None,
                                             'neumann':[(m_neumann,g_neumann)],
                                             'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
-        self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),\
-                        'Robin condition 1, system incorrect.')
-        self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),\
-                        'Robin conditions 1, rhs incorrect.')
+        print(AA+AAx+AAy+R1-A_r1.toarray())
+        self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
+        self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
          
         dofhandler = DofHandler(mesh,element)
         dofhandler.distribute_dofs()
