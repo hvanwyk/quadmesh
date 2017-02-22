@@ -1599,7 +1599,7 @@ class System(object):
         return phi
         
           
-    def local_eval(self, form, element, x):
+    def local_eval(self, form, entity, x=None):
         """
         Evaluates the local kernel, test, (and trial) functions of a (bi)linear
         form on a given entity.
@@ -1631,7 +1631,7 @@ class System(object):
             test: element test functionals, evaluated at quadrature nodes (n_quad, n_dof)
                             
         """
-        n_dofs = element.n_dofs()
+        n_dofs = self.__element.n_dofs()
         # 
         # Evaluate the Kernel
         # 
@@ -1651,13 +1651,14 @@ class System(object):
             # f is a nodal vector
             kernel = np.zeros(x.shape)
             for i in range(n_dofs):
-                kernel += f[i]*element.phi(i,x)
+                kernel += f[i]*self.__element.phi(i,x)
         if len(form) == 1:
             return kernel
         
         #
         # Construct test functions               
         # 
+        
         n_points = x.shape[0]
         if len(form) > 1:
             types = list(form[1:])
@@ -1670,7 +1671,7 @@ class System(object):
                 # No derivatives
                 # 
                 for i in range(n_dofs):
-                    test[:,i] = element.phi(i,x)
+                    test[:,i] = self.__element.phi(i,x)
             elif len(types[0]) == 2:
                 #
                 # First partial derivatives
@@ -1680,13 +1681,13 @@ class System(object):
                     # Partial x derivative
                     #
                     for i in range(n_dofs):
-                        test[:,i] = element.dphi(i,x,0)
+                        test[:,i] = self.__element.dphi(i,x,0)
                 elif types[0][1] == 'y':
                     #
                     # Partial y derivative
                     # 
                     for i in range(n_dofs):
-                        test[:,i] = element.dphi(i,x,1)
+                        test[:,i] = self.__element.dphi(i,x,1)
             elif len(types[0]) >= 3:
                 raise Exception('Only zeroth/first derivatives supported.')
             if len(form) == 2:
@@ -1763,3 +1764,34 @@ class System(object):
             return kernel, tt[0]  # kernel, test
         
         """
+    def parse_derivative_info(self, dstring):
+        """
+        Input:
+        
+            dstring: string of the form u,ux,uy,v,vx, or vy.
+            
+        Output: 
+        
+            tuple, encoding derivative information  
+        """
+        s = list(dstring)
+        if len(s) == 1:
+            #
+            # No derivatives
+            # 
+            return (0,)
+        elif len(s) == 2:
+            #
+            # First order derivative
+            # 
+            if s[1] == 'x':
+                # wrt x
+                return (1,0)
+            elif s[1] == 'y':
+                # wrt y
+                return (1,1)
+            else:
+                raise Exception('Only two variables allowed.')
+        else:
+            raise Exception('Higher order derivatives not supported.')
+        
