@@ -47,6 +47,7 @@ class QuadFE(FiniteElement):
                 dofs_per_cell = 0
                 basis_index = [(0,0),(1,0),(0,1),(1,1)]
                 ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0]])
+                pattern = ['SW','SE','NW','NE']
         #
         # Quadratic Elements 
         #        
@@ -75,6 +76,7 @@ class QuadFE(FiniteElement):
                 ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0],
                                   [0.0,0.5],[1.0,0.5],[0.5,0.0],[0.5,1.0],
                                   [0.5,0.5]])
+                pattern = ['SW','SE','NW','NE','W','E','S','N','I']
             else:
                 raise Exception('Only 1D and 2D currently supported.')
         
@@ -113,6 +115,8 @@ class QuadFE(FiniteElement):
                                   [1./3.,1.0],[2./3.,1.0],
                                   [1./3.,1./3.],[2./3.,1./3.],
                                   [1./3.,2./3.],[2./3.,2./3.]])
+                pattern = ['SW','SE','NW','NE','W','W','E','E','S','S','N','N',
+                           'I','I','I','I']
         self.__cell_type = 'quadrilateral' 
         self.__dofs = {'vertex':dofs_per_vertex, 'edge':dofs_per_edge,'cell':dofs_per_cell}               
         self.__basis_index = basis_index
@@ -120,7 +124,7 @@ class QuadFE(FiniteElement):
         self.__px = px
         self.__element_type = element_type
         self.__ref_nodes = ref_nodes
-    
+        self.__pattern = pattern
       
     def cell_type(self):
         return self.__cell_type
@@ -161,7 +165,15 @@ class QuadFE(FiniteElement):
         return self.__ref_nodes
         
         
-        
+    def get_local_edge_dofs(self,direction):
+        """
+        Returns the local dofs on a given edge
+        """    
+        edge_dofs = []
+        for i in range(self.__n_dofs):
+            if direction in self.__pattern[i]:
+                edge_dofs.append(i)
+        return edge_dofs
      
         
     def phi(self, n, x):
@@ -445,6 +457,7 @@ class TriFE(FiniteElement):
 class DofHandler(object):
     """
     Degrees of freedom handler
+    TODO: A lot of things can be handled more appropriately by the element
     """
     def __init__(self, mesh, element):
         """
@@ -506,6 +519,7 @@ class DofHandler(object):
                                   [1./3.,2./3.],[2./3.,2./3.]])
         else:
             raise Exception('Only Q1, Q2, or Q3 supported.')
+        self.__element = element
         self.__element_type = etype
         self.__dim = element.dim()
         self.dofs_per_vertex = dofs_per_vertex 
@@ -518,7 +532,7 @@ class DofHandler(object):
         self.__hanging_nodes = []  
         self.__constraint_coefficients = element.constraint_coefficients()
         self.__reference_nodes = ref_nodes
-     
+        
     def n_dofs(self,key='cell'):
         """
         Return the number of dof's of cell
@@ -771,11 +785,8 @@ class DofHandler(object):
         """
         Return all dofs on a given edge of a cell 
         """
-        edge_dofs = []
-        for i in range(self.__n_dofs):
-            if direction in self.__pattern[i]:
-                edge_dofs.append(i)
-        return edge_dofs
+        return self.__element.get_local_edge_dofs(direction)
+        
         
     
     def get_global_edge_dofs(self, node, direction):
@@ -1099,11 +1110,30 @@ class GaussRule(object):
         self.__dim = dim
         
         
-    def nodes(self):
+    def nodes(self, direction=None):
         """
         Return quadrature nodes 
         """
-        return self.__nodes
+        if self.__cell_type == 'edge' and direction is not None:
+            #
+            # One dimensional rule over edges
+            # 
+            assert direction in ['W','E','S','N'], \
+                'Only directions W,E,S, and N supported.'
+            edge_dict = {'W':(0,0,0,1), 
+                         'E':(1,0,1,1),
+                         'S':(0,0,1,0),
+                         'N':(0,1,1,1)}
+            x0,y0,x1,y1 = edge_dict[direction]
+            x_ref = self.__nodes 
+            x = x0 + x_ref*(x1-x0)
+            y = y0 + x_ref*(y1-y0)
+            return np.array([x,y]).T
+        else:
+            #
+            # Return 1D/2D nodes on reference entity 
+            # 
+            return self.__nodes
        
         
     def weights(self):
@@ -1266,8 +1296,7 @@ class System(object):
                 
             b: double, right hand side vector determined by linear forms and 
                 boundary conditions.
-        
-        TODO: Evaluate shape functions directly at the edge Gauss points.      
+              
         """
         # ---------------------------------------------------------------------
         # Set Element Spaces, Mesh, and DofHandler
@@ -1540,25 +1569,33 @@ class System(object):
             phi: (n_points,n_dofs) array, the jth column of which is the jth
                 shape function evaluated at the specified points. 
         """
+        n_dofs = self.__element.n_dofs()
         if x == None:
+            # Quadrature points
             if entity == 'cell':
                 x = self.__rule_2d.nodes()
+                dofs_to_fill = range(n_dofs)
             elif type(entity) is tuple and entity[0] == 'edge':
-                x = self.__rule_1d.nodes()
-                
-        x = np.array(x)  # ensure x is an array.        
+                x = self.__rule_1d.nodes(direction=entity[1])
+                dofs_to_fill = self.__element.get_local_edge_dofs(entity[1])
+        x = np.array(x)  # ensure x is an array.
+         
         n_points = x.shape[0] 
-        n_dofs = self.__element.n_dofs()
+        
         phi = np.zeros((n_points,n_dofs))
         if len(derivatives) == 1:
+            #
             # No derivatives
-            for i in range(n_dofs):
-                phi[:,i]  
+            #
+            for i in dofs_to_fill:
+                phi[:,i] = self.__element.phi(i,x)  
         elif len(derivatives) == 2:
+            # 
+            # First derivatives
+            #
             i_var = derivatives[1]
-            for i in range(n_dofs):
-                phi[:,i] 
-                
+            for i in dofs_to_fill:
+                phi[:,i] = self.__element.dphi(i,x,i_var)        
         return phi
         
           
