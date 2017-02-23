@@ -151,7 +151,7 @@ class QuadFE(FiniteElement):
         Return the number of dofs per elementary entity
         """
         # Total Number of dofs
-        if key == None:
+        if key is None:
             d = self.dim()
             return 2**d*self.__dofs['vertex'] + \
                    2*d*self.__dofs['edge'] + \
@@ -173,7 +173,7 @@ class QuadFE(FiniteElement):
         Returns the local dofs on a given edge
         """    
         edge_dofs = []
-        for i in range(self.n_dofs('cell')):
+        for i in range(self.n_dofs()):
             if direction in self.__pattern[i]:
                 edge_dofs.append(i)
         return edge_dofs
@@ -1503,24 +1503,35 @@ class System(object):
             phi: (n_points,n_dofs) array, the jth column of which is the jth
                 shape function evaluated at the specified points. 
         """
+        
         n_dofs = self.__element.n_dofs()
-        if x == None:
-            #
-            # Quadrature points
-            #
-            if self.__phi[entity][derivatives] is not None:
-                return self.__phi[entity][derivatives]
-            else: 
-                if entity == 'cell':
+        if entity == 'cell':
+            dofs_to_fill = range(n_dofs)
+            if x is None:
+                #
+                # Quadrature points
+                #
+                if self.__phi[entity][derivatives] is not None:
+                    return self.__phi[entity][derivatives]
+                else:
                     x_ref = self.__rule_2d.nodes()
-                    dofs_to_fill = range(n_dofs)
-                elif type(entity) is tuple and entity[0] == 'edge':
+            else:
+                # Ensure that x is an array 
+                x_ref = np.array(x)
+        elif type(entity) is tuple and entity[0] == 'edge':
+            dofs_to_fill = self.__element.get_local_edge_dofs(entity[1])
+            if x is None:
+                #
+                # Quadrature points
+                #
+                if self.__phi[entity][derivatives] is not None:
+                    return self.__phi[entity][derivatives]
+                else:
                     x_ref = self.__rule_1d.nodes(direction=entity[1])
-                    dofs_to_fill = self.__element.get_local_edge_dofs(entity[1])
-        else:
-            # Ensure that x is an array 
-            x_ref = np.array(x)
-            
+            else:
+                # Ensure that x is an array 
+                x_ref = np.array(x)     
+                       
         n_points = x_ref.shape[0] 
         phi = np.zeros((n_points,n_dofs))
         if len(derivatives) == 1:
@@ -1535,8 +1546,8 @@ class System(object):
             #
             i_var = derivatives[1]
             for i in dofs_to_fill:
-                phi[:,i] = self.__element.dphi(i,x_ref,i_var)        
-        if x == None and self.__phi[entity][derivatives] is None:
+                phi[:,i] = self.__element.dphi(i,x_ref,var=i_var)        
+        if x is None and self.__phi[entity][derivatives] is None:
             #
             # Store shape function (at quadrature points) for future use
             # 
@@ -1728,7 +1739,20 @@ class System(object):
             return kernel, tt[0]  # kernel, test
         
         """
-        
+    def cell_rule(self):
+        """
+        Return Gauss Rule for cell
+        """    
+        return self.__rule_2d
+    
+    
+    def edge_rule(self):
+        """
+        Return Gauss rule for edge
+        """
+        return self.__rule_1d
+    
+    
     def make_generic(self,entity):
         """
         Turn a specific entity (QuadCell or Edge) into a generic one

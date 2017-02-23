@@ -6,7 +6,7 @@ import unittest
 from finite_element import QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
 from numpy import sqrt, sum, dot, sin, pi, array, abs, empty, zeros, max, \
-                  allclose, eye
+                  allclose, eye, random
 
 
 class TestFiniteElement(unittest.TestCase):
@@ -19,6 +19,11 @@ class TestQuadFE(unittest.TestCase):
     """
     Test QuadFE class
     """
+    def test_n_dofs(self):
+        element = QuadFE(2,'Q1')
+        n_dofs = element.n_dofs()
+        self.assertEqual(n_dofs, 4, 'Number of dofs is 4.')
+        
     def test_shape_functions(self):
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
@@ -28,18 +33,27 @@ class TestQuadFE(unittest.TestCase):
             for n in range(n_dofs):
                 self.assertTrue(allclose(element.phi(n,x),I[:,n]),\
                                 'Shape function evaluation incorrect')
+                
+                
+    def test_get_local_edge_dofs(self):
+        edge_dofs_exact = {'Q1': {'W':[0,2],'E':[1,3],'S':[0,1],'N':[2,3]},
+                           'Q2': {'W':[0,2,4],'E':[1,3,5],\
+                                  'S':[0,1,6],'N':[2,3,7]},
+                           'Q3': {'W':[0,2,4,5],'E':[1,3,6,7],\
+                                  'S':[0,1,8,9],'N':[2,3,10,11]}} 
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            for direction in ['W','E','S','N']:
+                edge_dofs = element.get_local_edge_dofs(direction)
+                self.assertEqual(edge_dofs, edge_dofs_exact[etype][direction],\
+                                 'Edge dofs incorrect')
 
 class TestTriFE(unittest.TestCase):
     """
     Test TriFE classe
     
     """
-    v1 = Vertex((1,2))
-    v2 = Vertex((2,2))
-    edge = Edge(v1,v2)
-    print(type(edge))
-    print(type(edge) is Edge)
-    print(isinstance(edge, Edge))
+
     
 class TestDofHandler(unittest.TestCase):
     """
@@ -73,9 +87,7 @@ class TestDofHandler(unittest.TestCase):
         direction = 'N'
         positions = dofhandler.positions_along_edge(direction)
         self.assertEqual(positions[1],('N',0),'Position should be (N,0).')
-        
-        print(mesh.__class__ is Mesh)         
-        
+            
     def test_assign_dofs(self):
         pass
        
@@ -97,7 +109,7 @@ class TestSystem(unittest.TestCase):
     """
     Test System class
     """
-    '''
+    
     def test_assembly(self):
         
         # ---------------------------------------------------------------------
@@ -432,7 +444,7 @@ class TestSystem(unittest.TestCase):
         s = System(mesh,V)
         
         # Test hanging nodes
-    '''     
+        
         
     def test_line_integral(self):
         # Define quadrature rule
@@ -456,3 +468,103 @@ class TestSystem(unittest.TestCase):
     def test_flux_integral(self):
         """
         """
+    
+    def test_f_eval_loc(self):
+        mesh = Mesh.newmesh()
+        element = QuadFE(2,'Q1')
+        
+        
+    
+    def test_shape_eval(self):
+        
+        test_functions = {'Q1': (lambda x,y: (x+1)*(y-1), lambda x,y: y-1, \
+                                 lambda x,y: x+1), 
+                          'Q2': (lambda x,y: x**2 -1, lambda x,y: 2*x, \
+                                 lambda x,y: 0*x),
+                          'Q3': (lambda x,y: x**3 - y**3, lambda x,y: 3*x**2, \
+                                 lambda x,y: -3*y**2)}
+        
+        cell_integrals = {'Q1': (-0.75,-0.5,1.5), 
+                     'Q2': (-2/3.,1.0,0.0),
+                     'Q3': (0.,1.0,-1.0)} 
+        derivatives = [(0,),(1,0),(1,1)]
+        mesh = Mesh.newmesh()
+        cell = mesh.root_quadcell() 
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            system = System(mesh,element)
+            n_dofs = element.n_dofs()
+            x = element.reference_nodes()
+            #
+            # Sanity check
+            # 
+            I = eye(n_dofs)
+            self.assertTrue(allclose(system.shape_eval(x=x),I),\
+                            'Shape functions incorrect at reference nodes.')
+            y = random.rand(5,2)
+            weights = system.cell_rule().weights()
+            f_nodes = test_functions[etype][0](x[:,0],x[:,1])
+            for i in range(3):
+                phi = system.shape_eval(derivatives=derivatives[i], x=y)
+                f = test_functions[etype][i]
+                #
+                # Interpolation
+                #
+                fvals = f(y[:,0],y[:,1])            
+                self.assertTrue(allclose(dot(phi,f_nodes),fvals),\
+                                'Shape function interpolation failed.')
+                #
+                # Integration
+                #
+                phi = system.shape_eval(derivatives=derivatives[i])  
+                self.assertAlmostEqual(dot(weights,dot(phi,f_nodes)),\
+                                 cell_integrals[etype][i],places=8,\
+                                 msg='Incorrect integral.')
+            #
+            # On Edges   
+            # 
+            y = random.rand(5)
+            for direction in ['W','E','S','N']:
+                edge = cell.get_edges(direction)
+                #
+                # Sanity check
+                # 
+                edge_dofs = element.get_local_edge_dofs(direction)
+                x_ref = x[edge_dofs,:]
+                entity = system.make_generic((edge,direction))
+                phi = system.shape_eval(entity=entity,x=x_ref)
+                self.assertTrue(allclose(phi, I[edge_dofs,:]), \
+                                'Shape function incorrect at edge ref nodes.')
+
+                #
+                # Interpolation
+                # 
+                
+                #
+                # Quadrature
+                # 
+                
+    def test_make_generic(self):
+        mesh = Mesh.newmesh()
+        element = QuadFE(2,'Q1')
+        system = System(mesh, element)
+        cell = mesh.root_quadcell()
+        self.assertEqual(system.make_generic(cell), 'cell', \
+                         'Cannot convert cell to "cell"')
+        for direction in ['W','E','S','N']:
+            edge = cell.get_edges(direction)
+            self.assertEqual(system.make_generic((edge,direction)),\
+                             ('edge',direction),\
+                             'Cannot convert edge to generic edge')
+            
+    def test_parse_derivative_info(self):
+        mesh = Mesh.newmesh()
+        element = QuadFE(2,'Q2')
+        system = System(mesh,element)
+        self.assertEqual(system.parse_derivative_info('u'), (0,),\
+                         'Zeroth derivative incorrectly parsed')
+        self.assertEqual(system.parse_derivative_info('ux'), (1,0),\
+                         'Zeroth derivative incorrectly parsed')
+        self.assertEqual(system.parse_derivative_info('vy'), (1,1),\
+                         'Zeroth derivative incorrectly parsed')
+        
