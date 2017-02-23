@@ -46,7 +46,7 @@ for i in range(n_dofs):
     phi_ref[:,i] = V.phi(i,r)
     phix_ref[:,i] = V.dphi(i,r,0)
     phiy_ref[:,i] = V.dphi(i,r,1)
-x_ref = V.ref_vertices()
+x_ref = V.reference_nodes()
 #
 # Initialize system matrices 
 # 

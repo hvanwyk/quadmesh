@@ -24,7 +24,7 @@ class TestQuadFE(unittest.TestCase):
             element = QuadFE(2,etype)
             n_dofs = element.n_dofs()
             I = eye(n_dofs)
-            x = element.ref_vertices()
+            x = element.reference_nodes()
             for n in range(n_dofs):
                 self.assertTrue(allclose(element.phi(n,x),I[:,n]),\
                                 'Shape function evaluation incorrect')
@@ -34,8 +34,13 @@ class TestTriFE(unittest.TestCase):
     Test TriFE classe
     
     """
-    pass
-
+    v1 = Vertex((1,2))
+    v2 = Vertex((2,2))
+    edge = Edge(v1,v2)
+    print(type(edge))
+    print(type(edge) is Edge)
+    print(isinstance(edge, Edge))
+    
 class TestDofHandler(unittest.TestCase):
     """
     Test DofHandler class
@@ -68,7 +73,8 @@ class TestDofHandler(unittest.TestCase):
         direction = 'N'
         positions = dofhandler.positions_along_edge(direction)
         self.assertEqual(positions[1],('N',0),'Position should be (N,0).')
-                 
+        
+        print(mesh.__class__ is Mesh)         
         
     def test_assign_dofs(self):
         pass
@@ -91,6 +97,7 @@ class TestSystem(unittest.TestCase):
     """
     Test System class
     """
+    '''
     def test_assembly(self):
         
         # ---------------------------------------------------------------------
@@ -150,21 +157,21 @@ class TestSystem(unittest.TestCase):
             """
             Neumann Edge Marker: x = 1
             """
-            x = edge.vertex_coordinates()
+            x = array(edge.vertex_coordinates())
             return (abs(x[:,0]-1)<1e-9).all()
                 
         def m_robin_1(edge):
             """
             Robin Edge Marker: y = 0 
             """
-            x = edge.vertex_coordinates()
+            x = array(edge.vertex_coordinates())
             return (abs(x[:,1]-0)<1e-9).all()  
         
         def m_robin_2(edge):
             """
             Robin Edge Marker: y = 1
             """
-            x = edge.vertex_coordinates()
+            x = array(edge.vertex_coordinates())
             return (abs(x[:,1]-1)<1e-9).all() 
             
         def g_dirichlet(x,y):
@@ -190,7 +197,10 @@ class TestSystem(unittest.TestCase):
             Robin boundary conditions for y = 1
             """
             return -0.5*x*(1-x)
-            
+        cell = mesh.root_quadcell()
+        edge_east = cell.get_edges('E')
+        print('Is the eastern edge Neumann?')
+        print(m_neumann(edge_east))    
         gamma_1 = 1.0
         gamma_2 = 2.0
         
@@ -220,6 +230,9 @@ class TestSystem(unittest.TestCase):
                                'System matrix incorrect')
         # check right hand side
         bneu = -1/12.0*array([0,1,0,1])
+        print(bb)
+        print(b)
+        print(bb+bneu)
         self.assertTrue(allclose(b,bb+bneu),\
                         'Right hand side with Neumann incorrect')
         
@@ -419,7 +432,7 @@ class TestSystem(unittest.TestCase):
         s = System(mesh,V)
         
         # Test hanging nodes
-         
+    '''     
         
     def test_line_integral(self):
         # Define quadrature rule

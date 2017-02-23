@@ -1,6 +1,8 @@
 import numpy as np
 from scipy import sparse 
-import numbers 
+import numbers
+from mesh import QuadCell, Edge
+ 
 """
 To do with Finite Element Classes
 """
@@ -124,7 +126,8 @@ class QuadFE(FiniteElement):
         self.__px = px
         self.__element_type = element_type
         self.__ref_nodes = ref_nodes
-        self.__pattern = pattern
+        if dim == 2:
+            self.__pattern = pattern
       
     def cell_type(self):
         return self.__cell_type
@@ -158,7 +161,7 @@ class QuadFE(FiniteElement):
             return self.__dofs[key]
     
     
-    def ref_vertices(self):
+    def reference_nodes(self):
         """
         Returns vertices used to define nodal basis functions on reference cell
         """
@@ -170,7 +173,7 @@ class QuadFE(FiniteElement):
         Returns the local dofs on a given edge
         """    
         edge_dofs = []
-        for i in range(self.__n_dofs):
+        for i in range(self.n_dofs('cell')):
             if direction in self.__pattern[i]:
                 edge_dofs.append(i)
         return edge_dofs
@@ -198,6 +201,7 @@ class QuadFE(FiniteElement):
         # 2D
         # 
         elif self.dim() == 2:
+            # TODO: Doesn't work for tuples...
             i1,i2 = self.__basis_index[n]
             return self.__p[i1](x[:,0])*self.__p[i2](x[:,1])
             
@@ -1120,11 +1124,14 @@ class GaussRule(object):
             # 
             assert direction in ['W','E','S','N'], \
                 'Only directions W,E,S, and N supported.'
-            edge_dict = {'W':(0,0,0,1), 
-                         'E':(1,0,1,1),
-                         'S':(0,0,1,0),
-                         'N':(0,1,1,1)}
-            x0,y0,x1,y1 = edge_dict[direction]
+            edge_dict = {'W':[(0,0),(0,1)], 
+                         'E':[(1,0),(1,1)],
+                         'S':[(0,0),(1,0)],
+                         'N':[(0,1),(1,1)]}
+            verts = edge_dict[direction]
+            verts.sort()
+            x0,y0 = verts[0]
+            x1,y1 = verts[1]
             x_ref = self.__nodes 
             x = x0 + x_ref*(x1-x0)
             y = y0 + x_ref*(y1-y0)
@@ -1173,7 +1180,7 @@ class GaussRule(object):
                 # 
                 # Line segment in 2D
                 # 
-                x0,y0,x1,y1 = cell.box()
+                x0,x1,y0,y1 = cell.box()
                 x = x0 + x_ref*(x1-x0)
                 y = y0 + x_ref*(y1-y0)
                 x_phys = np.array([x,y]).T              
@@ -1193,34 +1200,34 @@ class GaussRule(object):
         return x_phys
 
 
-    def jacobian(self, cell):
+    def jacobian(self, entity):
         """
         Jacobian of the Mapping from reference to physical cell
         """
         dim = self.__dim
-        cell_type = self.__cell_type
+        entity_type = self.__cell_type
         if dim == 1:
             #
             # One dimensional mesh
             # 
-            if cell_type == 'interval':
-                x0, x1 = cell.box()
+            if entity_type == 'interval':
+                x0, x1 = entity.box()
                 jac = x1-x0
-            elif cell_type == 'edge':
+            elif entity_type == 'edge':
                 # Length of edge
-                jac = cell.length()
+                jac = entity.length()
                 
         elif dim == 2:
             #
             # Two dimensional mesh
             #
-            if cell_type == 'triangle':
+            if entity_type == 'triangle':
                 #
                 # Triangles not yet supported
                 # 
                 pass
-            elif cell_type == 'quadrilateral':
-                x0,x1,y0,y1 = cell.box()
+            elif entity_type == 'quadrilateral':
+                x0,x1,y0,y1 = entity.box()
                 jac = (x1-x0)*(y1-y0)
         return jac
     
@@ -1256,8 +1263,14 @@ class System(object):
         self.__n_gauss_1d = n_gauss[0]
         self.__rule_1d = GaussRule(self.__n_gauss_1d,shape='edge')
         self.__rule_2d = GaussRule(self.__n_gauss_2d,shape=element.cell_type())
-        
-          
+        self.__dofhandler = DofHandler(mesh,element)
+        self.__dofhandler.distribute_dofs()
+        # Initialize refernce shape functions
+        self.__phi = {'cell':       {(0,): None, (1,0): None, (1,1): None},
+                      ('edge','W'): {(0,): None, (1,0): None, (1,1): None},
+                      ('edge','E'): {(0,): None, (1,0): None, (1,1): None},
+                      ('edge','S'): {(0,): None, (1,0): None, (1,1): None},
+                      ('edge','N'): {(0,): None, (1,0): None, (1,1): None}}  
     
     def assemble(self, bilinear_forms=None, linear_forms=None, 
                  boundary_conditions=None):
@@ -1297,53 +1310,10 @@ class System(object):
             b: double, right hand side vector determined by linear forms and 
                 boundary conditions.
               
-        """
-        # ---------------------------------------------------------------------
-        # Set Element Spaces, Mesh, and DofHandler
-        # ---------------------------------------------------------------------
-        element_2d = self.__element
-        element_1d = QuadFE(1,element_2d.element_type())
-        mesh = self.__mesh
-        dof_handler = DofHandler(mesh,element_2d)
-        dof_handler.distribute_dofs()
-        n_nodes = dof_handler.n_nodes()
-        
-        # ---------------------------------------------------------------------
-        # Define Quadrature Rule
-        # ---------------------------------------------------------------------
-        # One dimensional rule for edges 
-        rule_1d = GaussRule(self.__n_gauss_1d,shape='edge')
-        r_ref_1d = rule_1d.nodes()
-        w_ref_1d = rule_1d.weights()
-        
-        # Two dimensional rule for cells
-        rule_2d = GaussRule(self.__n_gauss_2d,shape='quadrilateral')
-        r_ref_2d = rule_2d.nodes()
-        w_ref_2d = rule_2d.weights()
-        
-        # ---------------------------------------------------------------------
-        # Evaluate shape functions at Gauss nodes on reference element
-        # ---------------------------------------------------------------------
-        # 1D
-        n_dofs_1d = element_1d.n_dofs()
-        phi_ref_1d = [np.empty((self.__n_gauss_1d,n_dofs_1d)),\
-                      np.empty((self.__n_gauss_1d,n_dofs_1d))] 
-
-        for i in range(n_dofs_1d):
-            phi_ref_1d[0][:,i] = element_1d.phi(i,r_ref_1d)
-            phi_ref_1d[1][:,i] = element_1d.dphi(i,r_ref_1d)
-     
-        # 2D
-        n_dofs_2d = element_2d.n_dofs()   
-        phi_ref_2d = [np.empty((self.__n_gauss_2d,n_dofs_2d)), 
-                      [np.empty((self.__n_gauss_2d,n_dofs_2d)),
-                       np.empty((self.__n_gauss_2d,n_dofs_2d))]]
-        
-        for i in range(n_dofs_2d):
-            phi_ref_2d[0][:,i] = element_2d.phi(i,r_ref_2d)
-            phi_ref_2d[1][0][:,i] = element_2d.dphi(i,r_ref_2d,0)
-            phi_ref_2d[1][1][:,i] = element_2d.dphi(i,r_ref_2d,1)
-         
+        """        
+        n_nodes = self.__dofhandler.n_nodes()
+        n_dofs = self.__element.n_dofs()   
+  
         #
         # Determine the forms to assemble
         #
@@ -1360,36 +1330,25 @@ class System(object):
             bc_dirichlet = boundary_conditions['dirichlet']
             bc_neumann = boundary_conditions['neumann']
             bc_robin = boundary_conditions['robin']
-         
+    
         rows = []
         cols = []
         dir_nodes_encountered = []
-        for node in mesh.root_node().find_leaves():
-            node_dofs = dof_handler.get_cell_dofs(node)
-            cell = node.quadcell()
-            
-            #
-            # Map quadrature info
-            # 
-            r_phys_2d = rule_2d.map(cell, r_ref_2d)
-            w_phys_2d = w_ref_2d*rule_2d.jacobian(cell)
-            
+        for node in self.__mesh.root_node().find_leaves():
+            node_dofs = self.__dofhandler.get_cell_dofs(node)
+            cell = node.quadcell()            
             #
             # Assemble local system matrices/vectors
             # 
             if bilinear_forms is not None:
-                bf_loc = np.zeros((n_dofs_2d,n_dofs_2d))
+                bf_loc = np.zeros((n_dofs,n_dofs))
                 for bf in bilinear_forms:
-                    kernel, trial, test = \
-                        self.local_eval(bf, phi_ref_2d, r_phys_2d)
-                    bf_loc += self.bilinear_loc(w_phys_2d,kernel,\
-                                                    trial,test)
+                    bf_loc += self.form_eval(bf, cell)
                     
             if linear_forms is not None:
-                lf_loc = np.zeros((n_dofs_2d,))
+                lf_loc = np.zeros((n_dofs,))
                 for lf in linear_forms:
-                    kernel, test = self.local_eval(lf, phi_ref_2d, r_phys_2d)
-                    lf_loc += self.linear_loc(w_phys_2d, kernel, test)
+                    lf_loc += self.form_eval(lf,cell)
                     
             if boundary_conditions:
                 #
@@ -1397,12 +1356,6 @@ class System(object):
                 # 
                 for direction in ['W','E','S','N']:
                     edge = cell.get_edges(direction)
-                    edge_dofs_loc = dof_handler.get_local_edge_dofs(direction)
-                    
-                    # Gaussian rule on edge
-                    r_phys_1d = rule_1d.map(edge,r_ref_1d)
-                    w_phys_1d = w_ref_1d*rule_1d.jacobian(edge)
-                    
                     #
                     # Check for Neumann conditions
                     # 
@@ -1410,17 +1363,17 @@ class System(object):
                     for bc_neu in bc_neumann:
                         m_neu,g_neu = bc_neu 
                         if m_neu(edge):
+                            print('Neumann Edge')
                             # -------------------------------------------------
                             # Neumann edge
                             # -------------------------------------------------
                             neumann_edge = True
-                            kernel, test = \
-                                self.local_eval((g_neu,'v'), phi_ref_1d, r_phys_1d)
                             #
                             # Update local linear form
-                            # 
-                            lf_loc[edge_dofs_loc] += \
-                                self.linear_loc(w_phys_1d, kernel, test)
+                            #
+                            print(self.form_eval((g_neu,'v'), (edge,direction)))
+                            lf_loc += self.form_eval((g_neu,'v'), \
+                                                     (edge,direction))
                             break
                     #
                     # Else Check Robin Edge
@@ -1434,42 +1387,25 @@ class System(object):
                                 # ---------------------------------------------
                                 gamma_rob, g_rob = data_rob
                                 #
-                                # Contribution to local bilinear form
-                                #
-                                bf = (1,'u','v')
-                                kernel, trial, test = \
-                                    self.local_eval(bf, phi_ref_1d, r_phys_1d)    
-                                
-                                #
-                                # Get local matrix indices
-                                #
-                                ii,jj = np.meshgrid(edge_dofs_loc,edge_dofs_loc,indexing='ij')
-                            
-                                #
                                 # Update local bilinear form
                                 #
-                                bf_loc[ii,jj] += gamma_rob* \
-                                    self.bilinear_loc(w_phys_1d, kernel,trial,test)                                
-                                #
-                                # Contribution to local linear form
-                                #
-                                kernel, test = \
-                                    self.local_eval((g_rob,'v'),\
-                                                    phi_ref_1d, r_phys_1d)
+                                bf = (1,'u','v')
+                                bf_loc += \
+                                    gamma_rob*self.form_eval((1,'u','v'),\
+                                                             (edge,direction))
                                 #
                                 # Update local linear form
                                 # 
-                                lf_loc[edge_dofs_loc] += gamma_rob* \
-                                    self.linear_loc(w_phys_1d, kernel, test)
-                
-                                break    
-                                 
+                                lf_loc += \
+                                    gamma_rob*self.form_eval((g_rob,'v'),\
+                                                             (edge,direction))
+                                break                           
                 #
                 #  Check for Dirichlet Nodes
                 #
-                x_ref = dof_handler.reference_nodes()
-                x_cell = rule_2d.map(cell,x=x_ref) 
-                cell_dofs = np.arange(dof_handler.n_dofs())
+                x_ref = self.__element.reference_nodes()
+                x_cell = self.__rule_2d.map(cell,x=x_ref) 
+                cell_dofs = np.arange(n_dofs)
                 if bc_dirichlet is not None:
                     for bc_dir in bc_dirichlet:
                         m_dir,g_dir = bc_dir
@@ -1481,7 +1417,7 @@ class System(object):
                                 #
                                 # Modify jth row 
                                 #
-                                notj = np.arange(n_dofs_2d)!=j
+                                notj = np.arange(n_dofs)!=j
                                 uj = g_dir(x_dir[0],x_dir[1])
                                 if node_dofs[j] not in dir_nodes_encountered: 
                                     bf_loc[j,j] = 1.0
@@ -1496,25 +1432,23 @@ class System(object):
                                 #
                                 lf_loc[notj] -= bf_loc[notj,j]*uj 
                                 bf_loc[notj,j] = 0.0            
-                
             #
             # Local to global mapping
             #
-            for i in range(n_dofs_2d):
+            for i in range(n_dofs):
                 #
-                # Update linear form
+                # Update right hand side
                 #
                 if linear_forms is not None:
                     linvec[node_dofs[i]] += lf_loc[i]
+                #
+                # Update system matrix
+                # 
                 if bilinear_forms is not None:
-                    for j in range(n_dofs_2d):
+                    for j in range(n_dofs):
                         rows.append(node_dofs[i]) 
                         cols.append(node_dofs[j]) 
-                        bivals.append(bf_loc[i,j]) 
-                        
-            bf_loc = np.zeros((n_dofs_2d,n_dofs_2d))
-            lf_loc = np.zeros((n_dofs_2d,))
-                                
+                        bivals.append(bf_loc[i,j])                                 
         #            
         # Save results as a sparse matrix 
         #
@@ -1571,35 +1505,108 @@ class System(object):
         """
         n_dofs = self.__element.n_dofs()
         if x == None:
+            #
             # Quadrature points
-            if entity == 'cell':
-                x = self.__rule_2d.nodes()
-                dofs_to_fill = range(n_dofs)
-            elif type(entity) is tuple and entity[0] == 'edge':
-                x = self.__rule_1d.nodes(direction=entity[1])
-                dofs_to_fill = self.__element.get_local_edge_dofs(entity[1])
-        x = np.array(x)  # ensure x is an array.
-         
-        n_points = x.shape[0] 
-        
+            #
+            if self.__phi[entity][derivatives] is not None:
+                return self.__phi[entity][derivatives]
+            else: 
+                if entity == 'cell':
+                    x_ref = self.__rule_2d.nodes()
+                    dofs_to_fill = range(n_dofs)
+                elif type(entity) is tuple and entity[0] == 'edge':
+                    x_ref = self.__rule_1d.nodes(direction=entity[1])
+                    dofs_to_fill = self.__element.get_local_edge_dofs(entity[1])
+        else:
+            # Ensure that x is an array 
+            x_ref = np.array(x)
+            
+        n_points = x_ref.shape[0] 
         phi = np.zeros((n_points,n_dofs))
         if len(derivatives) == 1:
             #
             # No derivatives
             #
             for i in dofs_to_fill:
-                phi[:,i] = self.__element.phi(i,x)  
+                phi[:,i] = self.__element.phi(i,x_ref)  
         elif len(derivatives) == 2:
             # 
             # First derivatives
             #
             i_var = derivatives[1]
             for i in dofs_to_fill:
-                phi[:,i] = self.__element.dphi(i,x,i_var)        
+                phi[:,i] = self.__element.dphi(i,x_ref,i_var)        
+        if x == None and self.__phi[entity][derivatives] is None:
+            #
+            # Store shape function (at quadrature points) for future use
+            # 
+            self.__phi[entity][derivatives] = phi
         return phi
+    
+    
+    def f_eval_loc(self, f, entity, derivatives=(0,), x=None):
+        """
+        Evaluates a function (or its partial derivatives) at a set of 
+        local nodes (quadrature nodes if none are specified).
         
+        Inputs:
+        
+            f: function to be evaluated, either in the form of a 
+                
+            entity: cell or (edge,direction) on which we evaluate f
+            
+            derivatives: tuple specifying the order of the derivative and 
+                the variable 
+                [(0,)]: function evaluation, 
+                (1,0) : 1st derivative wrt first variable, or 
+                (1,1) : 1st derivative wrt second variable
+                
+            x: Points (on physical entity) at which we evaluate f.
+        
+        Output:  
+        
+            fv: vector of function values, at x points
+        """
+        n_dofs = self.__element.n_dofs()         
+        if type(entity) is tuple:
+            assert isinstance(entity[0], Edge), \
+            'Entity should be an Edge.'
+            ref_entity = ('edge',entity[1])
+            if x is None:
+                #
+                # Use Gauss points
+                #
+                x = self.__rule_1d.map(entity[0])
+        elif isinstance(entity, QuadCell):
+            ref_entity = 'cell'
+            if x is None:
+                #
+                # Use Gauss points
+                #
+                x = self.__rule_2d.map(entity)
+        x = np.array(x)  # make sure it's an array
+        # 
+        # Evaluate the Kernel
+        # 
+        if callable(f):
+            # f is a function
+            if len(x.shape) == 1:
+                # one dimensional input
+                return f(x)
+            elif len(x.shape) == 2:
+                # two dimensional input
+                return f(x[:,0],x[:,1])
+        elif isinstance(f,numbers.Real):
+            # f is a constant
+            return f
+        elif len(f) == n_dofs:
+            # f is a nodal vector
+            phi = self.shape_eval(derivatives=derivatives,\
+                                  entity=ref_entity, x=x) 
+            return np.dot(phi,f)
+                
           
-    def local_eval(self, form, entity, x=None):
+    def form_eval(self, form, entity):
         """
         Evaluates the local kernel, test, (and trial) functions of a (bi)linear
         form on a given entity.
@@ -1608,100 +1615,57 @@ class System(object):
         
             form: (bi)linear form as tuple (f,'trial_type','test_type'), where
                 
-                f: function, or constant
+                f: function, constant, or vector of nodes
                 
                 trial_type: str, 'u','ux',or 'uy'
                 
-                test_type: str, 'v', 'vx', 'vy'
+                test_type: str, 'v', 'vx', 'vy'    
                 
-            *phi: shape functions evaluated at the Gauss points on the reference
-                element.    
-                
-            element: finite element containing the shape functions
-            
-            x: points on reference entity
-            
+            entity: cell or (edge,direction) over which we integrate       
         
         Outputs:
         
-            kernel: function evaluated at the local quadrature nodes (n_quad,) 
-            
-            trial: element trial functionals, evaluated at quad nodes (n_quad, n_dof)
-            
-            test: element test functionals, evaluated at quadrature nodes (n_quad, n_dof)
+            (Bi)linear form
                             
         """
-        n_dofs = self.__element.n_dofs()
+        #
+        # Quadrature weights
         # 
-        # Evaluate the Kernel
+        if type(entity) is tuple:
+            assert isinstance(entity[0],Edge), \
+                'Entity should be an Edge.'
+            weight = self.__rule_1d.jacobian(entity[0])*self.__rule_1d.weights()
+        elif isinstance(entity, QuadCell):
+            weight = self.__rule_2d.jacobian(entity)*self.__rule_2d.weights()       
+        #
+        # kernel
         # 
         f = form[0]
-        if callable(f):
-            # f is a function
-            if len(x.shape) == 1:
-                # one dimensional input
-                kernel = f(x)
-            elif len(x.shape) == 2:
-                # two dimensional input
-                kernel = f(x[:,0],x[:,1])
-        elif isinstance(f,numbers.Real):
-            # f is a constant
-            kernel = f
-        elif len(f) == n_dofs:
-            # f is a nodal vector
-            kernel = np.zeros(x.shape)
-            for i in range(n_dofs):
-                kernel += f[i]*self.__element.phi(i,x)
-        if len(form) == 1:
-            return kernel
+        kernel = self.f_eval_loc(f,entity)
         
-        #
-        # Construct test functions               
-        # 
-        
-        n_points = x.shape[0]
         if len(form) > 1:
-            types = list(form[1:])
-            test = np.zeros((n_points,n_dofs))
             #
-            # Derivatives
+            # test function               
             # 
-            if len(types[0])==1:
+            drv = self.parse_derivative_info(form[1])
+            test = self.shape_eval(derivatives=drv, \
+                                   entity=self.make_generic(entity))
+            if len(form) > 2:
                 #
-                # No derivatives
+                # trial function
                 # 
-                for i in range(n_dofs):
-                    test[:,i] = self.__element.phi(i,x)
-            elif len(types[0]) == 2:
-                #
-                # First partial derivatives
-                # 
-                if types[0][1] == 'x':
-                    #
-                    # Partial x derivative
-                    #
-                    for i in range(n_dofs):
-                        test[:,i] = self.__element.dphi(i,x,0)
-                elif types[0][1] == 'y':
-                    #
-                    # Partial y derivative
-                    # 
-                    for i in range(n_dofs):
-                        test[:,i] = self.__element.dphi(i,x,1)
-            elif len(types[0]) >= 3:
-                raise Exception('Only zeroth/first derivatives supported.')
-            if len(form) == 2:
-                return kernel, test
-        #
-        # Construct Trial functions (same as above)   
-        # 
-        if len(form) > 2:
-            trial = np.zeros(n_points,n_dofs)
-            #
-            # Derivatives
-            # 
-            if len(types[1]) == 1: 
-                pass
+                drv = self.parse_derivative_info(form[2])
+                trial = self.shape_eval(derivatives=drv, \
+                                        entity=self.make_generic(entity))
+                if len(form) > 3:
+                    raise Exception('Only Linear and Bilinear forms supported.')
+                else:
+                    return self.bilinear_loc(weight, kernel, trial, test) 
+            else:
+                return self.linear_loc(weight,kernel,test)
+        else: 
+            return np.sum(kernel*weight)   
+        
             
         """
         dim = x.shape[1]
@@ -1764,6 +1728,20 @@ class System(object):
             return kernel, tt[0]  # kernel, test
         
         """
+        
+    def make_generic(self,entity):
+        """
+        Turn a specific entity (QuadCell or Edge) into a generic one
+        e.g. Quadcell --> 'cell'
+             (Edge, direction) --> ('edge',direction)
+        """ 
+        if isinstance(entity, QuadCell):
+            return 'cell'
+        elif len(entity) == 2 and isinstance(entity[0], Edge):
+            return ('edge', entity[1])
+        else:
+            raise Exception('Entity not supported.')
+        
     def parse_derivative_info(self, dstring):
         """
         Input:

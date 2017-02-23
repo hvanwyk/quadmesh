@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-import numpy
+import numpy as np
 
 """
 Created on Jun 29, 2016
@@ -372,7 +372,7 @@ class Mesh(object):
                                 size='smaller',verticalalignment='center')
                     else:
                         # horizontal
-                        y_offset = 0.05*numpy.abs((x1-x0))
+                        y_offset = 0.05*np.abs((x1-x0))
                         ax.text(x_pos,y_pos+y_offset,str(e_count),size='smaller',
                                 horizontalalignment='center')                 
                     e_count += 1
@@ -1358,7 +1358,7 @@ class QuadCell(object):
         self.depth = cell_depth
         self.address = cell_address
         self.position = position
-        self.__flags = set()  # TODO: change 'is_marked', 'marked', 'support_cell',
+        self.__flags = set()  
         
         
         # =====================================================================
@@ -1419,8 +1419,8 @@ class QuadCell(object):
                 # Grid of sub-cells
                 #
                 nx, ny = grid_size                
-                x = numpy.linspace(x0,x1,nx+1)
-                y = numpy.linspace(y0,y1,ny+1)
+                x = np.linspace(x0,x1,nx+1)
+                y = np.linspace(y0,y1,ny+1)
                 vertices = {}
                 edges = {}
                 for i in range(nx+1):
@@ -1844,16 +1844,16 @@ class QuadCell(object):
         xm,ym = self.vertices['M'].coordinate()
         v0,v1 = edge.vertices()
         x0,y0 = v0.coordinate(); x1 = v1.coordinate()[0]
-        if numpy.abs(x0-x1) < 1e-12:
+        if np.abs(x0-x1) < 1e-12:
             #
             # Vertical 
             # 
-            return numpy.sign(x0-xm)*numpy.array([1.,0.])
+            return np.sign(x0-xm)*np.array([1.,0.])
         else:
             #
             # Horizontal
             # 
-            return numpy.sign(y0-ym)*numpy.array([0.,1.])
+            return np.sign(y0-ym)*np.array([0.,1.])
                 
      
     def mark(self, flag=None):
@@ -1942,8 +1942,8 @@ class QuadCell(object):
             cell_children = {}
             xmin, ymin = self.vertices['SW'].coordinate()
             xmax, ymax = self.vertices['NE'].coordinate()
-            x = numpy.linspace(xmin, xmax, nx+1)
-            y = numpy.linspace(ymin, ymax, ny+1)
+            x = np.linspace(xmin, xmax, nx+1)
+            y = np.linspace(ymin, ymax, ny+1)
             for i in range(nx):
                 for j in range(ny):
                     if i == 0 and j == 0:
@@ -2330,7 +2330,7 @@ class TriCell(object):
             #
             # Edges preceding/following e[i]
             # 
-            j = numpy.remainder(i+1,3)
+            j = np.remainder(i+1,3)
             e[i].next = e[j]
             e[j].previous = e[i]
             #
@@ -2490,7 +2490,7 @@ class Edge(object):
         
         x0,y0 = v1.coordinate()
         x1,y1 = v2.coordinate()
-        nnorm = numpy.sqrt((y1-y0)**2+(x1-x0)**2)
+        nnorm = np.sqrt((y1-y0)**2+(x1-x0)**2)
         self.__length = nnorm
         self.__flags = set()
         self.__parent = parent 
@@ -2509,11 +2509,14 @@ class Edge(object):
         """
         Return the edge endpoint coordinates x0,y0,x1,y1, where 
         edge: (x0,y0) --> (x1,y1) 
+        To ensure consistency, the points are sorted, first in the x-component
+        then in the y-component.
         """    
-        v1, v2 = self.vertices()
-        x0,y0 = v1.coordinate()
-        x1,y1 = v2.coordinate()
-        return x0,y0,x1,y1
+        verts = self.vertex_coordinates()
+        verts.sort()
+        x0,y0 = verts[0]
+        x1,y1 = verts[1]
+        return x0,x1,y0,y1
         
         
     def mark(self, flag=None):
@@ -2570,20 +2573,22 @@ class Edge(object):
         Returns the set of vertices
         """
         return self.__vertices
+
     
     def vertex_coordinates(self):
         """
-        Returns the vertex coordinates as numpy array
+        Returns the vertex coordinates as list of tuples
         """        
-        x0,y0 = list(self.__vertices)[0].coordinate()
-        x1,y1 = list(self.__vertices)[1].coordinate()
-        return numpy.array([[x0,y0],[x1,y1]])
+        v1,v2 = self.__vertices
+        return [v1.coordinate(), v2.coordinate()]
+
         
     def length(self):
         """
         Returns the length of the edge
         """
         return self.__length
+    
     
     def intersects_line_segment(self, line):
         """
@@ -2599,23 +2604,23 @@ class Edge(object):
         """        
         # Express edge as p + t*r, t in [0,1]
         v1,v2 = self.vertices()
-        p = numpy.array(v1.coordinate())
-        r = numpy.array(v2.coordinate()) - p
+        p = np.array(v1.coordinate())
+        r = np.array(v2.coordinate()) - p
         
         # Express line as q + u*s, u in [0,1] 
-        q = numpy.array(line[0]) 
-        s = numpy.array(line[1]) - q
+        q = np.array(line[0]) 
+        s = np.array(line[1]) - q
         
-        if abs(numpy.cross(r,s)) < 1e-14:
+        if abs(np.cross(r,s)) < 1e-14:
             #
             # Lines are parallel
             # 
-            if abs(numpy.cross(q-p,r)) < 1e-14:
+            if abs(np.cross(q-p,r)) < 1e-14:
                 #
                 # Lines are collinear
                 # 
-                t0 = numpy.dot(q-p,r)/numpy.dot(r,r)
-                t1 = t0 + numpy.dot(s,r)/numpy.dot(r,r)
+                t0 = np.dot(q-p,r)/np.dot(r,r)
+                t1 = t0 + np.dot(s,r)/np.dot(r,r)
                 
                 if (max(t0,t1) >= 0) and (min(t0,t1) <= 1):
                     # 
@@ -2633,8 +2638,8 @@ class Edge(object):
             #
             # Lines not parallel
             #   
-            t = numpy.cross(q-p,s)/numpy.cross(r,s)
-            u = numpy.cross(p-q,r)/numpy.cross(s,r)
+            t = np.cross(q-p,s)/np.cross(r,s)
+            u = np.cross(p-q,r)/np.cross(s,r)
             
             if 0 <= t <= 1 and 0 <= u <= 1:
                 #
