@@ -484,9 +484,12 @@ class TestSystem(unittest.TestCase):
                           'Q3': (lambda x,y: x**3 - y**3, lambda x,y: 3*x**2, \
                                  lambda x,y: -3*y**2)}
         
-        cell_integrals = {'Q1': (-0.75,-0.5,1.5), 
-                     'Q2': (-2/3.,1.0,0.0),
-                     'Q3': (0.,1.0,-1.0)} 
+        cell_integrals = {'Q1': [-0.75,-0.5,1.5], 
+                          'Q2': [-2/3.,1.0,0.0],
+                          'Q3': [0.,1.0,-1.0]}
+        edge_integrals_west = {'Q1': [-0.5,-0.5,1.0],
+                               'Q2': [-1.0,0.0,0.0],
+                               'Q3': [-0.25,0.0,-1.0]} 
         derivatives = [(0,),(1,0),(1,1)]
         mesh = Mesh.newmesh()
         cell = mesh.root_quadcell() 
@@ -524,8 +527,11 @@ class TestSystem(unittest.TestCase):
             # On Edges   
             # 
             y = random.rand(5)
+            
             for direction in ['W','E','S','N']:
                 edge = cell.get_edges(direction)
+                weights = system.edge_rule().weights()*\
+                    system.edge_rule().jacobian(edge)
                 #
                 # Sanity check
                 # 
@@ -535,15 +541,29 @@ class TestSystem(unittest.TestCase):
                 phi = system.shape_eval(entity=entity,x=x_ref)
                 self.assertTrue(allclose(phi, I[edge_dofs,:]), \
                                 'Shape function incorrect at edge ref nodes.')
-
-                #
-                # Interpolation
-                # 
-                
-                #
-                # Quadrature
-                # 
-                
+                y_phys = system.edge_rule().map(edge, y)
+                f_nodes = test_functions[etype][0](x[:,0],x[:,1])
+                for i in range(3):
+                    #
+                    # Interpolation
+                    # 
+                    phi = system.shape_eval(derivatives=derivatives[i],\
+                                            entity=entity,x=y_phys)
+                    f = test_functions[etype][i]
+                    fvals = f(y_phys[:,0],y_phys[:,1])
+                    self.assertTrue(allclose(dot(phi,f_nodes),fvals),\
+                                'Shape function interpolation failed.') 
+                    #
+                    # Quadrature
+                    # 
+                    if direction == 'W':
+                        phi = system.shape_eval(derivatives=derivatives[i],\
+                                                entity=entity)
+                        self.assertAlmostEqual(dot(weights,dot(phi,f_nodes)),\
+                                 edge_integrals_west[etype][i],places=8,\
+                                 msg='Incorrect integral.')
+                        
+                        
     def test_make_generic(self):
         mesh = Mesh.newmesh()
         element = QuadFE(2,'Q1')

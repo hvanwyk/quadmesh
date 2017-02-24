@@ -1506,7 +1506,6 @@ class System(object):
         
         n_dofs = self.__element.n_dofs()
         if entity == 'cell':
-            dofs_to_fill = range(n_dofs)
             if x is None:
                 #
                 # Quadrature points
@@ -1519,7 +1518,6 @@ class System(object):
                 # Ensure that x is an array 
                 x_ref = np.array(x)
         elif type(entity) is tuple and entity[0] == 'edge':
-            dofs_to_fill = self.__element.get_local_edge_dofs(entity[1])
             if x is None:
                 #
                 # Quadrature points
@@ -1538,14 +1536,14 @@ class System(object):
             #
             # No derivatives
             #
-            for i in dofs_to_fill:
+            for i in range(n_dofs):
                 phi[:,i] = self.__element.phi(i,x_ref)  
         elif len(derivatives) == 2:
             # 
             # First derivatives
             #
             i_var = derivatives[1]
-            for i in dofs_to_fill:
+            for i in range(n_dofs):
                 phi[:,i] = self.__element.dphi(i,x_ref,var=i_var)        
         if x is None and self.__phi[entity][derivatives] is None:
             #
