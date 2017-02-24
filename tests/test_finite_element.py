@@ -211,8 +211,7 @@ class TestSystem(unittest.TestCase):
             return -0.5*x*(1-x)
         cell = mesh.root_quadcell()
         edge_east = cell.get_edges('E')
-        print('Is the eastern edge Neumann?')
-        print(m_neumann(edge_east))    
+    
         gamma_1 = 1.0
         gamma_2 = 2.0
         
@@ -242,9 +241,7 @@ class TestSystem(unittest.TestCase):
                                'System matrix incorrect')
         # check right hand side
         bneu = -1/12.0*array([0,1,0,1])
-        print(bb)
-        print(b)
-        print(bb+bneu)
+
         self.assertTrue(allclose(b,bb+bneu),\
                         'Right hand side with Neumann incorrect')
         
@@ -374,7 +371,6 @@ class TestSystem(unittest.TestCase):
                        boundary_conditions={'dirichlet': None,
                                             'neumann':[(m_neumann,g_neumann)],
                                             'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
-        print(AA+AAx+AAy+R1-A_r1.toarray())
         self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
         self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
         
@@ -407,7 +403,6 @@ class TestSystem(unittest.TestCase):
                        boundary_conditions={'dirichlet': None,
                                             'neumann':[(m_neumann,g_neumann)],
                                             'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
-        print(AA+AAx+AAy+R1-A_r1.toarray())
         self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
         self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
          
@@ -476,7 +471,6 @@ class TestSystem(unittest.TestCase):
         
     
     def test_shape_eval(self):
-        
         test_functions = {'Q1': (lambda x,y: (x+1)*(y-1), lambda x,y: y-1, \
                                  lambda x,y: x+1), 
                           'Q2': (lambda x,y: x**2 -1, lambda x,y: 2*x, \

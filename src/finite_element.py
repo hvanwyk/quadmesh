@@ -1363,7 +1363,6 @@ class System(object):
                     for bc_neu in bc_neumann:
                         m_neu,g_neu = bc_neu 
                         if m_neu(edge):
-                            print('Neumann Edge')
                             # -------------------------------------------------
                             # Neumann edge
                             # -------------------------------------------------
@@ -1371,7 +1370,6 @@ class System(object):
                             #
                             # Update local linear form
                             #
-                            print(self.form_eval((g_neu,'v'), (edge,direction)))
                             lf_loc += self.form_eval((g_neu,'v'), \
                                                      (edge,direction))
                             break
