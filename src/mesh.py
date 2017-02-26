@@ -5,7 +5,6 @@ import numpy as np
 Created on Jun 29, 2016
 @author: hans-werner
 
-TODO: Add flexible tagging.
 """
 
 class Mesh(object):
@@ -50,20 +49,33 @@ class Mesh(object):
         quadcell = QuadCell(box=box, grid_size=grid_size)
         root_node = Node(grid_size=grid_size)
         return cls(quadcell=quadcell, root_node=root_node)
+    
      
     def box(self):
         """
         Return the dimensions of the rectangular domain
         """
         return self.root_quadcell().box()
+    
         
     def grid_size(self):
         """
         Return grid size on coarsest level
         """
         return self.__quadcell.grid_size
+    
         
-        
+    def get_number_of_cells(self):
+        """
+        Return the number of cells
+        """
+        if hasattr(self, '__n_quadcells'):
+            return self.__n_quadcells
+        else:
+            self.__n_quadcells = len(self.__root_node.find_leaves())
+            return self.__n_quadcells
+    
+            
     def root_node(self):
         """
         Return tree node used for mesh
@@ -573,8 +585,8 @@ class Node(object):
         """
         assert self.type == 'ROOT', 'Only ROOT nodes have children in grid.'
         return self.__grid_size
-    
-    
+        
+        
     def find_neighbor(self, direction):
         """
         Description: Returns the deepest neighboring cell, whose depth is at 
@@ -1750,29 +1762,29 @@ class QuadCell(object):
         return not self.parent == None
     
     
-    def contains_point(self, point):
+    def contains_point(self, points, interior=False):
         """
         Determine whether the given cell contains a point
         
         Input: 
         
-            point: tuple (x,y)
+            point: tuple (x,y), list of tuples, or (n,2) array
             
         Output: 
         
-            contains_point: boolean, True if cell contains point, False otherwise
+            contains_point: boolean array, True if cell contains point, 
+            False otherwise
               
         """
-        # TODO: What about points on the boundary? They will be counted double          
-        x,y = point
-        x_min, y_min = self.vertices['SW'].coordinate()
-        x_max, y_max = self.vertices['NE'].coordinate()
+        # TODO: What about points on the boundary? They will be counted double.          
+        xy = np.array(points)
+        x_min, x_max, y_min, y_max = self.box()
         
-        if x_min <= x <= x_max and y_min <= y <= y_max:
-            return True
-        else:
-            return False
-    
+        in_box = (x_min <= xy[:,0]) & (xy[:,0] <= x_max) & \
+                 (y_min <= xy[:,1]) & (xy[:,1] <= y_max)
+        return in_box
+            
+
     
     def intersects_line_segment(self, line):
         """

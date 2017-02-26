@@ -672,11 +672,13 @@ class DofHandler(object):
         """
         Return the mesh nodes
         """
+        assert hasattr(self, 'n_global_dofs'), \
+            'First distribute dofs.'
         x = np.empty((self.n_global_dofs,2))
         rule = GaussRule(1,shape='quadrilateral')
         x_ref = self.reference_nodes()
         for leaf in self.__root_node.find_leaves():
-            g_dofs = self.get_cell_dofs(leaf)
+            g_dofs = self.get_node_dofs(leaf)
             x[g_dofs,:] = rule.map(leaf.quadcell(),x=x_ref)
         return x
                 
@@ -778,7 +780,7 @@ class DofHandler(object):
             dofs = dofs[0]
         return dofs    
     
-    def get_cell_dofs(self, node):
+    def get_node_dofs(self, node):
         """
         Return all dofs corresponding to a given tree node 
         """
@@ -1200,6 +1202,80 @@ class GaussRule(object):
         return x_phys
 
 
+    def inverse_map(self, entity, x, mapto='2d'):
+        """
+        Return a point in the given entity, mapped to the standard reference
+        domain. 
+        
+        Inputs:
+        
+            entity: QuadCell or (Edge,direction) containing points x
+            
+            x: numpy array of points in cell/on edge
+            
+            mapto: str, '2d' - map points to 2d reference domain
+                        '1d' - map points on edge (or 1d cell) to 1d ref domain 
+            
+        Output:
+        
+            x_ref: numpy array of equivalent points on the reference cell 
+        
+        """
+        dim = len(x.shape)
+        cell_type = self.__cell_type
+        x = np.array(x)
+        n_points = x.shape[0]
+        if dim==1:
+            #
+            # Map from interval to reference interval
+            #
+            x0, x1 = entity.box()
+            x_ref = (x - x0)/(x1-x0)
+        elif cell_type=='edge':
+            #
+            # Map from edge
+            #
+            assert len(entity)==2 and isinstance(entity[0],Edge),\
+                'entity should be a tuple (Edge,direction)' 
+            if mapto=='1d':
+                #
+                # Map to 1D reference           
+                # 
+                if entity[1] in ['W','E']:
+                    y0,y1 = entity[0].box()
+                    x_ref = (x[:,1]-y0)/(y1-y0)
+                elif entity[1] in ['N','S']:
+                    x0,x1 = entity[0].box()
+                    x_ref = (x[:,0]-x0)/(x1-x0)
+            elif mapto=='2d':
+                x_ref = np.zeros((n_points,2))
+                #
+                # Map to 2D reference
+                #
+                if entity[1] in ['W','E']:
+                    y0,y1 = entity[0].box()
+                    x_ref[:,1] = (x[:,1]-y0)/(y1-y0)
+                    if entity[1]=='E':
+                        x_ref[:,0] = 1.0
+                elif entity[1] in ['N','S']:
+                    x0,x1 = entity[0].box()
+                    x_ref[:,0] = (x[:,0]-x0)/(x1-x0)
+                    if entity[1]=='N':
+                        x_ref[:,1] = 1.0
+        elif cell_type=='quadrilateral':
+            #
+            # Map from edge to 2d reference 
+            #
+            assert isinstance(entity, QuadCell), 'Entity should be a cell.'
+            x0,x1,y0,y1 = entity.box()
+            x_ref = np.zeros((n_points,2))
+            x_ref[:,0] = (x[:,0]-x0)/(x1-x0)
+            x_ref[:,1] = (x[:,1]-y0)/(y1-y0)
+        elif cell_type == 'triangle':
+            raise Exception('Triangles not supported (yet).')        
+        return x_ref
+        
+        
     def jacobian(self, entity):
         """
         Jacobian of the Mapping from reference to physical cell
@@ -1335,7 +1411,7 @@ class System(object):
         cols = []
         dir_nodes_encountered = []
         for node in self.__mesh.root_node().find_leaves():
-            node_dofs = self.__dofhandler.get_cell_dofs(node)
+            node_dofs = self.__dofhandler.get_node_dofs(node)
             cell = node.quadcell()            
             #
             # Assemble local system matrices/vectors
@@ -1460,8 +1536,37 @@ class System(object):
             return out[0]
         elif len(out) == 2:
             return tuple(out)
-                 
     
+    
+    def get_n_nodes(self):
+        """
+        Return the number of dofs 
+        """
+        return self.__dofhandler.n_nodes()
+    
+    
+    def get_node_dofs(self,node):
+        """
+        Return the degrees of freedom associated with node
+        """             
+        return self.__dofhandler.get_node_dofs(node)
+    
+    
+    def mesh_nodes(self):
+        """
+        Returns the locations of all degrees of freedom
+        """
+        return self.__dofhandler.mesh_nodes()
+     
+     
+    def x_loc(self,cell):
+        """
+        Return the nodes corresponding to the local cell dofs 
+        """   
+        x_ref = self.__element.reference_nodes()
+        return self.__rule_2d.map(cell,x=x_ref)
+        
+        
     def bilinear_loc(self,weight,kernel,trial,test):
         """
         Compute the local bilinear form over an element
@@ -1558,9 +1663,10 @@ class System(object):
         
         Inputs:
         
-            f: function to be evaluated, either in the form of a 
+            f: function to be evaluated, either defined explicitly, or in
+                terms of its LOCAL node values
                 
-            entity: cell or (edge,direction) on which we evaluate f
+            entity: actual cell or (edge,direction) on which we evaluate f
             
             derivatives: tuple specifying the order of the derivative and 
                 the variable 
@@ -1584,6 +1690,7 @@ class System(object):
                 # Use Gauss points
                 #
                 x = self.__rule_1d.map(entity[0])
+            
         elif isinstance(entity, QuadCell):
             ref_entity = 'cell'
             if x is None:
@@ -1591,6 +1698,7 @@ class System(object):
                 # Use Gauss points
                 #
                 x = self.__rule_2d.map(entity)
+        
         x = np.array(x)  # make sure it's an array
         # 
         # Evaluate the Kernel
@@ -1608,8 +1716,10 @@ class System(object):
             return f
         elif len(f) == n_dofs:
             # f is a nodal vector
+            # Map x-values to reference element
+            x_ref = self.__rule_2d.inverse_map(entity, x)
             phi = self.shape_eval(derivatives=derivatives,\
-                                  entity=ref_entity, x=x) 
+                                  entity=ref_entity, x=x_ref) 
             return np.dot(phi,f)
                 
           

@@ -7,9 +7,10 @@ Created on Feb 24, 2017
 import unittest
 from plot import Plot
 from mesh import Mesh
-from finite_element import QuadFE
-
+from finite_element import QuadFE, DofHandler
 import matplotlib.pyplot as plt
+import numpy as np
+import matplotlib as mpl 
 
 class TestPlot(unittest.TestCase):
 
@@ -22,12 +23,37 @@ class TestPlot(unittest.TestCase):
         fig, ax = plt.subplots() 
         plot = Plot(ax)
         plot.mesh(mesh,cell_numbers=True, vertex_numbers=True)
-        plt.show()
+        #plt.show()
         element = QuadFE(2,'Q3')
         
         _, ax = plt.subplots()
         plot = Plot(ax)
         plot.mesh(mesh,element=element,dofs=True)
+        #plt.show()
+    
+    def test_plot_function(self):
+        print("Matplotlib version: {0}".format(mpl.__version__))
+        mesh = Mesh.newmesh(grid_size=(40,40))
+        mesh.refine()
+        element = QuadFE(2,'Q3')
+        _,ax = plt.subplots() 
+        plot1 = Plot(ax)
+        f = lambda x,y: np.sin(3*np.pi*x*y)
+        dof_handler = DofHandler(mesh,element)
+        dof_handler.distribute_dofs()
+        x = dof_handler.mesh_nodes()
+        f_vec = f(x[:,0],x[:,1])
+        plot1.function(f, mesh, element)
+        #plot.function(f_vec,mesh, element)
+        
+        fm = []
+        for cell in mesh.iter_quadcells():
+            xi,yi = cell.vertices['M'].coordinate()
+            fm.append(f(xi,yi))
+        fm = np.array(fm)
+        _,ax = plt.subplots()
+        plot2 = Plot(ax)
+        plot2.function(fm,mesh)
         plt.show()
         
 if __name__ == "__main__":

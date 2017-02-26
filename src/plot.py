@@ -5,8 +5,9 @@ Created on Feb 8, 2017
 '''
 
 import matplotlib.pyplot as plt
+from matplotlib import colors, cm 
 import numpy as np
-from finite_element import DofHandler
+from finite_element import DofHandler, System
 
 class Plot(object):
     """
@@ -128,7 +129,7 @@ class Plot(object):
                     x0,x1,y0,y1 = cell.box()
                     x_pos = x0 + x_ref[:,0]*(x1-x0)
                     y_pos = y0 + x_ref[:,1]*(y1-y0)
-                    cell_dofs = dofhandler.get_cell_dofs(node)
+                    cell_dofs = dofhandler.get_node_dofs(node)
                     for i in range(n_dofs):
                         self.__ax.text(x_pos[i],y_pos[i],\
                                        str(cell_dofs[i]), size = '7',\
@@ -137,17 +138,66 @@ class Plot(object):
                                        backgroundcolor='w')
                     
 
-    def nodal_function(self,f,mesh,element):
+    def function(self,f,mesh,element=None,resolution=(100,100)):
         """
-        Plot a function defined at the d
+        Plot a function defined at the element nodes
+        
+        Loop over cells
+            get local dofs
+            evaluate shapefunctions
+            
         """
+        #
+        # Initialize grid
+        # 
+        x0,x1,y0,y1 = mesh.box()
+        nx, ny = resolution
+        x_range = np.linspace(x0,x1,nx)
+        y_range = np.linspace(y0,y1,ny)
+        x,y = np.meshgrid(x_range,y_range)
+        if callable(f):
+            #
+            # A function 
+            # 
+            z = f(x,y)  # TODO: Wrong plot if domain has gaps.
+            plt.contourf(x,y,z.reshape(ny,nx),100)
+        else:
+            #
+            # A vector
+            #
+            if len(f)==mesh.get_number_of_cells():
+                #
+                # Mesh function 
+                #
+                #my_map = cm.viridis
+                normal = colors.Normalize(f.min(), f.max())
+                color = plt.cm.viridis(normal(f))
+                for leaf,c in zip(mesh.root_node().find_leaves(),color):
+                    cell = leaf.quadcell()
+                    x0,x1,y0,y1 = cell.box()
+                    hx,hy = x1-x0, y1-y0
+                    rect = plt.Rectangle((x0,y0),hx,hy, facecolor=c)
+                    self.__ax.add_patch(rect)
+            else:
+                #
+                # A Node function
+                #  
+                assert element is not None, \
+                'Require element information for node functions'
+                
+                system = System(mesh,element)
+                
+                assert len(f)==system.get_n_nodes(), \
+                'Functions vectors should have length n_cells or n_dofs' 
+                      
+                xy = np.array([x.flatten(),y.flatten()]).T
+                z = np.empty((nx*ny,))
+                z[:] = np.nan
         
-    
-    def mesh_function(self,f,mesh):
-        pass
-    
-    
-    
-    
-
-        
+                for node in mesh.root_node().find_leaves():
+                    f_loc = f[system.get_node_dofs(node)]
+                    cell = node.quadcell()
+                    in_cell = cell.contains_point(xy)
+                    xy_loc = xy[in_cell,:]
+                    z[in_cell] = system.f_eval_loc(f_loc,cell,x=xy_loc)     
+                self.__ax = plt.contourf(x,y,z.reshape(ny,nx),100)

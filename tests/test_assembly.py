@@ -60,7 +60,7 @@ for node in mesh.root_node().find_leaves():
     #
     # Loop over mesh nodes
     # 
-    node_dofs = dh.get_cell_dofs(node)
+    node_dofs = dh.get_node_dofs(node)
     quadcell = node.quadcell()
     #
     # Local system matrices

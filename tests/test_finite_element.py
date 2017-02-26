@@ -466,9 +466,43 @@ class TestSystem(unittest.TestCase):
     
     def test_f_eval_loc(self):
         mesh = Mesh.newmesh()
-        element = QuadFE(2,'Q1')
+        cell = mesh.root_quadcell()
+        node = mesh.root_node()
+        test_functions = {'Q1': lambda x,y: (2+x)*(y-3),
+                          'Q2': lambda x,y: (2+x**2+x)*(y-2)**2,
+                          'Q3': lambda x,y: (2*x**3-3*x)*(y**2-2*y)} 
+        x_test = random.rand(5,2)
+    
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            system = System(mesh,element)
+            f = test_functions[etype]             
+            f_test = f(x_test[:,0],x_test[:,1])
+            # -----------------------------------------------------------------
+            # Interpolation
+            # -----------------------------------------------------------------
+            #
+            # f in functional form                   
+            # 
+            f_loc = system.f_eval_loc(f, entity=cell,x=x_test)
+            self.assertTrue(allclose(f_loc,f_test),\
+                                   'Function not correctly interpolated.')
         
+            #
+            # f in nodal form
+            #
+            local_dofs = system.get_node_dofs(node)
+            x = system.mesh_nodes()
+            x_loc = x[local_dofs,:]
+            f_nodes = f(x_loc[:,0],x_loc[:,1])
+            f_loc = system.f_eval_loc(f_nodes,entity=cell,x=x_test)
+            self.assertTrue(allclose(f_loc,f_test), \
+                                   'Function not correctly interpolated.')
         
+            # -----------------------------------------------------------------
+            # Quadrature
+            # -----------------------------------------------------------------
+             
     
     def test_shape_eval(self):
         test_functions = {'Q1': (lambda x,y: (x+1)*(y-1), lambda x,y: y-1, \
@@ -556,7 +590,10 @@ class TestSystem(unittest.TestCase):
                         self.assertAlmostEqual(dot(weights,dot(phi,f_nodes)),\
                                  edge_integrals_west[etype][i],places=8,\
                                  msg='Incorrect integral.')
-                        
+    
+    
+       
+        
                         
     def test_make_generic(self):
         mesh = Mesh.newmesh()
