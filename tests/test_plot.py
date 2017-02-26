@@ -46,6 +46,14 @@ class TestPlot(unittest.TestCase):
         plot1.function(f, mesh, element)
         #plot.function(f_vec,mesh, element)
         
+        mesh = Mesh.newmesh(grid_size=(5,5))
+        mesh.refine()
+        for i in range(4):
+            for leaf in mesh.root_node().find_leaves():
+                if np.random.rand() < 0.5:
+                    leaf.mark('refine')
+            mesh.refine('refine')
+            mesh.unmark(nodes='True')
         fm = []
         for cell in mesh.iter_quadcells():
             xi,yi = cell.vertices['M'].coordinate()

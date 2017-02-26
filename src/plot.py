@@ -159,7 +159,7 @@ class Plot(object):
             #
             # A function 
             # 
-            z = f(x,y)  # TODO: Wrong plot if domain has gaps.
+            z = f(x,y)  
             plt.contourf(x,y,z.reshape(ny,nx),100)
         else:
             #
