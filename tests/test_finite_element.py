@@ -7,7 +7,9 @@ from finite_element import QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
 from numpy import sqrt, sum, dot, sin, pi, array, abs, empty, zeros, max, \
                   allclose, eye, random
-
+import numpy.linalg as la
+from plot import Plot
+import matplotlib.pyplot as plt
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -292,6 +294,27 @@ class TestSystem(unittest.TestCase):
         bf = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')]
         lf = [(f,'v')]
         A, b = s.assemble(bilinear_forms=bf, linear_forms=lf)
+#         dofhandler = DofHandler(mesh,element)
+#         dofhandler.distribute_dofs()
+#         x = dofhandler.mesh_nodes()
+#         ui = u(x[:,0],x[:,1])
+#         print(A.toarray().dot(ui)-b)
+#         _, ax1 = plt.subplots()
+#         node = mesh.root_node()
+#         dofs = dofhandler.get_node_dofs(node)
+#         edge_dofs = dofhandler.get_local_edge_dofs('W')
+#         #print(ax.shape)
+#         plot = Plot(ax1)
+#         plot.function(ui, mesh, element)
+#         ua = la.solve(A.toarray(), b)
+#         print('ua={0}'.format(ua))
+#         print('ui={0}'.format(ui))
+#         _,ax2 = plt.subplots()
+#         plot2 = Plot(ax2)
+#         plot2.function(ua-ui,mesh,element)
+#         plt.show()
+#         print(A.dot(ui)-b)
+        
         rule2d = GaussRule(9,shape='quadrilateral')
         r = rule2d.nodes()
         w = rule2d.weights()
@@ -380,31 +403,36 @@ class TestSystem(unittest.TestCase):
         e_r2 = mesh.root_quadcell().get_edges('N') 
         
         r_phys_1d = rule_1d.map(e_r2,r_ref_1d)
-        w_r1 = w_ref_1d*rule_1d.jacobian(e_r2)
-        g_r1 = g_robin_1(r_phys_1d[:,0], r_phys_1d[:,1])
-        bb_r1 = zeros((n_dofs,))
-        bb_r1[0] = sum(w_r1*phi0*g_r1)
-        bb_r1[1] = sum(w_r1*phi1*g_r1)
-        bb_r1[6] = sum(w_r1*phi2*g_r1)
+        w_r2 = w_ref_1d*rule_1d.jacobian(e_r2)
+        g_r2 = g_robin_2(r_phys_1d[:,0], r_phys_1d[:,1])
+        bb_r2 = zeros((n_dofs,))
+        bb_r2[0] = sum(w_r1*phi0*g_r2)
+        bb_r2[1] = sum(w_r1*phi1*g_r2)
+        bb_r2[6] = sum(w_r1*phi2*g_r2)
         
-        R1 = zeros((n_dofs,n_dofs))
-        R1[0,0] = sum(w_r1*phi0*phi0)
-        R1[0,1] = sum(w_r1*phi0*phi1)
-        R1[1,1] = sum(w_r1*phi1*phi1)
-        R1[1,0] = R1[0,1]
-        R1[0,6] = sum(w_r1*phi0*phi2)
-        R1[6,0] = R1[0,6]
-        R1[6,6] = sum(w_r1*phi2*phi2)
-        R1[1,6] = sum(w_r1*phi1*phi2)
-        R1[6,1] = sum(w_r1*phi1*phi2)
+        R2 = zeros((n_dofs,n_dofs))
+        R2[0,0] = sum(w_r2*phi0*phi0)
+        R2[0,1] = sum(w_r2*phi0*phi1)
+        R2[1,1] = sum(w_r2*phi1*phi1)
+        R2[1,0] = R1[0,1]
+        R2[0,6] = sum(w_r2*phi0*phi2)
+        R2[6,0] = R1[0,6]
+        R2[6,6] = sum(w_r2*phi2*phi2)
+        R2[1,6] = sum(w_r2*phi1*phi2)
+        R2[6,1] = sum(w_r2*phi1*phi2)
         
-        A_r1, b_r1 = \
+        A_r2, b_r2 = \
             s.assemble(bilinear_forms=bf,linear_forms=lf,\
                        boundary_conditions={'dirichlet': None,
                                             'neumann':[(m_neumann,g_neumann)],
-                                            'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
-        self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
-        self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
+                                            'robin': [(m_robin_1,(gamma_1,g_robin_1)),
+                                                      (m_robin_2,(gamma_2,g_robin_2))]})
+        print('A_approx = {0}'.format(A_r2.toarray()))
+        print('A_explicit = {0}'.format(AA+AAx+AAy+R1+gamma_2*R2-A_r2.toarray()))    
+        self.assertTrue(allclose(AA+AAx+AAy+R1+gamma_2*R2,A_r2.toarray()),\
+                        'Robin condition 2, system incorrect.')
+        self.assertTrue(allclose(b+bb_neu+gamma_1*bb_r1+gamma_2*bb_r2,b_r2),
+                        'Robin conditions 2, rhs incorrect.')
          
         dofhandler = DofHandler(mesh,element)
         dofhandler.distribute_dofs()
