@@ -16,19 +16,20 @@ class TestPlot(unittest.TestCase):
 
 
     def testPlotMesh(self):
-        mesh = Mesh.newmesh(grid_size=(4,4))
+        mesh = Mesh.newmesh(grid_size=(2,2))
         mesh.refine()
-        mesh.root_node().children[2,2].mark('smaller')
-        mesh.refine(flag='smaller')
+        #mesh.root_node().children[1,1].mark('smaller')
+        #mesh.refine(flag='smaller')
         fig, ax = plt.subplots() 
-        plot = Plot(ax)
-        plot.mesh(mesh,cell_numbers=True, vertex_numbers=True)
+        plot = Plot()
+        element = QuadFE(2,'Q2')
+        ax = plot.mesh(ax,mesh,element=element, cell_numbers=True, dofs=True)
         #plt.show()
         element = QuadFE(2,'Q3')
         
         _, ax = plt.subplots()
-        plot = Plot(ax)
-        plot.mesh(mesh,element=element,dofs=True)
+        plot = Plot()
+        ax = plot.mesh(ax,mesh,element=element,dofs=True)
         #plt.show()
     
     def test_plot_function(self):
@@ -36,14 +37,15 @@ class TestPlot(unittest.TestCase):
         mesh = Mesh.newmesh(grid_size=(40,40))
         mesh.refine()
         element = QuadFE(2,'Q3')
-        _,ax = plt.subplots() 
-        plot1 = Plot(ax)
+        fig,ax = plt.subplots() 
+        plot1 = Plot()
         f = lambda x,y: np.sin(3*np.pi*x*y)
         dof_handler = DofHandler(mesh,element)
         dof_handler.distribute_dofs()
         x = dof_handler.mesh_nodes()
         f_vec = f(x[:,0],x[:,1])
-        plot1.function(f, mesh, element)
+        ax = plot1.function(ax,f, mesh, element)
+        #plt.colorbar(fig)
         #plot.function(f_vec,mesh, element)
         
         mesh = Mesh.newmesh(grid_size=(5,5))
@@ -60,8 +62,8 @@ class TestPlot(unittest.TestCase):
             fm.append(f(xi,yi))
         fm = np.array(fm)
         _,ax = plt.subplots()
-        plot2 = Plot(ax)
-        plot2.function(fm,mesh)
+        plot2 = Plot()
+        ax = plot2.function(ax,fm,mesh)
         plt.show()
         
 if __name__ == "__main__":

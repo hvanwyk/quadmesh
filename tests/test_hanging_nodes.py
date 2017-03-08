@@ -1,6 +1,7 @@
 from mesh import Mesh
 from finite_element import QuadFE, DofHandler
 import matplotlib.pyplot as plt
+import numpy as np
 
 # TODO: Add this all to the test file.
         
@@ -32,7 +33,7 @@ for n in range(order+1):
     for yi in x:
         zline = []
         for xi in x:
-            zline.append(V.phi(n,(xi,yi)))
+            zline.append(V.phi(n,np.array([(xi,yi)])))
         print([v for v in zline])       
 """    
 print('Evaluating shape functions at hanging nodes.')

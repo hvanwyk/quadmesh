@@ -7,9 +7,11 @@ from finite_element import QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
 from numpy import sqrt, sum, dot, sin, pi, array, abs, empty, zeros, max, \
                   allclose, eye, random
+import numpy as np
 import numpy.linalg as la
 from plot import Plot
 import matplotlib.pyplot as plt
+import matplotlib.colorbar as colorbar
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -114,15 +116,18 @@ class TestSystem(unittest.TestCase):
     
     def test_assembly(self):
         
+        # =====================================================================
+        # One Cell
+        # =====================================================================
+        mesh = Mesh.newmesh()
         # ---------------------------------------------------------------------
-        # One square 
+        # Piecewise Linear
         # ---------------------------------------------------------------------
+        V = QuadFE(2,'Q1')
+        s = System(mesh,V, n_gauss=(3,9))
         #
         # Mass Matrix
         # 
-        mesh = Mesh.newmesh()
-        V = QuadFE(2,'Q1')
-        s = System(mesh,V, n_gauss=(3,9))
         lf = [(1,'v')]
         bf = [(1,'u','v')]
         A,b = s.assemble(bf,lf)
@@ -145,8 +150,6 @@ class TestSystem(unittest.TestCase):
         A = s.assemble(bilinear_forms=bf)
         AAy = 1/6.0*array([[2,1,-2,-1],[1,2,-1,-2],[-2,-1,2,1],[-1,-2,1,2]])
         self.assertTrue(allclose(A.toarray(),AAy), 'Ay incorrect')
-
-
         #
         # Use matrices to integrate
         #
@@ -159,20 +162,20 @@ class TestSystem(unittest.TestCase):
                                'Should integrate to 4/pi^2.')
         
         # ---------------------------------------------------------------------
-        # Elaborate tests with Boundary conditions
-        # ---------------------------------------------------------------------
-        def m_dirichlet(x,y):
-            """
-            Dirichlet Node Marker: x = 0
-            """
-            return (abs(x)<1e-10)
-        
+        # Higher order: Test with boundary conditions
+        # ---------------------------------------------------------------------        
         def m_neumann(edge):
             """
             Neumann Edge Marker: x = 1
             """
             x = array(edge.vertex_coordinates())
             return (abs(x[:,0]-1)<1e-9).all()
+        
+        def g_neumann(x,y):
+            """
+            Neumann function
+            """        
+            return -y*(1-y)
                 
         def m_robin_1(edge):
             """
@@ -181,291 +184,226 @@ class TestSystem(unittest.TestCase):
             x = array(edge.vertex_coordinates())
             return (abs(x[:,1]-0)<1e-9).all()  
         
+        def g_robin_1(x,y):
+            """
+            Robin boundary conditions for y = 0
+            """
+            return -x*(1-x)
+        
         def m_robin_2(edge):
             """
             Robin Edge Marker: y = 1
             """
             x = array(edge.vertex_coordinates())
             return (abs(x[:,1]-1)<1e-9).all() 
-            
-        def g_dirichlet(x,y):
-            """
-            Dirichlet function
-            """
-            return zeros(shape=x.shape)
-        
-        def g_neumann(x,y):
-            """
-            Neumann function
-            """        
-            return -y*(1-y)
-        
-        def g_robin_1(x,y):
-            """
-            Robin boundary conditions for y = 0
-            """
-            return -x*(1-x)      
         
         def g_robin_2(x,y):
             """
             Robin boundary conditions for y = 1
             """
             return -0.5*x*(1-x)
-        cell = mesh.root_quadcell()
-        edge_east = cell.get_edges('E')
-    
+        
+        def m_dirichlet(x,y):
+            """
+            Dirichlet Node Marker: x = 0
+            """
+            return (abs(x)<1e-10)
+            
+        def g_dirichlet(x,y):
+            """
+            Dirichlet function
+            """
+            return zeros(shape=x.shape)
+               
         gamma_1 = 1.0
         gamma_2 = 2.0
-        
         u = lambda x,y: x*(1-x)*y*(1-y)  # exact solution
-        f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))  # forcing term
+        f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))+u(x,y)  # forcing term
         bf = [(1,'ux','vx'),(1,'uy','vy'),(1,'u','v')]  # bilinear forms
         lf = [(f,'v')]  # linear forms
-        s = System(mesh, V, n_gauss=(3,9))
-        A,b = s.assemble(bilinear_forms=bf,linear_forms=lf,\
-                         boundary_conditions=None)
-        # check system matrix
-        self.assertTrue(allclose(A.toarray(),AA+AAx+AAy),
-                        'System matrix incorrect')
-        # check right hand side
-        bb = 1/6.0*array([1,1,1,1])
-        self.assertTrue(allclose(b,bb), 'Right hand side incorrect')
+        cell = mesh.root_quadcell()
+        node = mesh.root_node()
+        for etype in ['Q2','Q3']:
+            element = QuadFE(2,etype)
+            s = System(mesh,element)
+            x = s.mesh_nodes()
+            ui = u(x[:,0],x[:,1])
+            n_dofs = s.get_n_nodes()
+            #
+            # Assemble without boundary conditions
+            # 
+            A, b = s.assemble(bilinear_forms=bf, linear_forms=lf)
+            AA = s.form_eval((1,'u','v'), cell)
+            AAx = s.form_eval((1,'ux','vx'),cell)
+            AAy = s.form_eval((1,'uy','vy'),cell)
+            bb  = s.form_eval((f,'v'),cell)
+            self.assertTrue(allclose(AA+AAx+AAy,A.toarray()), 
+                            'System matrix not correct')
+            self.assertTrue(allclose(bb,b),'Forcing term incorrect.') 
+    
         
-        # 
-        # Add Neumann boundary conditions
-        # 
-        bc_1 = {'dirichlet': None, 'neumann': [(m_neumann,g_neumann)],
-                'robin': None}
-        A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
-                         boundary_conditions=bc_1)
-        # check system matrix
-        self.assertTrue(allclose(A.toarray(),AA+AAx+AAy),
-                               'System matrix incorrect')
-        # check right hand side
-        bneu = -1/12.0*array([0,1,0,1])
-
-        self.assertTrue(allclose(b,bb+bneu),\
-                        'Right hand side with Neumann incorrect')
+            #
+            # Add Neumann
+            #
+            bc_1 = {'dirichlet': None, 'neumann': [(m_neumann,g_neumann)],
+                    'robin': None}
+            A,b = s.assemble(bilinear_forms=bf, linear_forms=lf,\
+                             boundary_conditions=bc_1)
+            bb_neu = s.form_eval((g_neumann,'v'), cell, edge_loc='E')
+            self.assertTrue(allclose(bb+bb_neu,b),'Forcing term incorrect.')
+            
+            #
+            # Add Robin
+            # 
+            bc_2 = {'dirichlet': None,\
+                    'neumann':   [(m_neumann,g_neumann)], \
+                    'robin':     [(m_robin_1, (gamma_1,g_robin_1)),\
+                                  (m_robin_2,(gamma_2,g_robin_2))],\
+                    'periodic':  None}
+            A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
+                             boundary_conditions=bc_2)
+            
+            bb_R1 = gamma_1*s.form_eval((g_robin_1,'v'), cell, edge_loc='S')
+            AA_R1 = gamma_1*s.form_eval((g_robin_1,'u','v'),cell,edge_loc='S')
         
-        #
-        # Add Robin boundary conditions
-        #
-        bc_2 = {'dirichlet': None,\
-                'neumann': [(m_neumann,g_neumann)], \
-                'robin': [(m_robin_1, (gamma_1,g_robin_1)),\
-                          (m_robin_2,(gamma_2,g_robin_2))],\
-                'periodic': None}
-        A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
-                         boundary_conditions=bc_2)
-        # Check system matrix
-        R1 = 1/6.0*array([[2,1,0,0],[1,2,0,0],[0,0,0,0],[0,0,0,0]])
-        R2 = 1/3.0*array([[0,0,0,0],[0,0,0,0],[0,0,2,1],[0,0,1,2]])
-        self.assertTrue(allclose(A.toarray(),AA+AAx+AAy+R1+R2),'System matrix incorrect')
-        
-        # check right hand side
-        bR1 = -1/12.0*array([1,1,0,0])
-        bR2 = -1/12.0*array([0,0,1,1])
-        self.assertTrue(allclose(b,bb+bneu+bR1+bR2),\
-                        'Right hand side incorrect.')
-        #
-        # Add Dirichlet boundary conditions 
-        # 
-        bc_3 = {'dirichlet': [(m_dirichlet,g_dirichlet)],\
-                'neumann': [(m_neumann,g_neumann)], \
-                'robin': [(m_robin_1, (gamma_1,g_robin_1)),\
-                          (m_robin_2,(gamma_2,g_robin_2))],\
-                'periodic': None}
-        
-        A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
-                   boundary_conditions=bc_3)
-        # Check system matrix
-        AAdir = array([[1,0,0,0],[0,10.0/9.0,0,-1.0/9.0],
-                       [0,0,1.0,0],[0,-1./9.,0,13./9.]]) 
-        self.assertTrue(allclose(A.toarray(),AAdir),'System matrix incorrect')
-        bbdir = 1/6.0*zeros((4,))
-        self.assertTrue(allclose(b,bbdir),'Right hand side incorrect') 
-        
-        #
-        # Test Q2
-        #
-        mesh = Mesh.newmesh()
-        element = QuadFE(2,'Q2')
-        s = System(mesh,element,n_gauss=(3,9))
-        bf = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')]
-        lf = [(f,'v')]
-        A, b = s.assemble(bilinear_forms=bf, linear_forms=lf)
-#         dofhandler = DofHandler(mesh,element)
-#         dofhandler.distribute_dofs()
-#         x = dofhandler.mesh_nodes()
-#         ui = u(x[:,0],x[:,1])
-#         print(A.toarray().dot(ui)-b)
-#         _, ax1 = plt.subplots()
-#         node = mesh.root_node()
-#         dofs = dofhandler.get_node_dofs(node)
-#         edge_dofs = dofhandler.get_local_edge_dofs('W')
-#         #print(ax.shape)
-#         plot = Plot(ax1)
-#         plot.function(ui, mesh, element)
-#         ua = la.solve(A.toarray(), b)
-#         print('ua={0}'.format(ua))
-#         print('ui={0}'.format(ui))
-#         _,ax2 = plt.subplots()
-#         plot2 = Plot(ax2)
-#         plot2.function(ua-ui,mesh,element)
-#         plt.show()
-#         print(A.dot(ui)-b)
-        
-        rule2d = GaussRule(9,shape='quadrilateral')
-        r = rule2d.nodes()
-        w = rule2d.weights()
-        n_dofs = element.n_dofs()
-        AA = zeros((n_dofs,n_dofs))
-        AAx = zeros((n_dofs,n_dofs))
-        AAy = zeros((n_dofs,n_dofs))
-        for i in range(n_dofs):
-            for j in range(n_dofs):
-                phii = element.phi(i, r)
-                phij = element.phi(j, r)
-                phiix = element.dphi(i, r, var=0)
-                phijx = element.dphi(j, r, var=0)
-                phiiy = element.dphi(i, r, var=1)
-                phijy = element.dphi(j, r, var=1)
-                AA[i,j] = sum(w*phii*phij)
-                AAx[i,j] = sum(w*phiix*phijx)
-                AAy[i,j] = sum(w*phiiy*phijy)
-        self.assertTrue(allclose(AA+AAx+AAy,A.toarray()),'Mass matrix not correct.')
-        
-        #
-        # Test Neumann condition
-        # 
-        rule_1d = GaussRule(3,shape='edge')
-        e_neu = mesh.root_quadcell().get_edges('W')
-        r_ref_1d = rule_1d.nodes()
-        r_phys_1d = rule_1d.map(e_neu, r_ref_1d)
-        w_ref_1d = rule_1d.weights()
-        element_1d = QuadFE(1,element.element_type())
-        phi0 = element_1d.phi(0,r_ref_1d)
-        phi2 = element_1d.phi(2,r_ref_1d)
-        phi1 = element_1d.phi(1,r_ref_1d)
-        
-        w_neu = w_ref_1d*rule_1d.jacobian(e_neu)
-        g_neu = g_neumann(r_phys_1d[:,0],r_phys_1d[:,1])
-        
-        bb_neu = zeros((n_dofs,))
-        bb_neu[1] = sum(w_neu*phi0*g_neu)
-        bb_neu[5] = sum(w_neu*phi2*g_neu)
-        bb_neu[3] = sum(w_neu*phi1*g_neu)
-        self.assertTrue(allclose(bb_neu,array([0,-1/60.,0,-1/60.,0,-2./15.,0,0,0])),\
-                        'Integration over Neumann boundary incorrect')
-        
-        A_neu,b_neu = s.assemble(bilinear_forms=bf, linear_forms=lf, \
-                             boundary_conditions={'dirichlet': None, 
-                                                  'neumann': [(m_neumann,g_neumann)],
-                                                  'robin': None})
-        self.assertTrue(allclose(b_neu,bb_neu+b),'Right hand side incorrect.')
-        self.assertTrue(allclose(A_neu.toarray(),AA+AAx+AAy))
-        
-        #
-        # Test Robin 1 conditions       
-        #
-        e_r1 = mesh.root_quadcell().get_edges('S') 
-        
-        r_phys_1d = rule_1d.map(e_r1,r_ref_1d)
-        w_r1 = w_ref_1d*rule_1d.jacobian(e_r1)
-        g_r1 = g_robin_1(r_phys_1d[:,0], r_phys_1d[:,1])
-        bb_r1 = zeros((n_dofs,))
-        bb_r1[0] = sum(w_r1*phi0*g_r1)
-        bb_r1[1] = sum(w_r1*phi1*g_r1)
-        bb_r1[6] = sum(w_r1*phi2*g_r1)
-        
-        R1 = zeros((n_dofs,n_dofs))
-        R1[0,0] = sum(w_r1*phi0*phi0)
-        R1[0,1] = sum(w_r1*phi0*phi1)
-        R1[1,1] = sum(w_r1*phi1*phi1)
-        R1[1,0] = R1[0,1]
-        R1[0,6] = sum(w_r1*phi0*phi2)
-        R1[6,0] = R1[0,6]
-        R1[6,6] = sum(w_r1*phi2*phi2)
-        R1[1,6] = sum(w_r1*phi1*phi2)
-        R1[6,1] = sum(w_r1*phi1*phi2)
-        
-        A_r1, b_r1 = \
-            s.assemble(bilinear_forms=bf,linear_forms=lf,\
-                       boundary_conditions={'dirichlet': None,
-                                            'neumann':[(m_neumann,g_neumann)],
-                                            'robin': [(m_robin_1,(gamma_1,g_robin_1))]})
-        self.assertTrue(allclose(AA+AAx+AAy+R1,A_r1.toarray()),'Robin condition 1, system incorrect.')
-        self.assertTrue(allclose(b+bb_neu+bb_r1,b_r1),'Robin conditions 1, rhs incorrect.')
-        
-        #
-        # Test Robin 2 conditions
-        # 
-        e_r2 = mesh.root_quadcell().get_edges('N') 
-        
-        r_phys_1d = rule_1d.map(e_r2,r_ref_1d)
-        w_r2 = w_ref_1d*rule_1d.jacobian(e_r2)
-        g_r2 = g_robin_2(r_phys_1d[:,0], r_phys_1d[:,1])
-        bb_r2 = zeros((n_dofs,))
-        bb_r2[0] = sum(w_r1*phi0*g_r2)
-        bb_r2[1] = sum(w_r1*phi1*g_r2)
-        bb_r2[6] = sum(w_r1*phi2*g_r2)
-        
-        R2 = zeros((n_dofs,n_dofs))
-        R2[0,0] = sum(w_r2*phi0*phi0)
-        R2[0,1] = sum(w_r2*phi0*phi1)
-        R2[1,1] = sum(w_r2*phi1*phi1)
-        R2[1,0] = R1[0,1]
-        R2[0,6] = sum(w_r2*phi0*phi2)
-        R2[6,0] = R1[0,6]
-        R2[6,6] = sum(w_r2*phi2*phi2)
-        R2[1,6] = sum(w_r2*phi1*phi2)
-        R2[6,1] = sum(w_r2*phi1*phi2)
-        
-        A_r2, b_r2 = \
-            s.assemble(bilinear_forms=bf,linear_forms=lf,\
-                       boundary_conditions={'dirichlet': None,
-                                            'neumann':[(m_neumann,g_neumann)],
-                                            'robin': [(m_robin_1,(gamma_1,g_robin_1)),
-                                                      (m_robin_2,(gamma_2,g_robin_2))]})
-        print('A_approx = {0}'.format(A_r2.toarray()))
-        print('A_explicit = {0}'.format(AA+AAx+AAy+R1+gamma_2*R2-A_r2.toarray()))    
-        self.assertTrue(allclose(AA+AAx+AAy+R1+gamma_2*R2,A_r2.toarray()),\
-                        'Robin condition 2, system incorrect.')
-        self.assertTrue(allclose(b+bb_neu+gamma_1*bb_r1+gamma_2*bb_r2,b_r2),
-                        'Robin conditions 2, rhs incorrect.')
-         
-        dofhandler = DofHandler(mesh,element)
-        dofhandler.distribute_dofs()
-        x = dofhandler.mesh_nodes()
-        ui = u(x[:,0],x[:,1])
+            bb_R2 = gamma_2*s.form_eval((g_robin_2,'v'),cell,edge_loc='N')
+            AA_R2 = gamma_2*s.form_eval((g_robin_2,'u','v'),cell, edge_loc='N')
+            
+            
+            self.assertTrue(allclose(AA+AAx+AAy+AA_R1+AA_R2,A.toarray()), 
+                            'System matrix not correct')
+            self.assertTrue(allclose(bb+bb_neu+bb_R1+bb_R2,b),\
+                            'Forcing term incorrect.')
+            
+            #
+            # Add Dirichlet
+            #
+            bc_3 = {'dirichlet': [(m_dirichlet,g_dirichlet)],\
+                    'neumann': [(m_neumann,g_neumann)], \
+                    'robin': [(m_robin_1, (gamma_1,g_robin_1)),\
+                              (m_robin_2,(gamma_2,g_robin_2))],\
+                    'periodic': None}
+            A,b = s.assemble(bilinear_forms=bf,linear_forms=lf,\
+                             boundary_conditions=bc_3)
+            AAA = AA+AAx+AAy+AA_R1+AA_R2
+            bbb = bb+bb_neu+bb_R1+bb_R2
+            #
+            # Explicitly enforce boundary conditions
+            # 
+            i_dir = s.get_edge_dofs(node, 'W')    
+            for i in range(n_dofs):
+                if i in i_dir:
+                    bbb[i] = ui[i]
+                for j in range(n_dofs):
+                    if i in i_dir:
+                        if j==i:
+                            AAA[i,j] = 1
+                        else:
+                            AAA[i,j] = 0
+                    else:
+                        if j in i_dir:
+                            bb[i] -= AAA[i,j]*ui[j]
+                            AAA[i,j] = 0
+            self.assertTrue(allclose(AAA,A.toarray()),\
+                            'System matrix incorrect')
+            self.assertTrue(allclose(bbb,b),\
+                            'Right hand side incorrect')
+            
+            #
+            # Check solution
+            # 
+            ua = la.solve(A.toarray(),b)
+            self.assertTrue(allclose(ui,ua),\
+                            'Solution incorrect.')
       
-        #self.assertTrue(allclose(A.dot(ui),b), 
-        #                'Nodal valued function does not solve system')
-      
+            # Dirichlet all round
+            def m_bnd_nodes(x,y):
+                tol = 1e-8
+                return ((np.abs(x) < tol) | (np.abs(x-1) < tol) \
+                    | (np.abs(y) < tol) | (np.abs(y-1) < tol))  
+                
+            
+            g_dir = lambda x,y: np.zeros(shape=x.shape)
+                    
+            bc = {'dirichlet': [(m_bnd_nodes,g_dir)],
+                  'neumann': None,
+                  'robin': None,
+                  'periodic': None}
+            A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
+                             boundary_conditions=bc)
+            ua = la.solve(A.toarray(),b)
+            self.assertTrue(allclose(ua,ui), 'Solution incorrect')
+            
+        # =====================================================================
+        # Multiple Cells
+        # =====================================================================
         #
-        # Two squares
+        # Test by integration
+        # 
+        mesh = Mesh.newmesh(grid_size=(2,2))
+        mesh.refine()        
+        
+        trial_functions = {'Q1': lambda x,y: (x-1),
+                           'Q2': lambda x,y: x*y**2,
+                           'Q3': lambda x,y: x**3*y}
+        test_functions = {'Q1': lambda x,y: x*y, 
+                          'Q2': lambda x,y: x**2*y, 
+                          'Q3': lambda x,y: x**3*y**2}
+        integrals = {'Q1': [-1/12,1/2,0], 
+                     'Q2': [1/16, 1/4, 1/4],
+                     'Q3': [1/28,9/20,1/7]}
+        bf_list = [(1,'u','v'),(1,'ux','vx'),(1,'uy','vy')]
+        
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            s = System(mesh,element)
+            x = s.mesh_nodes()
+            u = trial_functions[etype]
+            v = test_functions[etype]
+            ui = u(x[:,0],x[:,1])
+            vi = v(x[:,0],x[:,1])
+            n_nodes = s.get_n_nodes()
+            for i in range(3):
+                A = s.assemble(bilinear_forms=[bf_list[i]])
+                AA = np.zeros((n_nodes,n_nodes))
+                for node in mesh.root_node().find_leaves():
+                    cell = node.quadcell()
+                    cell_dofs = s.get_node_dofs(node)
+                    AA_loc = s.form_eval(bf_list[i], cell)
+                    block = np.ix_(cell_dofs,cell_dofs)
+                    AA[block] = AA[block] + AA_loc 
+                
+                self.assertAlmostEqual(vi.dot(AA.dot(ui)),\
+                                       integrals[etype][i], 8,\
+                                       'Manual assembly incorrect.')
+                self.assertTrue(allclose(A.toarray(),AA),\
+                                'System matrix different')
+                self.assertAlmostEqual(vi.dot(A.toarray().dot(ui)),\
+                                       integrals[etype][i], 8,\
+                                       'Assembly incorrect.')
+          
         #
-        mesh = Mesh.newmesh(box=[2.0,2.5,1.0,3.0], grid_size=(2,1))
-        mesh.refine()
-        s = System(mesh,V,n_gauss=(6,9))
-        bilinear_forms = [(1,'u','v')]
-        linear_forms = [(1,'v')]
-        A,_ = s.assemble(bilinear_forms=bilinear_forms, 
-                       linear_forms=linear_forms)
-      
-        A_check = 1/36.0*array([[4,2,2,1,0,0],[2,8,1,4,2,1],[2,1,4,2,0,0],
-                               [1,4,2,8,1,2],[0,2,0,1,4,2],[0,1,0,2,2,4]])
-        self.assertAlmostEqual((A.toarray()-A_check).all(), 0, 12,\
-                               'Incorrect mass matrix')
-        
-        
-        
-        #
-        # Test a fine mesh (multiple elements ;))
+        # 20x20 grid     
         # 
         mesh = Mesh.newmesh(grid_size=(20,20))
-        s = System(mesh,V)
+        mesh.refine()
+        u = lambda x,y: x*(1-x)*y*(1-y)  # exact solution
+        f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))+u(x,y)  # forcing term 
+        for etype in ['Q2','Q3']:
+            element = QuadFE(2,etype)
+            system = System(mesh,element)
+            A,b = system.assemble(bilinear_forms=bf,linear_forms=lf,\
+                                  boundary_conditions=bc)
+            ua = la.solve(A.toarray(),b)
+            x = system.mesh_nodes()
+            ue = u(x[:,0],x[:,1])
+            self.assertTrue(allclose(ua,ue), 'Solution incorrect')
         
+            A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
+                                  boundary_conditions=bc_3)
+            ua = la.solve(A.toarray(),b)
+            self.assertTrue(allclose(ua,ue), 'Solution incorrect')
+
         # Test hanging nodes
         
         
@@ -491,6 +429,7 @@ class TestSystem(unittest.TestCase):
     def test_flux_integral(self):
         """
         """
+
     
     def test_f_eval_loc(self):
         mesh = Mesh.newmesh()
@@ -499,6 +438,8 @@ class TestSystem(unittest.TestCase):
         test_functions = {'Q1': lambda x,y: (2+x)*(y-3),
                           'Q2': lambda x,y: (2+x**2+x)*(y-2)**2,
                           'Q3': lambda x,y: (2*x**3-3*x)*(y**2-2*y)} 
+        cell_integrals = {'Q1': -25/4, 'Q2': 119/18, 'Q3': 2/3}
+        n_edge_integrals = {'Q1': -5, 'Q2': 17/6 ,'Q3': 1}
         x_test = random.rand(5,2)
     
         for etype in ['Q1','Q2','Q3']:
@@ -512,7 +453,7 @@ class TestSystem(unittest.TestCase):
             #
             # f in functional form                   
             # 
-            f_loc = system.f_eval_loc(f, entity=cell,x=x_test)
+            f_loc = system.f_eval_loc(f, cell=cell,x=x_test)
             self.assertTrue(allclose(f_loc,f_test),\
                                    'Function not correctly interpolated.')
         
@@ -523,15 +464,130 @@ class TestSystem(unittest.TestCase):
             x = system.mesh_nodes()
             x_loc = x[local_dofs,:]
             f_nodes = f(x_loc[:,0],x_loc[:,1])
-            f_loc = system.f_eval_loc(f_nodes,entity=cell,x=x_test)
+            f_loc = system.f_eval_loc(f_nodes,cell=cell,x=x_test)
             self.assertTrue(allclose(f_loc,f_test), \
                                    'Function not correctly interpolated.')
         
             # -----------------------------------------------------------------
             # Quadrature
             # -----------------------------------------------------------------
-             
-    
+            cell_rule = system.cell_rule() 
+            wg = cell_rule.weights()*cell_rule.jacobian(cell)
+            fg = system.f_eval_loc(f,cell=cell)
+            self.assertAlmostEqual(sum(fg*wg), cell_integrals[etype],\
+                                   8, 'Cell integral incorrect')
+            
+            n_edge = cell.get_edges('N')
+            edge_rule = system.edge_rule()
+            wg = edge_rule.weights()*edge_rule.jacobian(n_edge)
+            fg = system.f_eval_loc(f,cell=cell, edge_loc='N')
+            self.assertAlmostEqual(sum(fg*wg), n_edge_integrals[etype],\
+                                   8, 'Cell integral incorrect')
+            
+    def test_form_eval(self):
+        mesh = Mesh.newmesh(box=[1,2,1,2])
+        trial_functions = {'Q1': lambda x,y: (x-1),
+                           'Q2': lambda x,y: x*y**2,
+                           'Q3': lambda x,y: x**3*y}
+        test_functions = {'Q1': lambda x,y: x*y, 
+                          'Q2': lambda x,y: x**2*y, 
+                          'Q3': lambda x,y: x**3*y**2}
+        #
+        # Integrals over current cell
+        # 
+        cell_integrals = {'Q1': [5/4,3/4], 
+                          'Q2': [225/16,35/2], 
+                          'Q3': [1905/28,945/8]}
+        edge_integrals = {'Q1': [3,3/2], 
+                          'Q2': [30,30], 
+                          'Q3': [240,360]}
+        cell = mesh.root_quadcell() 
+        f = lambda x,y: (x-1)*(y-1)**2
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            system = System(mesh,element)
+            x_loc = system.x_loc(cell)
+            u = trial_functions[etype](x_loc[:,0],x_loc[:,1])
+            v = test_functions[etype](x_loc[:,0],x_loc[:,1])
+            
+            #
+            # Bilinear form
+            # 
+            b_uv = system.form_eval((1,'u','v'), cell)
+            self.assertAlmostEqual(v.dot(b_uv.dot(u)),
+                                   cell_integrals[etype][0],8, 
+                                   '{0}: Bilinear form (1,u,v) incorrect.'\
+                                   .format(etype))
+            
+            
+            b_uvx = system.form_eval((1,'u','vx'), cell)
+            self.assertAlmostEqual(v.dot(b_uvx.dot(u)),
+                                   cell_integrals[etype][1],8, 
+                                   '{0}: Bilinear form (1,u,vx) incorrect.'\
+                                   .format(etype))
+            
+            
+            #
+            # Edges
+            #
+            be_uv = system.form_eval((1,'u','v'), cell=cell, edge_loc='E')
+            self.assertAlmostEqual(v.dot(be_uv.dot(u)),
+                                   edge_integrals[etype][0],8, 
+                                   '{0}: Bilinear form (1,u,v) incorrect.'\
+                                   .format(etype))
+            
+            be_uvx = system.form_eval((1,'u','vx'), cell=cell, edge_loc='E')
+            self.assertAlmostEqual(v.dot(be_uvx.dot(u)),
+                                   edge_integrals[etype][1],8, 
+                                   '{0}: Bilinear form (1,u,vx) incorrect.'\
+                                   .format(etype))
+            #
+            # Linear form
+            #
+            
+            # cell
+            f = trial_functions[etype] 
+            f_v = system.form_eval((f,'v'), cell)
+            self.assertAlmostEqual(f_v.dot(v), cell_integrals[etype][0],8, 
+                                   '{0}: Linear form (f,v) incorrect.'\
+                                   .format(etype))
+            
+            f_vx = system.form_eval((f,'vx'), cell)
+            self.assertAlmostEqual(f_vx.dot(v), cell_integrals[etype][1],8, 
+                                   '{0}: Linear form (f,vx) incorrect.'\
+                                   .format(etype))
+            
+            # edges
+            fe_v = system.form_eval((f,'v'), cell=cell, edge_loc='E')
+            self.assertAlmostEqual(fe_v.dot(v), edge_integrals[etype][0],8, 
+                                   '{0}: Linear form (f,v) incorrect.'\
+                                   .format(etype))
+            
+            fe_vx = system.form_eval((f,'vx'), cell=cell, edge_loc='E')
+            self.assertAlmostEqual(fe_vx.dot(v), edge_integrals[etype][1],8, 
+                                   '{0}: Linear form (f,vx) incorrect.'\
+                                   .format(etype))
+            
+        #
+        # A general cell        
+        # 
+        mesh = Mesh.newmesh(box=[1,4,1,3])
+        element = QuadFE(2,'Q1')
+        system = System(mesh,element)
+        cell = mesh.root_quadcell()
+        A = system.form_eval((1,'ux','vx'),cell)
+        #
+        # Use form to integrate
+        # 
+        u = trial_functions['Q1']
+        v = test_functions['Q1']
+        x = system.mesh_nodes()
+        ui = u(x[:,0],x[:,1])
+        vi = v(x[:,0],x[:,1])
+        self.assertAlmostEqual(vi.dot(A.dot(ui)), 12, 8, 'Integral incorrect.')
+        
+        
+        
     def test_shape_eval(self):
         test_functions = {'Q1': (lambda x,y: (x+1)*(y-1), lambda x,y: y-1, \
                                  lambda x,y: x+1), 
@@ -539,7 +595,9 @@ class TestSystem(unittest.TestCase):
                                  lambda x,y: 0*x),
                           'Q3': (lambda x,y: x**3 - y**3, lambda x,y: 3*x**2, \
                                  lambda x,y: -3*y**2)}
-        
+        #
+        # Over reference cell
+        # 
         cell_integrals = {'Q1': [-0.75,-0.5,1.5], 
                           'Q2': [-2/3.,1.0,0.0],
                           'Q3': [0.,1.0,-1.0]}
@@ -553,18 +611,18 @@ class TestSystem(unittest.TestCase):
             element = QuadFE(2,etype)
             system = System(mesh,element)
             n_dofs = element.n_dofs()
-            x = element.reference_nodes()
+            x_ref = element.reference_nodes()
             #
             # Sanity check
             # 
             I = eye(n_dofs)
-            self.assertTrue(allclose(system.shape_eval(x=x),I),\
+            self.assertTrue(allclose(system.shape_eval(x_ref=x_ref),I),\
                             'Shape functions incorrect at reference nodes.')
             y = random.rand(5,2)
             weights = system.cell_rule().weights()
-            f_nodes = test_functions[etype][0](x[:,0],x[:,1])
+            f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1])
             for i in range(3):
-                phi = system.shape_eval(derivatives=derivatives[i], x=y)
+                phi = system.shape_eval(derivatives=derivatives[i], x_ref=y)
                 f = test_functions[etype][i]
                 #
                 # Interpolation
@@ -583,7 +641,6 @@ class TestSystem(unittest.TestCase):
             # On Edges   
             # 
             y = random.rand(5)
-            
             for direction in ['W','E','S','N']:
                 edge = cell.get_edges(direction)
                 weights = system.edge_rule().weights()*\
@@ -592,19 +649,18 @@ class TestSystem(unittest.TestCase):
                 # Sanity check
                 # 
                 edge_dofs = element.get_local_edge_dofs(direction)
-                x_ref = x[edge_dofs,:]
-                entity = system.make_generic((edge,direction))
-                phi = system.shape_eval(entity=entity,x=x_ref)
+                x_ref_edge = x_ref[edge_dofs,:]  # element nodes on edge
+                phi = system.shape_eval(x_ref=x_ref_edge)
                 self.assertTrue(allclose(phi, I[edge_dofs,:]), \
                                 'Shape function incorrect at edge ref nodes.')
                 y_phys = system.edge_rule().map(edge, y)
-                f_nodes = test_functions[etype][0](x[:,0],x[:,1])
+                f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1])
                 for i in range(3):
                     #
                     # Interpolation
                     # 
                     phi = system.shape_eval(derivatives=derivatives[i],\
-                                            entity=entity,x=y_phys)
+                                            x_ref=y_phys)
                     f = test_functions[etype][i]
                     fvals = f(y_phys[:,0],y_phys[:,1])
                     self.assertTrue(allclose(dot(phi,f_nodes),fvals),\
@@ -614,15 +670,53 @@ class TestSystem(unittest.TestCase):
                     # 
                     if direction == 'W':
                         phi = system.shape_eval(derivatives=derivatives[i],\
-                                                entity=entity)
+                                                edge_loc=direction)
                         self.assertAlmostEqual(dot(weights,dot(phi,f_nodes)),\
                                  edge_integrals_west[etype][i],places=8,\
                                  msg='Incorrect integral.')
-    
-    
-       
+        #
+        # Over arbitrary cell
+        #
+        mesh = Mesh.newmesh(box=[1,4,1,3])
+        cell = mesh.root_quadcell()
+        y = np.random.rand(5,2)
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            system = System(mesh,element)
+            y_phys = system.cell_rule().map(cell, x=y)
+            x_ref = system.mesh_nodes()
+            f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1]) 
+            for i in range(3):
+                #
+                # Interpolation
+                #  
+                phi = system.shape_eval(derivatives=derivatives[i],\
+                                        cell=cell, x=y_phys)
+                f_vals = test_functions[etype][i](y_phys[:,0],y_phys[:,1])
+                self.assertTrue(allclose(dot(phi,f_nodes),f_vals),\
+                                'Shape function interpolation failed.')
+        mesh = Mesh.newmesh(box=[0,0.5,0,0.5])
+        cell = mesh.root_quadcell()
+        u = lambda x,y: x*y**2
+        v = lambda x,y: x**2*y
+        element = QuadFE(2,'Q2')
+        system = System(mesh,element)
+        x = system.mesh_nodes()
+        ui = u(x[:,0],x[:,1])
+        vi = v(x[:,0],x[:,1])
         
-                        
+        phi = system.shape_eval(cell=cell)
+        uhat = phi.dot(ui)
+        vhat = phi.dot(vi)
+        weights = system.cell_rule().weights()*\
+                  system.cell_rule().jacobian(cell)
+        A = system.form_eval((1,'u','v'), cell)
+        self.assertAlmostEqual(vi.dot(A.dot(ui)), 0.000244141,8,\
+                               'Local bilinear form integral incorrect.')
+        self.assertAlmostEqual(vi.dot(A.dot(ui)), sum(uhat*vhat*weights),8,\
+                               'Local bilinear form integral does not match quad.')
+    
+                
     def test_make_generic(self):
         mesh = Mesh.newmesh()
         element = QuadFE(2,'Q1')
@@ -635,6 +729,7 @@ class TestSystem(unittest.TestCase):
             self.assertEqual(system.make_generic((edge,direction)),\
                              ('edge',direction),\
                              'Cannot convert edge to generic edge')
+    
             
     def test_parse_derivative_info(self):
         mesh = Mesh.newmesh()
