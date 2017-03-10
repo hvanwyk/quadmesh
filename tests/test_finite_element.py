@@ -10,8 +10,8 @@ from numpy import sqrt, sum, dot, sin, pi, array, abs, empty, zeros, max, \
 import numpy as np
 import numpy.linalg as la
 from plot import Plot
-import matplotlib.pyplot as plt
-import matplotlib.colorbar as colorbar
+#import matplotlib.pyplot as plt
+#import matplotlib.colorbar as colorbar
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -385,7 +385,7 @@ class TestSystem(unittest.TestCase):
         #
         # 20x20 grid     
         # 
-        mesh = Mesh.newmesh(grid_size=(20,20))
+        mesh = Mesh.newmesh(grid_size=(15,15))
         mesh.refine()
         u = lambda x,y: x*(1-x)*y*(1-y)  # exact solution
         f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))+u(x,y)  # forcing term 
@@ -426,9 +426,7 @@ class TestSystem(unittest.TestCase):
         self.assertAlmostEqual(sum(w)*jac, sqrt(2), places=10,\
                                msg='Failed to integrate 1.')
         
-    def test_flux_integral(self):
-        """
-        """
+   
 
     
     def test_f_eval_loc(self):

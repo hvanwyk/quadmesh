@@ -145,7 +145,13 @@ class Mesh(object):
                             #
                             for vertex in triangle.vertices.values():
                                 vertex.unmark()
-                
+     
+    def balance(self):
+        """
+        Balance the tree associated with the mesh
+        """            
+        self.__root_node.balance()
+        
         
     def root_quadcell(self):
         """
@@ -1033,24 +1039,25 @@ class Node(object):
         """
         Ensure that subcells of current cell conform to the 2:1 rule
         """
-        leaves = self.find_leaves()
+        leaves = set(self.find_leaves())
+        print(len(leaves))
         leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
                      'E': ['NW', 'SW'], 'W': ['NE', 'SE']} 
 
-        while len(leaves) > 0:
+        while len(leaves) > 0:            
             leaf = leaves.pop()
             flag = False
             #
             # Check if leaf needs to be split
             # 
-            for direction in ['N', 'S', 'E', 'W']:
-                nb = leaf.find_neighbor(direction) 
+            for direction1 in ['N', 'S', 'E', 'W']:
+                nb = leaf.find_neighbor(direction1) 
                 if nb == None:
                     pass
                 elif nb.type == 'LEAF':
                     pass
                 else:
-                    for pos in leaf_dict[direction]:
+                    for pos in leaf_dict[direction1]:
                         #
                         # If neighor's children nearest to you aren't LEAVES,
                         # then split and add children to list of leaves! 
@@ -1059,16 +1066,19 @@ class Node(object):
                             leaf.split()
                             for child in leaf.children.values():
                                 child.mark('support')
-                                leaves.append(child)
-                            
+                                leaves.add(child)
+                                
+                                    
                             #
                             # Check if there are any neighbors that should 
                             # now also be split.
                             #  
-                            for direction in ['N', 'S', 'E', 'W']:
-                                nb = leaf.find_neighbor(direction)
-                                if nb != None and nb.depth < leaf.depth:
-                                    leaves.append(nb)
+                            for direction2 in ['N', 'S', 'E', 'W']:
+                                nb = leaf.find_neighbor(direction2)
+                                if (nb != None) and \
+                                   (nb.type == 'LEAF') and \
+                                   (nb.depth < leaf.depth):
+                                    leaves.add(nb)
                                 
                             flag = True
                             break
@@ -1083,7 +1093,7 @@ class Node(object):
         leaves = self.find_leaves()
         while len(leaves) > 0:
             leaf = leaves.pop()
-            if leaf.__support:
+            if leaf.is_marked('support'):
                 #
                 # Check whether its safe to delete the support cell
                 # 

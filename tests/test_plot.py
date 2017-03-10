@@ -34,7 +34,7 @@ class TestPlot(unittest.TestCase):
     
     def test_plot_function(self):
         print("Matplotlib version: {0}".format(mpl.__version__))
-        mesh = Mesh.newmesh(grid_size=(40,40))
+        mesh = Mesh.newmesh(grid_size=(2,2))
         mesh.refine()
         element = QuadFE(2,'Q3')
         fig,ax = plt.subplots() 
@@ -56,6 +56,7 @@ class TestPlot(unittest.TestCase):
                     leaf.mark('refine')
             mesh.refine('refine')
             mesh.unmark(nodes='True')
+        mesh.balance()
         fm = []
         for cell in mesh.iter_quadcells():
             xi,yi = cell.vertices['M'].coordinate()
