@@ -2,15 +2,14 @@ from mesh import Mesh
 from finite_element import QuadFE, DofHandler
 import matplotlib.pyplot as plt
 import numpy as np
-
+from plot import Plot
 # TODO: Add this all to the test file.
         
 mesh = Mesh.newmesh()
-mesh.root_node().mark()
 mesh.refine()
 
-mesh.root_node().children['SE'].mark()
-mesh.refine()
+mesh.root_node().children['SE'].mark('l')
+mesh.refine('l')
 
 mesh.root_node().children['SE'].children['SW'] = None
 _,ax = plt.subplots()
@@ -53,7 +52,8 @@ for xx in xy:
 C = d.make_hanging_node_constraints()
 print(C)
 c = V.constraint_coefficients()
-mesh.plot_quadmesh(ax, cell_numbers=True, vertex_numbers=True )
+plot = Plot()
+plot.mesh(ax, mesh, element=V, cell_numbers=True, vertex_numbers=False, dofs=True )
 plt.show()
 '''
 # Number nodes Q1

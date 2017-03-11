@@ -3,6 +3,7 @@ Created on Feb 8, 2017
 
 @author: hans-werner
 '''
+import scipy.sparse as sparse
 from scikits.sparse.cholmod import *
 from sklearn import datasets  
 class Gmrf(object):
@@ -37,3 +38,5 @@ class Gmrf(object):
         
         """
         pass
+    
+    

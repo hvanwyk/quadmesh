@@ -1,6 +1,9 @@
 '''
 Created on Feb 2, 2017
 
+Multiscale Gaussian random field with standard anisotropic, homogeneous 
+exponential covariance matrix. 
+
 @author: hans-werner
 '''
 from mesh import Mesh
@@ -10,7 +13,8 @@ import numpy as np
 
 def covh(mesh,a,b):
     """
-    Compute the covariance of the lower left point with every other point on the finest mesh.
+    Compute the covariance of the lower left point with every other point 
+    on the finest mesh.
     """
     nx_0,ny_0 = mesh.grid_size()
     max_depth = mesh.root_node().max_depth()
@@ -25,7 +29,8 @@ def covh(mesh,a,b):
     
 def get_fine_cell_range(node_address,max_level):
     """
-    Determine the indices of the fine scale cells that cover a node with a given address
+    Determine the indices of the fine scale cells that cover a node with a
+    given address
     """
     #
     # Determine indices of cell on own level
