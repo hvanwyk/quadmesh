@@ -1039,8 +1039,7 @@ class Node(object):
         """
         Ensure that subcells of current cell conform to the 2:1 rule
         """
-        leaves = set(self.find_leaves())
-        print(len(leaves))
+        leaves = set(self.find_leaves())  # set: no duplicates
         leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
                      'E': ['NW', 'SW'], 'W': ['NE', 'SE']} 
 

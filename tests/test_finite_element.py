@@ -54,7 +54,7 @@ class TestQuadFE(unittest.TestCase):
 
     def test_constraint_coefficients(self):
         """
-        
+        UNFINISHED
         """
         test_function = {'Q1': lambda x,y: 2*x*(1-y)+2, 
                          'Q2': lambda x,y: (x-2)*(y+1),
@@ -480,8 +480,10 @@ class TestSystem(unittest.TestCase):
             ua = la.solve(A.toarray(),b)
             self.assertTrue(allclose(ua,ue), 'Solution incorrect')
         
-        
+        # =====================================================================
         # Test hanging nodes
+        # =====================================================================
+        
         
         
     def test_line_integral(self):
