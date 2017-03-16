@@ -15,7 +15,7 @@ mesh.root_node().children['SE'].children['SW'] = None
 _,ax = plt.subplots()
 
 
-element_type = 'Q2'
+element_type = 'Q3'
 V = QuadFE(2,element_type)
 d = DofHandler(mesh,V)
 d.distribute_dofs()

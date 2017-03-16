@@ -36,7 +36,7 @@ class Plot(object):
             ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
             ax.set_ylim(y0-0.1*hy, y1+0.1*hy)
             rect = plt.Polygon([[x0,y0],[x1,y0],[x1,y1],[x0,y1]],
-                               fc='b',alpha=0.5)
+                               fc='k',alpha=0.1)
             ax.add_patch(rect)
         #
         # Plot QuadCells

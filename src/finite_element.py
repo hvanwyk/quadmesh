@@ -48,7 +48,7 @@ class QuadFE(FiniteElement):
                 dofs_per_edge = 0
                 dofs_per_cell = 0
                 basis_index = [(0,0),(1,0),(0,1),(1,1)]
-                ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0]])
+                ref_nodes = np.array([[0,0],[1,0],[0,1],[1,1]])
                 pattern = ['SW','SE','NW','NE']
         #
         # Quadratic Elements 
@@ -258,6 +258,8 @@ class QuadFE(FiniteElement):
         Output:
         
             constraint: double, dictionary whose keys are the fine node numbers  
+            
+        NOTE: This works only for 2D quadcells
         """        
         dpe = self.n_dofs('edge')
         edge_shapefn_index = [0] + [i for i in range(2,dpe+2)] + [1]
@@ -536,6 +538,7 @@ class DofHandler(object):
         self.__hanging_nodes = []  
         self.__constraint_coefficients = element.constraint_coefficients()
         self.__reference_nodes = ref_nodes
+        self.__hanging_nodes = {}
         
     def n_dofs(self,key='cell'):
         """
@@ -545,6 +548,7 @@ class DofHandler(object):
         
             key: str, specifying entity ['cell'],'edge', or 'vertex' 
         """
+        return self.__element.n_dofs(key=key)
         if key == 'cell':
             return self.__n_dofs
         elif key == 'edge':
@@ -814,14 +818,19 @@ class DofHandler(object):
         rows = []
         cols = []
         vals = []
+        hanging_nodes = {}
         sub_pos = {'E':['SE','NE'], 'W':['SW','NW'], 
                    'N':['NW','NE'], 'S':['SW','SE']}
         opposite = {'E':'W','W':'E','N':'S','S':'N'}
         n_rows = 0
+        dpe = self.n_dofs('edge')+2
+        print('Dofs per edge: {0}'.format(dpe))
         cc = self.__constraint_coefficients
         print('Constraint coefficients: {0}'.format(cc))
         n_verts = self.dofs_per_edge + 2
         for node, n_doflist in self.__global_dofs.items():
+            node.info()
+            print('Node DOFs:{0}'.format(n_doflist))
             for direction in ['W','E','S','N']:
                 n_dof_pos = self.positions_along_edge(direction)
                 nb = node.find_neighbor(direction)
@@ -838,8 +847,15 @@ class DofHandler(object):
                             print('Child positions along edge {0}'.format(ch_dof_pos))
                             ch_doflist = self.__global_dofs[child]
                             print('Child doflist: {0}'.format(ch_doflist))
+                            print('Constraint Coefficients: {0}'.format(cc))
                             for hn in cc[i].keys():
+                                print('hn={0}'.format(hn))
                                 coarse_dofs = self.pos_to_dof(n_doflist, n_dof_pos)
+                                """
+                                Experiment
+                                """
+                                hn_dof = self.pos_to_dof(ch_doflist,ch_dof_pos[hn])[0]
+                                hanging_nodes[hn_dof] = (coarse_dofs,cc[i][hn])
                                 if not ignore_center:
                                     cols += coarse_dofs
                                     vals += cc[i][hn]
@@ -852,11 +868,14 @@ class DofHandler(object):
                                     vals += [-1.0]
                                     rows += [n_rows]*(n_verts+1) 
                                     n_rows += 1
-                            ignore_center = True
+                            if any(h==dpe for h in cc[i].keys()):
+                                ignore_center = True
                         else:
                             print('Child is None')
         n_cols = self.n_global_dofs
         print('%d Rows'%(n_rows))
+        print('Dictionary: {0}'.format(hanging_nodes))
+        self.__hanging_nodes = hanging_nodes
         return -sparse.coo_matrix((vals,(rows,cols)),shape=(n_rows+1,n_cols))
       
         
@@ -1553,6 +1572,31 @@ class System(object):
             return tuple(out)
     
     
+    def resolve_hanging_nodes(self,A,b):
+        """
+        Compress the linear system to incorporate hanging nodes
+        """
+        #
+        # Decompose system matrix into its components
+        #
+        rows, cols, data = A.row, A.col, A.data
+        hnc = self.__dofhandler.make_hanging_node_constraints()
+        
+        #
+        #   
+        # 
+        for i in self.dofhandler.hanging_nodes:
+            #
+            # Turn row i into the ith row of the identity matrix 
+            #
+            data[rows==i] = 0  # make row 0
+            data[(rows==i)*(cols==i)] = 1  # make diagonal 1
+            b[rows==i] = 0  # right hand side = 0
+            for count in range(len(hnc)):
+                pass
+            
+        
+        
     def get_n_nodes(self):
         """
         Return the number of dofs 
@@ -1606,8 +1650,8 @@ class System(object):
     def shape_eval(self,derivatives=(0,),cell=None,\
                    edge_loc=None,x=None,x_ref=None):
         """
-        Evaluate shape functions at a set of reference points x. If x is not
-        specified, Gauss quadrature points are used. 
+        Evaluate all shape functions at a set of reference points x. If x is 
+        not specified, Gauss quadrature points are used. 
         
         Inputs: 
         
@@ -1851,67 +1895,6 @@ class System(object):
             return np.sum(kernel*weight)   
         
             
-        """
-        dim = x.shape[1]
-        f = form[0]
-        types = list(form[1:])
-                   
-        if dim == 1:
-            #
-            # Determine test and trial functions
-            #
-            tt = []
-            for t_type in types:
-                if t_type in ['u','v']:
-                    tt.append(phi[0])
-                elif t_type in ['ux','vx']:
-                    tt.append(phi[1])
-                else: 
-                    raise Exception('Only "[u,v]" and "[u,v]x" allowed.')  
-            #
-            # Compute kernel
-            # 
-            if callable(f):
-                # f is a function
-                kernel = f(x[:,0],x[:,1])
-            else:
-                # f is a constant 
-                kernel = f
-                
-        elif dim == 2:
-            #
-            # Determine test and trial functions
-            #
-            tt = []
-            for t_type in types:
-                if t_type in ['u','v']:
-                    tt.append(phi[0])
-                elif t_type in ['ux','vx']:
-                    tt.append(phi[1][0])
-                elif t_type in ['uy','vy']:
-                    tt.append(phi[1][1])
-                else:
-                    raise Exception('Only "[u,v]" and "[u,v][x,y]" allowed.')
-            #
-            # Compute kernel
-            #
-            if callable(f):
-                # f is a function
-                kernel = f(x[:,0],x[:,1])
-            else:
-                kernel = f
-        if len(form) == 3:
-            #
-            # Bilinear form         
-            # 
-            return kernel, tt[0], tt[1] # kernel, trial, test
-        elif len(form) == 2:
-            #
-            # Linear form
-            #
-            return kernel, tt[0]  # kernel, test
-        
-        """
     def cell_rule(self):
         """
         Return Gauss Rule for cell

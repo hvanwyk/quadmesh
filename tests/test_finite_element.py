@@ -10,14 +10,14 @@ from numpy import sqrt, sum, dot, sin, pi, array, abs, empty, zeros, max, \
 import numpy as np
 import numpy.linalg as la
 from plot import Plot
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 #import matplotlib.colorbar as colorbar
 
 class TestFiniteElement(unittest.TestCase):
     """
     Test FiniteElement class
     """
-    pass
+
 
 class TestQuadFE(unittest.TestCase):
     """
@@ -52,6 +52,82 @@ class TestQuadFE(unittest.TestCase):
                 self.assertEqual(edge_dofs, edge_dofs_exact[etype][direction],\
                                  'Edge dofs incorrect')
 
+    def test_constraint_coefficients(self):
+        """
+        
+        """
+        test_function = {'Q1': lambda x,y: 2*x*(1-y)+2, 
+                         'Q2': lambda x,y: (x-2)*(y+1),
+                         'Q3': lambda x,y: x**3*(1-y)*2-x**2*(1-y)+3}
+        # Dofs on coarse 
+        coarse_nodes = {'Q1': [0,1], 'Q2': [0,6,1], 'Q3': [0,8,9,1]}
+        hanging_nodes = {'Q1': [[1],[0]], 'Q2': [[6],[6]],'Q3':[[8,1],[0,9]]}
+        
+        # Interpolation points in the left cell
+        xy_left = np.zeros((5,2))
+        xy_left[:,0] = np.linspace(0,0.5,5)
+        
+        # Interpolation points on the right cell
+        xy_right = np.zeros((5,2))
+        xy_right[:,0] = np.linspace(0.5,1,5)
+        
+        xy_ref = np.zeros((5,2))
+        xy_ref[:,0] = np.linspace(0,1,5) 
+        
+        # Combined Interpolation points
+        xy = np.concatenate((xy_left,xy_right),axis=0)
+        
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            f = test_function[etype]
+            dpe = element.n_dofs('edge')+2
+            # Interpolate over coarse edge
+            x_ref = element.reference_nodes()
+            f_interp = np.zeros(xy.shape[0])
+            for n in coarse_nodes[etype]:
+                fi = f(x_ref[n,0],x_ref[n,1])
+                f_interp += fi*element.phi(n, xy)
+            
+            cc = element.constraint_coefficients()
+            
+            # Reference vertices for left cell
+            x_left_ref = np.zeros(x_ref.shape)
+            x_left_ref[:,0] = 0.5*x_ref[:,0]
+            f_left_interp = np.zeros((5,)) 
+            for l in range(dpe):
+                # dofs in left cell
+                il = coarse_nodes[etype][l]
+                
+                # Evaluate function at reference node
+                fi = f(x_left_ref[il,0],x_left_ref[il,1])
+                
+                # Shape functions
+                phi = np.zeros((5,))
+                if il in hanging_nodes[etype][0]:
+                    # Hanging node
+                    for i in range(dpe):
+                        ic = coarse_nodes[etype][i]
+                        phi += cc[0][l][i]*element.phi(ic, xy_left)
+                else:
+                    # Not a hanging node
+                    phi = element.phi(il,xy_ref)
+                f_left_interp += fi*phi
+                
+            f_left_vals = f(xy_left[:,0],xy_left[:,1])
+            print(f_left_vals)
+            print(f_left_interp)
+            x_right_ref = np.zeros(x_ref.shape)
+            x_right_ref[:,0] = 0.5 + 0.5*x_ref[:,0]
+            f_right_interp = f(x_right_ref[:,0],x_right_ref[:,1]) 
+            
+            
+            # Exact function at interpolation points
+            f_vals = f(xy[:,0],xy[:,1])
+            self.assertTrue(allclose(f_vals,f_interp),\
+                            'Coarse cell interpolation incorrect.')
+            
+            print(cc)
+    
 class TestTriFE(unittest.TestCase):
     """
     Test TriFE classe
@@ -403,7 +479,8 @@ class TestSystem(unittest.TestCase):
                                   boundary_conditions=bc_3)
             ua = la.solve(A.toarray(),b)
             self.assertTrue(allclose(ua,ue), 'Solution incorrect')
-
+        
+        
         # Test hanging nodes
         
         
