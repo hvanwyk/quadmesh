@@ -878,6 +878,7 @@ class DofHandler(object):
         self.__hanging_nodes = hanging_nodes
         return -sparse.coo_matrix((vals,(rows,cols)),shape=(n_rows+1,n_cols))
       
+
         
 class GaussRule(object):
     """
@@ -1571,8 +1572,14 @@ class System(object):
         elif len(out) == 2:
             return tuple(out)
     
+    def hanging_nodes_compress(self,A):
+        """
+        Eliminate hanging nodes from system matrix
+        """
+        for hn in self.__dofhandler.__hanging_nodes.keys():
+            pass
     
-    def resolve_hanging_nodes(self,A,b):
+    def hanging_nodes_incorporate(self,A,b):
         """
         Compress the linear system to incorporate hanging nodes
         """
