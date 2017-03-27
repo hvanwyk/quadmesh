@@ -2,7 +2,8 @@ import numpy as np
 from scipy import sparse 
 import numbers
 from mesh import QuadCell, Edge
- 
+from bisect import bisect_left       
+
 """
 To do with Finite Element Classes
 """
@@ -535,10 +536,10 @@ class DofHandler(object):
         self.__pattern = pattern
         self.__global_dofs = dict.fromkeys(mesh.root_node().find_leaves(),[None]*n_dofs) 
         self.__root_node = mesh.root_node()
-        self.__hanging_nodes = []  
         self.__constraint_coefficients = element.constraint_coefficients()
         self.__reference_nodes = ref_nodes
         self.__hanging_nodes = {}
+        
         
     def n_dofs(self,key='cell'):
         """
@@ -811,7 +812,7 @@ class DofHandler(object):
         return edge_dofs
     
                 
-    def make_hanging_node_constraints(self):
+    def set_hanging_nodes(self):
         """
         Return the constraint matrix satisfied by the mesh's hanging nodes.
         """
@@ -862,8 +863,8 @@ class DofHandler(object):
                                     hn_dofs = self.pos_to_dof(ch_doflist, 
                                                             ch_dof_pos[hn])
                                     cols += hn_dofs
-                                    print('Hanging Node dofs: {0}'.format(hn_dofs))
-                                    print('Coarse dofs: {0}'.format(coarse_dofs))
+                                    #print('Hanging Node dofs: {0}'.format(hn_dofs))
+                                    #print('Coarse dofs: {0}'.format(coarse_dofs))
                                 
                                     vals += [-1.0]
                                     rows += [n_rows]*(n_verts+1) 
@@ -872,13 +873,21 @@ class DofHandler(object):
                                 ignore_center = True
                         else:
                             print('Child is None')
-        n_cols = self.n_global_dofs
-        print('%d Rows'%(n_rows))
-        print('Dictionary: {0}'.format(hanging_nodes))
         self.__hanging_nodes = hanging_nodes
-        return -sparse.coo_matrix((vals,(rows,cols)),shape=(n_rows+1,n_cols))
+        #n_cols = self.n_global_dofs
+        #return -sparse.coo_matrix((vals,(rows,cols)),shape=(n_rows+1,n_cols))
       
-
+      
+    def get_hanging_nodes(self):
+        """
+        Returns hanging nodes of current mesh
+        """
+        if hasattr(self,'__hanging_nodes'): 
+            return self.__hanging_nodes
+        else:
+            self.set_hanging_nodes()
+            return self.__hanging_nodes
+        
         
 class GaussRule(object):
     """
@@ -1572,37 +1581,143 @@ class System(object):
         elif len(out) == 2:
             return tuple(out)
     
-    def hanging_nodes_compress(self,A):
-        """
-        Eliminate hanging nodes from system matrix
-        """
-        for hn in self.__dofhandler.__hanging_nodes.keys():
-            pass
     
-    def hanging_nodes_incorporate(self,A,b):
+    def incorporate_hanging_nodes(self,A,b, compress=False):
         """
-        Compress the linear system to incorporate hanging nodes
-        """
-        #
-        # Decompose system matrix into its components
-        #
-        rows, cols, data = A.row, A.col, A.data
-        hnc = self.__dofhandler.make_hanging_node_constraints()
+        Incorporate hanging nodes into linear system.
+    
+        Inputs:
+    
+        A: double, (n,n) sparse matrix in coo format
         
-        #
-        #   
-        # 
-        for i in self.dofhandler.hanging_nodes:
-            #
-            # Turn row i into the ith row of the identity matrix 
-            #
-            data[rows==i] = 0  # make row 0
-            data[(rows==i)*(cols==i)] = 1  # make diagonal 1
-            b[rows==i] = 0  # right hand side = 0
-            for count in range(len(hnc)):
-                pass
+        b: double, (n,1) vector of right hand sides
+        
+        hanging_nodes: dict, {i_hn:[is_1,...,is_k], [cs_1,...,cs_k]}
+            i_hn: hanging node index
+            is_j: index of jth supporting node
+            cs_j: coefficient of jth supporting basis function, i.e.
             
+            phi_{i_hn} = cs_1*phi_{is_1} + ... + cs_k*phi_{is_k}     
+            
+        compress: bool [False], flag for how the nodes should be accounted for
+            True - remove the hanging nodes from the system (the solution 
+                can then be reconstructed using "resolve_hanging_nodes").
+            False - keep the size of the system, incorporating hanging nodes
+                implicitly.
+        """
+        # Convert A to a lil matrix
+        A = A.tolil() 
         
+        hanging_nodes = self.__dofhandler.get_hanging_nodes()
+        n_rows = A.shape[0]
+        for i in range(n_rows):
+            #
+            # Iterate over all rows
+            #
+            if i in hanging_nodes.keys():
+                #
+                # Row corresponds to hanging node
+                #
+                if not compress:
+                    new_indices = [is_j for is_j in hanging_nodes[i][0]] 
+                    new_indices.append(i)
+                    A.rows[i] = new_indices           
+         
+                    new_values = [-cs_j for cs_j in hanging_nodes[i][1]] 
+                    new_values.append(1)
+                    A.data[i] = new_values
+                    
+                    b[i] = 0
+                
+            else:
+                row = A.rows[i]
+                data = A.data[i]
+                for hn in hanging_nodes.keys():
+                    #
+                    # For each row, determine what hanging nodes are supported
+                    #
+                    if hn in row:    
+                        #
+                        # If hanging node appears in row, modify
+                        #
+                        j_hn = row.index(hn)
+                        for js,vs in zip(*hanging_nodes[hn]):
+                            #
+                            # Loop over supporting indices and coefficients
+                            # 
+                            if js in row:
+                                #
+                                # Index exists: modify entry
+                                #
+                                j_js = row.index(js)
+                                data[j_js] += vs*data[j_hn]
+                            else:
+                                #
+                                # Insert new entry
+                                # 
+                                jj = bisect_left(row,js)
+                                vi = vs*data[j_hn]
+                                row.insert(jj,js)
+                                data.insert(jj,vi)
+                                j_hn = row.index(hn)  # find hn again
+                        #
+                        # Zero out column that contains the hanging node
+                        #
+                        row.pop(j_hn)
+                        data.pop(j_hn)
+                        if compress:
+                            #
+                            # Renumber entries to hanging node's right.
+                            # 
+                            for j in range(j_hn,len(row)):
+                                row[j] -= 1
+        if compress:
+            #
+            # Delete rows corresponding to hanging nodes
+            #
+            hn_list = [hn for hn in hanging_nodes.keys()]
+            n_hn = len(hn_list)    
+            A.rows = np.delete(A.rows,hn_list,0)
+            A.data = np.delete(A.data,hn_list,0)
+            b = np.delete(b,hn_list,0)
+            A._shape = (A._shape[0]-n_hn, A._shape[1]-n_hn)
+        
+        return A,b
+            
+     
+    def resolve_hanging_nodes(self,u):
+        """
+        Enlarge the solution vector u to include hannging nodes  
+        
+        Inputs:
+        
+           u: double, (n,) numpy vector of nodal values, without hanging nodes.
+            
+           hanging_nodes: dict, {i_hn:[is_1,...,is_k], [cs_1,...,cs_k]}
+                i_hn: hanging node index
+                is_j: index of jth supporting node
+                cs_j: coefficient of jth supporting basis function, i.e.
+                
+                phi_{i_hn} = cs_1*phi_{is_1} + ... + cs_k*phi_{is_k} 
+    
+                
+        Outputs:
+            
+            uu: double, (n+k,) numpy vector of nodal values which includes 
+                hanging nodes.
+        """
+        hanging_nodes = self.__hanging_nodes
+        hang = [hn for hn in hanging_nodes.keys()]
+        n = len(u)
+        not_hang = [i for i in range(n) if i not in hang]
+        k = len(hang)
+        uu = np.zeros((n+k,))
+        uu.flat[not_hang] = u
+        for i in range(k):
+            i_s, c_s = hanging_nodes[hang[i]]
+            uu[hang[i]] = np.dot(uu[i_s],np.array(c_s))
+        return uu   
+    
         
     def get_n_nodes(self):
         """

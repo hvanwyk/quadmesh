@@ -2,16 +2,19 @@
 Created 11/22/2016
 @author: hans-werner
 """
+# =============================================================================
+# Imports
+# =============================================================================
 import unittest
 from finite_element import QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
-from numpy import sqrt, sum, dot, sin, pi, array, abs, empty, zeros, max, \
+from numpy import sqrt, sum, dot, array, abs, zeros, \
                   allclose, eye, random
+#import scipy.sparse as sp
 import numpy as np
 import numpy.linalg as la
 from plot import Plot
 import matplotlib.pyplot as plt
-#import matplotlib.colorbar as colorbar
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -174,7 +177,7 @@ class TestDofHandler(unittest.TestCase):
     def test_get_dofs(self):
         pass
     
-    def test_make_hanging_node_constraints(self):
+    def test_set_hanging_nodes(self):
         pass
         
         
@@ -459,21 +462,21 @@ class TestSystem(unittest.TestCase):
                                        'Assembly incorrect.')
           
         #
-        # 20x20 grid     
+        # 10x10 grid     
         # 
-        mesh = Mesh.newmesh(grid_size=(15,15))
+        mesh = Mesh.newmesh(grid_size=(10,10))
         mesh.refine()
         u = lambda x,y: x*(1-x)*y*(1-y)  # exact solution
         f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))+u(x,y)  # forcing term 
         for etype in ['Q2','Q3']:
             element = QuadFE(2,etype)
             system = System(mesh,element)
-            A,b = system.assemble(bilinear_forms=bf,linear_forms=lf,\
+            A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
                                   boundary_conditions=bc)
-            ua = la.solve(A.toarray(),b)
+            ua = la.solve(A.toarray(), b)
             x = system.mesh_nodes()
-            ue = u(x[:,0],x[:,1])
-            self.assertTrue(allclose(ua,ue), 'Solution incorrect')
+            ue = u(x[:,0], x[:,1])
+            self.assertTrue(allclose(ua, ue), 'Solution incorrect')
         
             A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
                                   boundary_conditions=bc_3)
@@ -483,8 +486,55 @@ class TestSystem(unittest.TestCase):
         # =====================================================================
         # Test hanging nodes
         # =====================================================================
+        mesh = Mesh.newmesh()
+        mesh.root_node().mark(1)
+        mesh.refine(1)
+        mesh.root_node().children['SW'].mark(2)
+        mesh.refine(2)
+        element = QuadFE(2,'Q1')
+        
+        fig,ax = plt.subplots()
+        plot = Plot()
+        #plot.mesh(ax,mesh,element=element,dofs=True)
+                
+        system = System(mesh,element)
+        A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
+                              boundary_conditions=bc)
+        print(A.shape)
+        dh = DofHandler(mesh,element)
+        hn = dh.get_hanging_nodes()
+        print('======================')
+        for h in hn.keys():
+            print(h)
+        print('======================')
+        A,b = system.incorporate_hanging_nodes(A,b,compress=False)
+        
+        print(A.shape)
+        ua = la.solve(A.toarray(),b)
+        #ua = system.resolve_hanging_nodes(uua)
+        x = system.mesh_nodes()
+        ue = u(x[:,0],x[:,1])
+        #self.assertTrue(allclose(ua,ue), 'Solutions not close.')
+        plot.function(ax, ua, mesh, element=element)
+        plt.show()
         
         
+    def test_incorporate_hanging_nodes(self):
+        """
+        A = np.array([[1,1,1,1],[0,-2,1,0],[1,3,1,0],[0,0,-1,3]])
+        b = np.array([2,4,0,-2])
+        xe = np.array([1,-1,2,0])
+        hanging_nodes = {2:([0,1],[1,-1])}
+        
+        A1 = sp.lil_matrix(A)
+        A1,b1 = self.incorporate_hanging_nodes(A1,b)
+        
+        A2 = sp.lil_matrix(A)
+        A2,b2 = self.incporate_hanging_nodes(A2,b)
+        """
+    
+    def test_resolve_hanging_nodes(self):
+        pass
         
     def test_line_integral(self):
         # Define quadrature rule

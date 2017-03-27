@@ -64,7 +64,7 @@ m.refine()
 
 for i in range(5):
     for leaf in m.root_node().find_leaves():
-        if rand() < 0.5:
+        if rand() < 0.8:
             leaf.mark('s')
     m.refine('s')
 m.plot_quadmesh(ax, show=True, set_axis=True, cell_numbers=False)
