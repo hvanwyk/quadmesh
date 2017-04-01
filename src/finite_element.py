@@ -5,7 +5,7 @@ from mesh import QuadCell, Edge
 from bisect import bisect_left       
 
 """
-To do with Finite Element Classes
+Finite Element Classes
 """
 
 class FiniteElement(object):
@@ -30,31 +30,54 @@ class QuadFE(FiniteElement):
     def __init__(self, dim, element_type):
         FiniteElement.__init__(self, dim, element_type)
         
-        #
-        # Linear Elements
-        #
+        
         if element_type == 'Q1':
+            """
+            -------------------------------------------------------------------
+            Linear Elements
+            -------------------------------------------------------------------
+        
+            2---3
+            |   |
+            0---1
+            """
             
             p  = [lambda x: 1-x, lambda x: x]
             px = [lambda x:-1.0, lambda x: 1.0]
             
             if dim == 1:
+                #
+                # One Dimensional
+                # 
                 dofs_per_vertex = 1
                 dofs_per_edge = 0
                 dofs_per_cell = 0
                 basis_index  = [0,1]
                 ref_nodes = [0.0,1.0]
             elif dim == 2:
+                #
+                # Two Dimensional
+                #
                 dofs_per_vertex = 1
                 dofs_per_edge = 0
                 dofs_per_cell = 0
                 basis_index = [(0,0),(1,0),(0,1),(1,1)]
                 ref_nodes = np.array([[0,0],[1,0],[0,1],[1,1]])
                 pattern = ['SW','SE','NW','NE']
-        #
-        # Quadratic Elements 
-        #        
+        
         elif element_type == 'Q2':
+            """
+            -------------------------------------------------------------------
+            Quadratic Elements 
+            -------------------------------------------------------------------
+        
+            2---7---3
+            |       |
+            4   8   5 
+            |       |
+            0---6---1
+        
+            """
             
             p =  [ lambda x: 2*x*x-3*x + 1.0, 
                    lambda x: 2*x*x-x, 
@@ -64,13 +87,19 @@ class QuadFE(FiniteElement):
                    lambda x: 4*x-1,
                    lambda x: 4.0-8*x ]
             
-            if dim == 1: 
+            if dim == 1:
+                #
+                # One Dimensional
+                # 
                 dofs_per_vertex = 1
                 dofs_per_edge = 0
                 dofs_per_cell = 1
                 basis_index = [0,1,2]
                 ref_nodes = np.array([0.0,1.0,0.5])
             elif dim == 2:
+                #
+                # Two Dimensional
+                #
                 dofs_per_vertex = 1 
                 dofs_per_edge = 1
                 dofs_per_cell = 1
@@ -82,11 +111,21 @@ class QuadFE(FiniteElement):
                 pattern = ['SW','SE','NW','NE','W','E','S','N','I']
             else:
                 raise Exception('Only 1D and 2D currently supported.')
-        
-        #
-        # Cubic Elements
-        #     
+             
         elif element_type == 'Q3':
+            """
+            -------------------------------------------------------------------
+            Cubic Elements
+            -------------------------------------------------------------------
+            
+            2---10---11---3
+            |             |
+            5   14   15   7
+            |             |
+            4   12   13   6
+            |             |
+            0----8---9----1 
+            """
             
             p = [lambda x: -4.5*(x-1./3.)*(x-2./3.)*(x-1.),
                  lambda x:  4.5*x*(x-1./3.)*(x-2./3.),
@@ -99,25 +138,32 @@ class QuadFE(FiniteElement):
                   lambda x: -40.5*x*x + 36*x -4.5]
             
             if dim == 1:
+                #
+                # One Dimensional
+                #
                 dofs_per_vertex = 1
                 dofs_per_edge = 0
                 dofs_per_cell = 2
                 basis_index = [0,1,2,3]
                 ref_nodes = np.array([0.0,1.0,1/3.0,2/3.0])
             elif dim == 2:
+                #
+                # Two Dimensional
+                #
                 dofs_per_vertex = 1 
                 dofs_per_edge = 2
                 dofs_per_cell = 4
                 basis_index = [(0,0),(1,0),(0,1),(1,1),
                                (0,2),(0,3),(1,2),(1,3),(2,0),(3,0),(2,1),(3,1),
                                (2,2),(3,2),(2,3),(3,3)]
-                ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0],
-                                  [0.0,1./3.],[0.0,2./3.],
-                                  [1.0,1./3.],[1.0,2./3.], 
-                                  [1./3.,0.0],[2./3.,0.0], 
-                                  [1./3.,1.0],[2./3.,1.0],
-                                  [1./3.,1./3.],[2./3.,1./3.],
-                                  [1./3.,2./3.],[2./3.,2./3.]])
+                ref_nodes = np.array([[0.0,0.0],[1.0,0.0],
+                                      [0.0,1.0],[1.0,1.0],
+                                      [0.0,1./3.],[0.0,2./3.],
+                                      [1.0,1./3.],[1.0,2./3.], 
+                                      [1./3.,0.0],[2./3.,0.0], 
+                                      [1./3.,1.0],[2./3.,1.0],
+                                      [1./3.,1./3.],[2./3.,1./3.],
+                                      [1./3.,2./3.],[2./3.,2./3.]])
                 pattern = ['SW','SE','NW','NE','W','W','E','E','S','S','N','N',
                            'I','I','I','I']
         self.__cell_type = 'quadrilateral' 
@@ -128,23 +174,24 @@ class QuadFE(FiniteElement):
         self.__element_type = element_type
         self.__ref_nodes = ref_nodes
         if dim == 2:
-            self.__pattern = pattern
+            self.pattern = pattern
       
     def cell_type(self):
         return self.__cell_type
     
-    
-    def polynomial_degree(self):
-        """
-        Return the finite element's polynomial degree 
-        """
-        return list(self.__element_type)[1]
     
     def element_type(self):
         """
         Return the finite element type (Q1, Q2, or Q3)
         """ 
         return self.__element_type
+    
+        
+    def polynomial_degree(self):
+        """
+        Return the finite element's polynomial degree 
+        """
+        return list(self.__element_type)[1]
     
         
     def n_dofs(self,key=None):
@@ -161,23 +208,54 @@ class QuadFE(FiniteElement):
             assert key in self.__dofs.keys(), 'Use "vertex","edge", "cell" for key'
             return self.__dofs[key]
     
+    def loc_dofs_on_edge(self,direction):
+        """
+        Returns the local dofs on a given edge
+        """    
+        edge_dofs = []
+        for i in range(self.n_dofs()):
+            if direction in self.pattern[i]:
+                edge_dofs.append(i)
+        return edge_dofs
+    
+    
+    def pos_on_edge(self, direction):
+        """
+        Returns the positions of dofs along each edge in order
+        from left-to-right and low-to-high.
+        
+        Input:
+        
+            direction: str, cartographic direction (WESN)
+            
+        Output:
+        
+            pos_ordered: list, positions. 
+        """
+        assert direction in ['N','S','E','W'], 'Direction not supported.'
+        positions = []
+        count = 0
+        for pos in self.pattern:
+            if pos == direction:
+                positions.append((pos,count))
+                count += 1
+            elif direction in pos:
+                positions.append(pos)
+            
+        min_pos = 'S'+direction if direction in ['E','W'] else direction+'W'
+        max_pos = 'N'+direction if direction in ['E','W'] else direction+'E'
+  
+        dpe = self.n_dofs('edge')
+        pos_ordered = [min_pos] + [(direction,i) for i in range(dpe)] + [max_pos]       
+        return pos_ordered
+    
     
     def reference_nodes(self):
         """
         Returns vertices used to define nodal basis functions on reference cell
         """
         return self.__ref_nodes
-        
-        
-    def get_local_edge_dofs(self,direction):
-        """
-        Returns the local dofs on a given edge
-        """    
-        edge_dofs = []
-        for i in range(self.n_dofs()):
-            if direction in self.__pattern[i]:
-                edge_dofs.append(i)
-        return edge_dofs
+    
      
         
     def phi(self, n, x):
@@ -191,6 +269,7 @@ class QuadFE(FiniteElement):
             x: double, point at which function is to be evaluated
                (double if dim=1, or tuple if dim=2) 
         """
+        x = np.array(x)
         assert n < self.n_dofs(), 'Basis function index exceeds n_dof'
         #
         # 1D 
@@ -260,7 +339,7 @@ class QuadFE(FiniteElement):
         
             constraint: double, dictionary whose keys are the fine node numbers  
             
-        NOTE: This works only for 2D quadcells
+        Notes: This works only for 2D quadcells
         """        
         dpe = self.n_dofs('edge')
         edge_shapefn_index = [0] + [i for i in range(2,dpe+2)] + [1]
@@ -464,98 +543,17 @@ class TriFE(FiniteElement):
 class DofHandler(object):
     """
     Degrees of freedom handler
-    TODO: A lot of things can be handled more appropriately by the element
     """
     def __init__(self, mesh, element):
         """
         Constructor
         """
-        etype = element.element_type()
-        if etype == 'Q1':
-            """
-            2---3
-            |   |
-            0---1
-            """
-            dofs_per_vertex = 1
-            dofs_per_edge = 0
-            dofs_per_cell = 0
-            n_dofs = 4
-            pattern = ['SW','SE','NW','NE']
-            ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0]])
-        elif etype == 'Q2':
-            """
-            2---7---3
-            |       |
-            4   8   5 
-            |       |
-            0---6---1
-            """
-            dofs_per_vertex = 1
-            dofs_per_edge = 1
-            dofs_per_cell = 1
-            n_dofs = 9
-            pattern = ['SW','SE','NW','NE',
-                       'W','E','S','N','I']
-            ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0],
-                                  [0.0,0.5],[1.0,0.5],[0.5,0.0],[0.5,1.0],
-                                  [0.5,0.5]])
-        elif etype == 'Q3':
-            """
-            2---10---11---3
-            |             |
-            5   14   15   7
-            |             |
-            4   12   13   6
-            |             |
-            0----8---9----1 
-            """
-            dofs_per_vertex = 1
-            dofs_per_edge = 2
-            dofs_per_cell = 4
-            n_dofs = 16
-            pattern = ['SW','SE','NW','NE',
-                       'W','W','E','E','S','S','N','N',
-                       'I','I','I','I']
-            ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0],
-                                  [0.0,1./3.],[0.0,2./3.],
-                                  [1.0,1./3.],[1.0,2./3.], 
-                                  [1./3.,0.0],[2./3.,0.0], 
-                                  [1./3.,1.0],[2./3.,1.0],
-                                  [1./3.,1./3.],[2./3.,1./3.],
-                                  [1./3.,2./3.],[2./3.,2./3.]])
-        else:
-            raise Exception('Only Q1, Q2, or Q3 supported.')
-        self.__element = element
-        self.__element_type = etype
-        self.__dim = element.dim()
-        self.dofs_per_vertex = dofs_per_vertex 
-        self.dofs_per_edge = dofs_per_edge
-        self.dofs_per_cell = dofs_per_cell 
-        self.__n_dofs = n_dofs
-        self.__pattern = pattern
-        self.__global_dofs = dict.fromkeys(mesh.root_node().find_leaves(),[None]*n_dofs) 
-        self.__root_node = mesh.root_node()
-        self.__constraint_coefficients = element.constraint_coefficients()
-        self.__reference_nodes = ref_nodes
+        self.element = element
+        self.mesh = mesh
+        self.__global_dofs = dict.fromkeys(mesh.root_node().find_leaves(),\
+                                           [None]*self.element.n_dofs()) 
         self.__hanging_nodes = {}
         
-        
-    def n_dofs(self,key='cell'):
-        """
-        Return the number of dof's of cell
-        
-        Inputs: 
-        
-            key: str, specifying entity ['cell'],'edge', or 'vertex' 
-        """
-        return self.__element.n_dofs(key=key)
-        if key == 'cell':
-            return self.__n_dofs
-        elif key == 'edge':
-            return self.dofs_per_edge
-        elif key == 'vertex':
-            return 1
             
     def distribute_dofs(self):
         """
@@ -565,7 +563,7 @@ class DofHandler(object):
         opposite = {'N':'S', 'S':'N', 'W':'E', 'E':'W', 
                     'SW':'NE','NE':'SW','SE':'NW','NW':'SE'}
 
-        for node in self.__root_node.find_leaves():
+        for node in self.mesh.root_node().find_leaves():
             # Initialize dofs list for node
             dof_list = self.__global_dofs[node][:] 
             
@@ -588,19 +586,19 @@ class DofHandler(object):
                     opp_dir = opposite[diag_dir] 
                     if nb.has_children(opp_dir):
                         nb = nb.children[opp_dir]
-                    self.assign_dofs(nb,opp_dir,dof)    
+                    self.assign_dofs_to_pos(nb,opp_dir,dof)    
             
             #
             # W, E, S, N
             # 
             sub_pos = {'E':['SE','NE'], 'W':['SW','NW'], 
                        'N':['NW','NE'], 'S':['SW','SE']}
-            dpe = self.dofs_per_edge
+            dpe = self.element.n_dofs('edge')
             ref_index = range(0,dpe+2) 
             coarse_index = [2*r for r in ref_index]
             for direction in ['W','E','S','N']:
                 opp_dir = opposite[direction]
-                n_pos = self.positions_along_edge(direction)
+                n_pos = self.element.pos_on_edge(direction)
                 dofs = self.pos_to_dof(dof_list, n_pos)
                 nb = node.find_neighbor(direction)
                 if nb != None:
@@ -612,8 +610,10 @@ class DofHandler(object):
                         for sp in sub_pos[opp_dir]:
                             child = nb.children[sp]
                             if child != None:
-                                ch_pos = self.positions_along_edge(opp_dir)
-                                fine_index = [r+(dpe+1)*ch_count for r in ref_index]
+                                ch_pos = \
+                                    self.element.pos_on_edge(opp_dir)
+                                fine_index = \
+                                    [r+(dpe+1)*ch_count for r in ref_index]
                                 to_pos = []
                                 to_dofs = []
                                 for i in range(len(fine_index)):
@@ -621,19 +621,19 @@ class DofHandler(object):
                                         to_pos.append(ch_pos[i])
                                         j = coarse_index.index(fine_index[i])
                                         to_dofs.append(dofs[j])
-                                self.assign_dofs(child,to_pos,to_dofs)   
+                                self.assign_dofs_to_pos(child,to_pos,to_dofs)   
                             ch_count += 1
                     elif nb.depth == node.depth:
                         #
                         # Same size cell
                         #
-                        nb_pos = self.positions_along_edge(opp_dir)
-                        self.assign_dofs(nb, nb_pos, dofs)
+                        nb_pos = self.element.pos_on_edge(opp_dir)
+                        self.assign_dofs_to_pos(nb, nb_pos, dofs)
                     elif nb.depth < node.depth:
                         #
                         # Neighbor larger than self
                         # 
-                        nb_pos = self.positions_along_edge(opp_dir)
+                        nb_pos = self.element.pos_on_edge(opp_dir)
                         offset = sub_pos[direction].index(node.position)
                         fine_index = [r+(dpe+1)*offset for r in ref_index]
                         to_pos = []
@@ -643,90 +643,51 @@ class DofHandler(object):
                                 to_pos.append(nb_pos[i])
                                 j = fine_index.index(coarse_index[i])
                                 to_dofs.append(dofs[j]) 
-                        self.assign_dofs(nb, to_pos, to_dofs)
+                        self.assign_dofs_to_pos(nb, to_pos, to_dofs)
         self.n_global_dofs = count
-    
-    
-    def reference_nodes(self, key='cell'):
-        """
-        Return the nodes on the reference element
-        
-        Inputs: 
-        
-            key ['cell']: str, 'edge' 
-        """
-        if key == 'cell':
-            return self.__reference_nodes
-        elif key == 'edge':
-            n_nodes = self.dofs_per_edge + 2*self.dofs_per_vertex
-            return np.linspace(0.0, 1.0, n_nodes) 
-        
-    
-    def n_nodes(self):
-        """
-        Return the total number of nodes
-        """
-        self.__getattribute__('n_global_dofs')
-        if hasattr(self, 'n_global_dofs'):
-            return self.n_global_dofs
-        else:
-            raise Exception('Dofs have not been distributed yet.')
-            
      
-    def mesh_nodes(self):
-        """
-        Return the mesh nodes
-        """
-        assert hasattr(self, 'n_global_dofs'), \
-            'First distribute dofs.'
-        x = np.empty((self.n_global_dofs,2))
-        rule = GaussRule(1,shape='quadrilateral')
-        x_ref = self.reference_nodes()
-        for leaf in self.__root_node.find_leaves():
-            g_dofs = self.get_node_dofs(leaf)
-            x[g_dofs,:] = rule.map(leaf.quadcell(),x=x_ref)
-        return x
                 
     def fill_in_dofs(self,node_dofs, count):
         """
-        Fill in node's dofs 
+        Fill in cell's dofs
+        
+        Inputs:
+        
+            node_dofs: list containing cell's global degrees of freedom
+            
+            count: int, current number of dofs stored
+        
+        Outputs: 
+        
+            node_dofs: updated list
+            
+            count: int, updated count
+            
+            
+        TODO: Fill in dofs for children ...
         """
-        for i in range(self.__n_dofs):
+        for i in range(self.element.n_dofs()):
             if node_dofs[i] == None:
                 node_dofs[i] = count
                 count += 1
-        return node_dofs, count
-    
-    
-    def positions_along_edge(self, direction):
-        """
-        Returns the positions of dofs along each edge in order
-        from left-to-right and low-to-high.
-        """
-        assert direction in ['N','S','E','W'], 'Direction not supported.'
-        positions = []
-        count = 0
-        for pos in self.__pattern:
-            if pos == direction:
-                positions.append((pos,count))
-                count += 1
-            elif direction in pos:
-                positions.append(pos)
-            
-        min_pos = 'S'+direction if direction in ['E','W'] else direction+'W'
-        max_pos = 'N'+direction if direction in ['E','W'] else direction+'E'
-  
-        dpe = self.dofs_per_edge
-        ordering = [min_pos] + [(direction,i) for i in range(dpe)] + [max_pos]       
-        return ordering 
+        return node_dofs, count 
         
             
-    def assign_dofs(self, node, positions, dofs):
+    def assign_dofs_to_pos(self, node, positions, dofs):
         """
-        Assign dofs to node
+        Assign the degrees of freedom (dofs) to positions in cell at node. 
+        The result is stored in the DofHandler's "global_dofs" dictionary. 
+        
+        Inputs:
+        
+            node: Node, represents the cell
+            
+            positions: str, list of positions given by cardinal directions.
+            
+            dofs: int, list (same length as positions) of degrees of freedom.    
         """    
         # Initialize positions
-        p = self.__pattern
+        p = self.element.pattern
         dof_list = self.__global_dofs[node][:]
         
         # Turn positions and dofs into list
@@ -761,10 +722,28 @@ class DofHandler(object):
         
     def pos_to_dof(self, dof_list, positions):
         """
-        Return a list of dofs corresponding to various positions 
+        Return a list of dofs corresponding to various positions within a cell
+        
+        Inputs: 
+        
+            dof_list: int, list of cell's global degrees of freedom
+            
+            positions: str, list of positions in the form
+                
+                Mixed: 'NW','NE','SW','SE'
+                
+                Directions: 'W', 'E', 'S', 'N' or (direction,i), 
+                    i ordered from low high, left to right 
+                    
+                Interior: 'I' or (I,i), i=0,1,.. ordered row-wise bottom to top
+            
+        Outputs:
+        
+            dofs: list of degrees of freedom corresponding to given positions
+         
         """
         dofs = []
-        p = self.__pattern
+        p = self.element.pattern
 
         # Turn positions into list if only one entry
         if not(type(positions) is list):
@@ -785,97 +764,112 @@ class DofHandler(object):
             dofs = dofs[0]
         return dofs    
     
-    def get_node_dofs(self, node):
-        """
-        Return all dofs corresponding to a given tree node 
-        """
-        return self.__global_dofs[node]
     
-    
-    def get_local_edge_dofs(self, direction):
+    def get_global_dofs(self, node, edge_dir=None):
         """
-        Return all dofs on a given edge of a cell 
-        """
-        return self.__element.get_local_edge_dofs(direction)
+        Return all global dofs corresponding to a given cell, or one of its 
+        edges.
         
+        Inputs:
         
-    
-    def get_global_edge_dofs(self, node, direction):
-        """
-        Return all global dofs of a given edge of a cell
+            node: Node, quadtree node associated with cell
+            
+            edge_dir: str, edge direction (WESN)
+            
+            
+        Outputs:
+        
+             global_dofs: list of cell dofs or edge dofs. 
         """
         cell_dofs = self.__global_dofs[node]
-        edge_dofs = []
-        for i in range(self.__n_dofs):
-            if direction in self.__pattern[i]:
-                edge_dofs.append(cell_dofs[i])
-        return edge_dofs
+        if edge_dir is None:
+            return cell_dofs
+        else: 
+            assert edge_dir in ['W','E','S','N'], \
+            'Edge should be one of W, E, S, or N.'    
+            edge_dofs = []
+            for i in range(self.element.n_dofs()):
+                if edge_dir in self.element.pattern[i]:
+                    #
+                    # If edge appears in an entry, record the dof
+                    # 
+                    edge_dofs.append(cell_dofs[i])
+            return edge_dofs
+         
+    
+    def n_dofs(self):
+        """
+        Return the total number of degrees of freedom
+        """
+        self.__getattribute__('n_global_dofs')
+        if hasattr(self, 'n_global_dofs'):
+            return self.n_global_dofs
+        else:
+            raise Exception('Dofs have not been distributed yet.')
+            
+     
+    def dof_vertices(self):
+        """
+        Return the mesh nodes
+        """
+        assert hasattr(self, 'n_global_dofs'), \
+            'First distribute dofs.'
+        x = np.empty((self.n_global_dofs,2))
+        rule = GaussRule(1,shape='quadrilateral')
+        x_ref = self.element.reference_nodes()
+        for leaf in self.mesh.root_node().find_leaves():
+            g_dofs = self.get_global_dofs(leaf)
+            x[g_dofs,:] = rule.map(leaf.quadcell(),x=x_ref)
+        return x
     
                 
     def set_hanging_nodes(self):
         """
-        Return the constraint matrix satisfied by the mesh's hanging nodes.
+        Set up the constraint matrix satisfied by the mesh's hanging nodes.
+        
+        Note: Hanging nodes can only be found once the mesh has been balanced.
         """
-        rows = []
-        cols = []
-        vals = []
+     
         hanging_nodes = {}
         sub_pos = {'E':['SE','NE'], 'W':['SW','NW'], 
                    'N':['NW','NE'], 'S':['SW','SE']}
-        opposite = {'E':'W','W':'E','N':'S','S':'N'}
-        n_rows = 0
-        dpe = self.n_dofs('edge')+2
-        print('Dofs per edge: {0}'.format(dpe))
-        cc = self.__constraint_coefficients
-        print('Constraint coefficients: {0}'.format(cc))
-        n_verts = self.dofs_per_edge + 2
+        opposite = {'E':'W','W':'E','N':'S','S':'N'}        
+        cc = self.element.constraint_coefficients()
         for node, n_doflist in self.__global_dofs.items():
-            node.info()
-            print('Node DOFs:{0}'.format(n_doflist))
+            #
+            # Loop over cells in mesh
+            #
             for direction in ['W','E','S','N']:
-                n_dof_pos = self.positions_along_edge(direction)
+                #
+                # Look in every direction
+                # 
+                n_dof_pos = self.element.pos_on_edge(direction)
                 nb = node.find_neighbor(direction)
                 if nb != None and nb.has_children():
-                    print('Node: {0} -> Neighbor: {1}'.format(node.address,nb.address))
+                    #
+                    # Neighbor has children -> resolve their hanging nodes
+                    # 
                     opp = opposite[direction]
-                    ignore_center = False
                     for i in range(2):
-                        print('Child %s'%(sub_pos[opp][i]))
                         child = nb.children[sub_pos[opp][i]]
                         if child != None:
-                            print(child.address)
-                            ch_dof_pos = self.positions_along_edge(opp)
-                            print('Child positions along edge {0}'.format(ch_dof_pos))
+                            #
+                            # For each of 2 children, get pos and dof info
+                            #  
+                            ch_dof_pos = self.element.pos_on_edge(opp)
                             ch_doflist = self.__global_dofs[child]
-                            print('Child doflist: {0}'.format(ch_doflist))
-                            print('Constraint Coefficients: {0}'.format(cc))
                             for hn in cc[i].keys():
-                                print('hn={0}'.format(hn))
+                                #
+                                # Loop over generic hanging nodes, store 
+                                # global info in hanging_node dictionary.
+                                # 
                                 coarse_dofs = self.pos_to_dof(n_doflist, n_dof_pos)
-                                """
-                                Experiment
-                                """
                                 hn_dof = self.pos_to_dof(ch_doflist,ch_dof_pos[hn])[0]
                                 hanging_nodes[hn_dof] = (coarse_dofs,cc[i][hn])
-                                if not ignore_center:
-                                    cols += coarse_dofs
-                                    vals += cc[i][hn]
-                                    hn_dofs = self.pos_to_dof(ch_doflist, 
-                                                            ch_dof_pos[hn])
-                                    cols += hn_dofs
-                                    #print('Hanging Node dofs: {0}'.format(hn_dofs))
-                                    #print('Coarse dofs: {0}'.format(coarse_dofs))
-                                
-                                    vals += [-1.0]
-                                    rows += [n_rows]*(n_verts+1) 
-                                    n_rows += 1
-                            if any(h==dpe for h in cc[i].keys()):
-                                ignore_center = True
                         else:
                             print('Child is None')
         self.__hanging_nodes = hanging_nodes
-        #n_cols = self.n_global_dofs
-        #return -sparse.coo_matrix((vals,(rows,cols)),shape=(n_rows+1,n_cols))
+        
       
       
     def get_hanging_nodes(self):
@@ -1429,7 +1423,7 @@ class System(object):
                 boundary conditions.
               
         """        
-        n_nodes = self.__dofhandler.n_nodes()
+        n_nodes = self.__dofhandler.n_dofs()
         n_dofs = self.__element.n_dofs()   
   
         #
@@ -1453,7 +1447,7 @@ class System(object):
         cols = []
         dir_nodes_encountered = []
         for node in self.__mesh.root_node().find_leaves():
-            node_dofs = self.__dofhandler.get_node_dofs(node)
+            node_dofs = self.__dofhandler.get_global_dofs(node)
             cell = node.quadcell()            
             #
             # Assemble local system matrices/vectors
@@ -1723,28 +1717,28 @@ class System(object):
         """
         Return the number of dofs 
         """
-        return self.__dofhandler.n_nodes()
+        return self.__dofhandler.n_dofs()
     
     
-    def get_node_dofs(self,node):
+    def get_global_dofs(self,node):
         """
         Return the degrees of freedom associated with node
         """             
-        return self.__dofhandler.get_node_dofs(node)
+        return self.__dofhandler.get_global_dofs(node)
     
     
     def get_edge_dofs(self,node,direction):
         """
         Return the degrees of freedom associated with edge
         """
-        return self.__dofhandler.get_global_edge_dofs(node, direction)
+        return self.__dofhandler.get_global_dofs(node, direction)
     
     
-    def mesh_nodes(self):
+    def dof_vertices(self):
         """
         Returns the locations of all degrees of freedom
         """
-        return self.__dofhandler.mesh_nodes()
+        return self.__dofhandler.dof_vertices()
      
      
     def x_loc(self,cell):

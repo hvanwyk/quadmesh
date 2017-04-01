@@ -18,6 +18,14 @@ class Gmrf(object):
         """
         self.__Q = Q
         self.__mu = mu
+    
+    def kl_expansion(self, k):
+        """
+        Inputs:
+        
+        Outputs:
+        
+        """
         
     def sample(self):
         """

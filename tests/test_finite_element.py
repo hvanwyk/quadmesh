@@ -8,13 +8,12 @@ Created 11/22/2016
 import unittest
 from finite_element import QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
-from numpy import sqrt, sum, dot, array, abs, zeros, \
-                  allclose, eye, random
+
 #import scipy.sparse as sp
 import numpy as np
 import numpy.linalg as la
 from plot import Plot
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -26,23 +25,25 @@ class TestQuadFE(unittest.TestCase):
     """
     Test QuadFE class
     """
+    def test_cell_type(self):
+        pass
+    
+    
+    def test_element_type(self):
+        pass
+    
+    
+    def test_polynomial_degree(self):
+        pass
+    
+    
     def test_n_dofs(self):
         element = QuadFE(2,'Q1')
         n_dofs = element.n_dofs()
         self.assertEqual(n_dofs, 4, 'Number of dofs is 4.')
-        
-    def test_shape_functions(self):
-        for etype in ['Q1','Q2','Q3']:
-            element = QuadFE(2,etype)
-            n_dofs = element.n_dofs()
-            I = eye(n_dofs)
-            x = element.reference_nodes()
-            for n in range(n_dofs):
-                self.assertTrue(allclose(element.phi(n,x),I[:,n]),\
-                                'Shape function evaluation incorrect')
-                
-                
-    def test_get_local_edge_dofs(self):
+     
+     
+    def test_loc_dofs_on_edge(self):
         edge_dofs_exact = {'Q1': {'W':[0,2],'E':[1,3],'S':[0,1],'N':[2,3]},
                            'Q2': {'W':[0,2,4],'E':[1,3,5],\
                                   'S':[0,1,6],'N':[2,3,7]},
@@ -51,10 +52,23 @@ class TestQuadFE(unittest.TestCase):
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
             for direction in ['W','E','S','N']:
-                edge_dofs = element.get_local_edge_dofs(direction)
+                edge_dofs = element.loc_dofs_on_edge(direction)
                 self.assertEqual(edge_dofs, edge_dofs_exact[etype][direction],\
                                  'Edge dofs incorrect')
-
+                
+    
+    def test_pos_on_edge(self):
+        element_type = 'Q3'
+        V = QuadFE(2,element_type)
+        direction = 'N'
+        positions = V.pos_on_edge(direction)
+        self.assertEqual(positions[1],('N',0),'Position should be (N,0).')
+        
+       
+    def test_reference_nodes(self):
+        pass   
+    
+    
     def test_constraint_coefficients(self):
         """
         UNFINISHED
@@ -117,8 +131,8 @@ class TestQuadFE(unittest.TestCase):
                 f_left_interp += fi*phi
                 
             f_left_vals = f(xy_left[:,0],xy_left[:,1])
-            print(f_left_vals)
-            print(f_left_interp)
+            #print(f_left_vals)
+            #print(f_left_interp)
             x_right_ref = np.zeros(x_ref.shape)
             x_right_ref[:,0] = 0.5 + 0.5*x_ref[:,0]
             f_right_interp = f(x_right_ref[:,0],x_right_ref[:,1]) 
@@ -126,10 +140,28 @@ class TestQuadFE(unittest.TestCase):
             
             # Exact function at interpolation points
             f_vals = f(xy[:,0],xy[:,1])
-            self.assertTrue(allclose(f_vals,f_interp),\
+            self.assertTrue(np.allclose(f_vals,f_interp),\
                             'Coarse cell interpolation incorrect.')
             
-            print(cc)
+            #print(cc)        
+                      
+                        
+    def test_phi(self):
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            n_dofs = element.n_dofs()
+            I = np.eye(n_dofs)
+            x = element.reference_nodes()
+            for n in range(n_dofs):
+                self.assertTrue(np.allclose(element.phi(n,x),I[:,n]),\
+                                'Shape function evaluation incorrect')
+                
+                
+    def test_dphi(self):
+        pass
+ 
+        
+    
     
 class TestTriFE(unittest.TestCase):
     """
@@ -152,48 +184,85 @@ class TestDofHandler(unittest.TestCase):
         mesh = Mesh.newmesh()
         mesh.root_node().mark()
         mesh.refine()
-        
         mesh.root_node().children['SE'].mark()
         mesh.refine()
-        
         mesh.root_node().children['SE'].children['SW'] = None
     
         
     def test_fill_in_dofs(self):
         pass
-    
-    def test_positions_along_edge(self):
-        mesh = Mesh.newmesh()
-        element_type = 'Q3'
-        V = QuadFE(2,element_type)
-        dofhandler = DofHandler(mesh,V)
-        direction = 'N'
-        positions = dofhandler.positions_along_edge(direction)
-        self.assertEqual(positions[1],('N',0),'Position should be (N,0).')
             
-    def test_assign_dofs(self):
+    def test_assign_dofs_to_pos(self):
         pass
        
-    def test_get_dofs(self):
+    def test_get_global_dofs(self):
+        pass
+    
+    def test_n_dofs(self):
+        pass
+    
+    def test_dof_vertices(self):
         pass
     
     def test_set_hanging_nodes(self):
         pass
         
-        
+    def test_get_hanging_nodes(self):
+        pass    
+
 
 class TestGaussRule(unittest.TestCase):
     """
     Test GaussRule class
     """
-    pass
+    def test_constructor(self):
+        pass
+    
+    def test_nodes(self):
+        pass
+    
+    def test_weights(self):
+        pass
+    
+    def test_n_nodes(self):
+        pass
+    
+    def test_map(self):
+        pass
+    
+    def test_inverse_map(self):
+        pass
+    
+    def test_jabobian(self):
+        pass
+    
 
+    def test_line_integral(self):
+        # Define quadrature rule
+        rule = GaussRule(2, shape='edge')
+        w = rule.weights()
+        
+        # function f to be integrated over edge e
+        f = lambda x,y: x**2*y
+        e = Edge(Vertex((0,0)),Vertex((1,1)))
+        
+        # Map rule to physical entity
+        x_ref = rule.map(e)
+        jac = rule.jacobian(e)
+        fvec = f(x_ref[:,0],x_ref[:,1])
+        
+        self.assertAlmostEqual(np.sum(np.dot(fvec,w))*jac,1/np.sqrt(2)/2,places=10,\
+                               msg='Failed to integrate x^2y.')
+        self.assertAlmostEqual(np.sum(w)*jac, np.sqrt(2), places=10,\
+                               msg='Failed to integrate 1.')
+        
+        
 class TestSystem(unittest.TestCase):
     """
     Test System class
     """
     
-    def test_assembly(self):
+    def test_assemble(self):
         
         # =====================================================================
         # One Cell
@@ -210,25 +279,25 @@ class TestSystem(unittest.TestCase):
         lf = [(1,'v')]
         bf = [(1,'u','v')]
         A,b = s.assemble(bf,lf)
-        AA = 1/36.0*array([[4,2,2,1],[2,4,1,2],[2,1,4,2],[1,2,2,4]])
-        self.assertTrue(allclose(A.toarray(),AA),'Incorrect mass matrix')
-        b_check = 0.25*array([1,1,1,1])
-        self.assertTrue(allclose(b,b_check),'Right hand side incorrect')
+        AA = 1/36.0*np.array([[4,2,2,1],[2,4,1,2],[2,1,4,2],[1,2,2,4]])
+        self.assertTrue(np.allclose(A.toarray(),AA),'Incorrect mass matrix')
+        b_check = 0.25*np.array([1,1,1,1])
+        self.assertTrue(np.allclose(b,b_check),'Right hand side incorrect')
         #
         # Stiffness Ax
         # 
         bf = [(1,'ux','vx')]
         Ax = s.assemble(bilinear_forms=bf)
-        AAx = 1/6.0*array([[2,-2,1,-1],[-2,2,-1,1],[1,-1,2,-2],[-1,1,-2,2]])
-        self.assertTrue(allclose(Ax.toarray(),AAx),
+        AAx = 1/6.0*np.array([[2,-2,1,-1],[-2,2,-1,1],[1,-1,2,-2],[-1,1,-2,2]])
+        self.assertTrue(np.allclose(Ax.toarray(),AAx),
                                'Incorrect stiffness matrix')
         #
         # Stiffness Ay
         # 
         bf = [(1,'uy','vy')]
         A = s.assemble(bilinear_forms=bf)
-        AAy = 1/6.0*array([[2,1,-2,-1],[1,2,-1,-2],[-2,-1,2,1],[-1,-2,1,2]])
-        self.assertTrue(allclose(A.toarray(),AAy), 'Ay incorrect')
+        AAy = 1/6.0*np.array([[2,1,-2,-1],[1,2,-1,-2],[-2,-1,2,1],[-1,-2,1,2]])
+        self.assertTrue(np.allclose(A.toarray(),AAy), 'Ay incorrect')
         #
         # Use matrices to integrate
         #
@@ -236,8 +305,8 @@ class TestSystem(unittest.TestCase):
         bilinear_forms = [(q,'u','v')]
         linear_forms = [(1,'v')]
         A,_ = s.assemble(bilinear_forms, linear_forms) 
-        v = array([1.,1.,1.,1.])
-        self.assertAlmostEqual(dot(v,A.tocsr().dot(v))-1.0/36.0, 0,8,\
+        v = np.array([1.,1.,1.,1.])
+        self.assertAlmostEqual(np.dot(v,A.tocsr().dot(v))-1.0/36.0, 0,8,\
                                'Should integrate to 4/pi^2.')
         
         # ---------------------------------------------------------------------
@@ -247,8 +316,8 @@ class TestSystem(unittest.TestCase):
             """
             Neumann Edge Marker: x = 1
             """
-            x = array(edge.vertex_coordinates())
-            return (abs(x[:,0]-1)<1e-9).all()
+            x = np.array(edge.vertex_coordinates())
+            return (np.abs(x[:,0]-1)<1e-9).all()
         
         def g_neumann(x,y):
             """
@@ -260,8 +329,8 @@ class TestSystem(unittest.TestCase):
             """
             Robin Edge Marker: y = 0 
             """
-            x = array(edge.vertex_coordinates())
-            return (abs(x[:,1]-0)<1e-9).all()  
+            x = np.array(edge.vertex_coordinates())
+            return (np.abs(x[:,1]-0)<1e-9).all()  
         
         def g_robin_1(x,y):
             """
@@ -273,8 +342,8 @@ class TestSystem(unittest.TestCase):
             """
             Robin Edge Marker: y = 1
             """
-            x = array(edge.vertex_coordinates())
-            return (abs(x[:,1]-1)<1e-9).all() 
+            x = np.array(edge.vertex_coordinates())
+            return (np.abs(x[:,1]-1)<1e-9).all() 
         
         def g_robin_2(x,y):
             """
@@ -286,13 +355,13 @@ class TestSystem(unittest.TestCase):
             """
             Dirichlet Node Marker: x = 0
             """
-            return (abs(x)<1e-10)
+            return (np.abs(x)<1e-10)
             
         def g_dirichlet(x,y):
             """
             Dirichlet function
             """
-            return zeros(shape=x.shape)
+            return np.zeros(shape=x.shape)
                
         gamma_1 = 1.0
         gamma_2 = 2.0
@@ -305,7 +374,7 @@ class TestSystem(unittest.TestCase):
         for etype in ['Q2','Q3']:
             element = QuadFE(2,etype)
             s = System(mesh,element)
-            x = s.mesh_nodes()
+            x = s.dof_vertices()
             ui = u(x[:,0],x[:,1])
             n_dofs = s.get_n_nodes()
             #
@@ -316,9 +385,9 @@ class TestSystem(unittest.TestCase):
             AAx = s.form_eval((1,'ux','vx'),cell)
             AAy = s.form_eval((1,'uy','vy'),cell)
             bb  = s.form_eval((f,'v'),cell)
-            self.assertTrue(allclose(AA+AAx+AAy,A.toarray()), 
+            self.assertTrue(np.allclose(AA+AAx+AAy,A.toarray()), 
                             'System matrix not correct')
-            self.assertTrue(allclose(bb,b),'Forcing term incorrect.') 
+            self.assertTrue(np.allclose(bb,b),'Forcing term incorrect.') 
     
         
             #
@@ -329,7 +398,7 @@ class TestSystem(unittest.TestCase):
             A,b = s.assemble(bilinear_forms=bf, linear_forms=lf,\
                              boundary_conditions=bc_1)
             bb_neu = s.form_eval((g_neumann,'v'), cell, edge_loc='E')
-            self.assertTrue(allclose(bb+bb_neu,b),'Forcing term incorrect.')
+            self.assertTrue(np.allclose(bb+bb_neu,b),'Forcing term incorrect.')
             
             #
             # Add Robin
@@ -349,9 +418,9 @@ class TestSystem(unittest.TestCase):
             AA_R2 = gamma_2*s.form_eval((g_robin_2,'u','v'),cell, edge_loc='N')
             
             
-            self.assertTrue(allclose(AA+AAx+AAy+AA_R1+AA_R2,A.toarray()), 
+            self.assertTrue(np.allclose(AA+AAx+AAy+AA_R1+AA_R2,A.toarray()), 
                             'System matrix not correct')
-            self.assertTrue(allclose(bb+bb_neu+bb_R1+bb_R2,b),\
+            self.assertTrue(np.allclose(bb+bb_neu+bb_R1+bb_R2,b),\
                             'Forcing term incorrect.')
             
             #
@@ -383,16 +452,16 @@ class TestSystem(unittest.TestCase):
                         if j in i_dir:
                             bb[i] -= AAA[i,j]*ui[j]
                             AAA[i,j] = 0
-            self.assertTrue(allclose(AAA,A.toarray()),\
+            self.assertTrue(np.allclose(AAA,A.toarray()),\
                             'System matrix incorrect')
-            self.assertTrue(allclose(bbb,b),\
+            self.assertTrue(np.allclose(bbb,b),\
                             'Right hand side incorrect')
             
             #
             # Check solution
             # 
             ua = la.solve(A.toarray(),b)
-            self.assertTrue(allclose(ui,ua),\
+            self.assertTrue(np.allclose(ui,ua),\
                             'Solution incorrect.')
       
             # Dirichlet all round
@@ -411,7 +480,7 @@ class TestSystem(unittest.TestCase):
             A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
                              boundary_conditions=bc)
             ua = la.solve(A.toarray(),b)
-            self.assertTrue(allclose(ua,ui), 'Solution incorrect')
+            self.assertTrue(np.allclose(ua,ui), 'Solution incorrect')
             
         # =====================================================================
         # Multiple Cells
@@ -436,7 +505,7 @@ class TestSystem(unittest.TestCase):
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
             s = System(mesh,element)
-            x = s.mesh_nodes()
+            x = s.dof_vertices()
             u = trial_functions[etype]
             v = test_functions[etype]
             ui = u(x[:,0],x[:,1])
@@ -447,7 +516,7 @@ class TestSystem(unittest.TestCase):
                 AA = np.zeros((n_nodes,n_nodes))
                 for node in mesh.root_node().find_leaves():
                     cell = node.quadcell()
-                    cell_dofs = s.get_node_dofs(node)
+                    cell_dofs = s.get_global_dofs(node)
                     AA_loc = s.form_eval(bf_list[i], cell)
                     block = np.ix_(cell_dofs,cell_dofs)
                     AA[block] = AA[block] + AA_loc 
@@ -455,7 +524,7 @@ class TestSystem(unittest.TestCase):
                 self.assertAlmostEqual(vi.dot(AA.dot(ui)),\
                                        integrals[etype][i], 8,\
                                        'Manual assembly incorrect.')
-                self.assertTrue(allclose(A.toarray(),AA),\
+                self.assertTrue(np.allclose(A.toarray(),AA),\
                                 'System matrix different')
                 self.assertAlmostEqual(vi.dot(A.toarray().dot(ui)),\
                                        integrals[etype][i], 8,\
@@ -474,14 +543,14 @@ class TestSystem(unittest.TestCase):
             A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
                                   boundary_conditions=bc)
             ua = la.solve(A.toarray(), b)
-            x = system.mesh_nodes()
+            x = system.dof_vertices()
             ue = u(x[:,0], x[:,1])
-            self.assertTrue(allclose(ua, ue), 'Solution incorrect')
+            self.assertTrue(np.allclose(ua, ue), 'Solution incorrect')
         
             A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
                                   boundary_conditions=bc_3)
             ua = la.solve(A.toarray(),b)
-            self.assertTrue(allclose(ua,ue), 'Solution incorrect')
+            self.assertTrue(np.allclose(ua,ue), 'Solution incorrect')
         
         # =====================================================================
         # Test hanging nodes
@@ -491,32 +560,34 @@ class TestSystem(unittest.TestCase):
         mesh.refine(1)
         mesh.root_node().children['SW'].mark(2)
         mesh.refine(2)
-        element = QuadFE(2,'Q1')
+        element = QuadFE(2,'Q2')
         
-        fig,ax = plt.subplots()
-        plot = Plot()
+        #fig,ax = plt.subplots()
+        #plot = Plot()
         #plot.mesh(ax,mesh,element=element,dofs=True)
                 
         system = System(mesh,element)
         A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
                               boundary_conditions=bc)
-        print(A.shape)
-        dh = DofHandler(mesh,element)
-        hn = dh.get_hanging_nodes()
-        print('======================')
-        for h in hn.keys():
-            print(h)
-        print('======================')
+        
+        # TODO: FIXME
+        #print(A.shape)
+        #dh = DofHandler(mesh,element)
+        #hn = dh.get_hanging_nodes()
+        #print('======================')
+        #for h in hn.keys():
+        #    print(h)
+        #print('======================')
         A,b = system.incorporate_hanging_nodes(A,b,compress=False)
         
-        print(A.shape)
+        #print(A.shape)
         ua = la.solve(A.toarray(),b)
         #ua = system.resolve_hanging_nodes(uua)
-        x = system.mesh_nodes()
+        x = system.dof_vertices()
         ue = u(x[:,0],x[:,1])
-        #self.assertTrue(allclose(ua,ue), 'Solutions not close.')
-        plot.function(ax, ua, mesh, element=element)
-        plt.show()
+        self.assertTrue(np.allclose(ua,ue), 'Solutions not close.')
+        #plot.function(ax, ua, mesh, element=element)
+        #plt.show()
         
         
     def test_incorporate_hanging_nodes(self):
@@ -535,29 +606,166 @@ class TestSystem(unittest.TestCase):
     
     def test_resolve_hanging_nodes(self):
         pass
+    
         
-    def test_line_integral(self):
-        # Define quadrature rule
-        rule = GaussRule(2, shape='edge')
-        w = rule.weights()
+    def test_get_n_nodes(self):
+        pass
+    
+    
+    def test_get_global_dofs(self):
+        pass
+    
+    
+    def test_get_edge_dofs(self):
+        pass
+    
+    
+    def test_dof_vertices(self):
+        pass
+    
+    
+    def test_x_loc(self):
+        pass
+    
+    
+    def test_bilinear_loc(self):
+        pass
+     
+    
+    def test_linear_loc(self):
+        pass
+    
+    
+    def test_shape_eval(self):
+        test_functions = {'Q1': (lambda x,y: (x+1)*(y-1), lambda x,y: y-1, \
+                                 lambda x,y: x+1), 
+                          'Q2': (lambda x,y: x**2 -1, lambda x,y: 2*x, \
+                                 lambda x,y: 0*x),
+                          'Q3': (lambda x,y: x**3 - y**3, lambda x,y: 3*x**2, \
+                                 lambda x,y: -3*y**2)}
+        #
+        # Over reference cell
+        # 
+        cell_integrals = {'Q1': [-0.75,-0.5,1.5], 
+                          'Q2': [-2/3.,1.0,0.0],
+                          'Q3': [0.,1.0,-1.0]}
+        edge_integrals_west = {'Q1': [-0.5,-0.5,1.0],
+                               'Q2': [-1.0,0.0,0.0],
+                               'Q3': [-0.25,0.0,-1.0]} 
+        derivatives = [(0,),(1,0),(1,1)]
+        mesh = Mesh.newmesh()
+        cell = mesh.root_quadcell() 
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            system = System(mesh,element)
+            n_dofs = element.n_dofs()
+            x_ref = element.reference_nodes()
+            #
+            # Sanity check
+            # 
+            I = np.eye(n_dofs)
+            self.assertTrue(np.allclose(system.shape_eval(x_ref=x_ref),I),\
+                            'Shape functions incorrect at reference nodes.')
+            y = np.random.rand(5,2)
+            weights = system.cell_rule().weights()
+            f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1])
+            for i in range(3):
+                phi = system.shape_eval(derivatives=derivatives[i], x_ref=y)
+                f = test_functions[etype][i]
+                #
+                # Interpolation
+                #
+                fvals = f(y[:,0],y[:,1])            
+                self.assertTrue(np.allclose(np.dot(phi,f_nodes),fvals),\
+                                'Shape function interpolation failed.')
+                #
+                # Integration
+                #
+                phi = system.shape_eval(derivatives=derivatives[i])  
+                self.assertAlmostEqual(np.dot(weights,np.dot(phi,f_nodes)),\
+                                 cell_integrals[etype][i],places=8,\
+                                 msg='Incorrect integral.')
+            #
+            # On Edges   
+            # 
+            y = np.random.rand(5)
+            for direction in ['W','E','S','N']:
+                edge = cell.get_edges(direction)
+                weights = system.edge_rule().weights()*\
+                    system.edge_rule().jacobian(edge)
+                #
+                # Sanity check
+                # 
+                edge_dofs = element.loc_dofs_on_edge(direction)
+                x_ref_edge = x_ref[edge_dofs,:]  # element nodes on edge
+                phi = system.shape_eval(x_ref=x_ref_edge)
+                self.assertTrue(np.allclose(phi, I[edge_dofs,:]), \
+                                'Shape function incorrect at edge ref nodes.')
+                y_phys = system.edge_rule().map(edge, y)
+                f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1])
+                for i in range(3):
+                    #
+                    # Interpolation
+                    # 
+                    phi = system.shape_eval(derivatives=derivatives[i],\
+                                            x_ref=y_phys)
+                    f = test_functions[etype][i]
+                    fvals = f(y_phys[:,0],y_phys[:,1])
+                    self.assertTrue(np.allclose(np.dot(phi,f_nodes),fvals),\
+                                'Shape function interpolation failed.') 
+                    #
+                    # Quadrature
+                    # 
+                    if direction == 'W':
+                        phi = system.shape_eval(derivatives=derivatives[i],\
+                                                edge_loc=direction)
+                        self.assertAlmostEqual(np.dot(weights,np.dot(phi,f_nodes)),\
+                                 edge_integrals_west[etype][i],places=8,\
+                                 msg='Incorrect integral.')
+        #
+        # Over arbitrary cell
+        #
+        mesh = Mesh.newmesh(box=[1,4,1,3])
+        cell = mesh.root_quadcell()
+        y = np.random.rand(5,2)
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            system = System(mesh,element)
+            y_phys = system.cell_rule().map(cell, x=y)
+            x_ref = system.dof_vertices()
+            f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1]) 
+            for i in range(3):
+                #
+                # Interpolation
+                #  
+                phi = system.shape_eval(derivatives=derivatives[i],\
+                                        cell=cell, x=y_phys)
+                f_vals = test_functions[etype][i](y_phys[:,0],y_phys[:,1])
+                self.assertTrue(np.allclose(np.dot(phi,f_nodes),f_vals),\
+                                'Shape function interpolation failed.')
+        mesh = Mesh.newmesh(box=[0,0.5,0,0.5])
+        cell = mesh.root_quadcell()
+        u = lambda x,y: x*y**2
+        v = lambda x,y: x**2*y
+        element = QuadFE(2,'Q2')
+        system = System(mesh,element)
+        x = system.dof_vertices()
+        ui = u(x[:,0],x[:,1])
+        vi = v(x[:,0],x[:,1])
         
-        # function f to be integrated over edge e
-        f = lambda x,y: x**2*y
-        e = Edge(Vertex((0,0)),Vertex((1,1)))
-        
-        # Map rule to physical entity
-        x_ref = rule.map(e)
-        jac = rule.jacobian(e)
-        fvec = f(x_ref[:,0],x_ref[:,1])
-        
-        self.assertAlmostEqual(sum(dot(fvec,w))*jac,1/sqrt(2)/2,places=10,\
-                               msg='Failed to integrate x^2y.')
-        self.assertAlmostEqual(sum(w)*jac, sqrt(2), places=10,\
-                               msg='Failed to integrate 1.')
+        phi = system.shape_eval(cell=cell)
+        uhat = phi.dot(ui)
+        vhat = phi.dot(vi)
+        weights = system.cell_rule().weights()*\
+                  system.cell_rule().jacobian(cell)
+        A = system.form_eval((1,'u','v'), cell)
+        self.assertAlmostEqual(vi.dot(A.dot(ui)), 0.000244141,8,\
+                               'Local bilinear form integral incorrect.')
+        self.assertAlmostEqual(vi.dot(A.dot(ui)), np.sum(uhat*vhat*weights),8,\
+                               'Local bilinear form integral does not match quad.')
         
    
 
-    
     def test_f_eval_loc(self):
         mesh = Mesh.newmesh()
         cell = mesh.root_quadcell()
@@ -567,7 +775,7 @@ class TestSystem(unittest.TestCase):
                           'Q3': lambda x,y: (2*x**3-3*x)*(y**2-2*y)} 
         cell_integrals = {'Q1': -25/4, 'Q2': 119/18, 'Q3': 2/3}
         n_edge_integrals = {'Q1': -5, 'Q2': 17/6 ,'Q3': 1}
-        x_test = random.rand(5,2)
+        x_test = np.random.rand(5,2)
     
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
@@ -581,18 +789,18 @@ class TestSystem(unittest.TestCase):
             # f in functional form                   
             # 
             f_loc = system.f_eval_loc(f, cell=cell,x=x_test)
-            self.assertTrue(allclose(f_loc,f_test),\
+            self.assertTrue(np.allclose(f_loc,f_test),\
                                    'Function not correctly interpolated.')
         
             #
             # f in nodal form
             #
-            local_dofs = system.get_node_dofs(node)
-            x = system.mesh_nodes()
+            local_dofs = system.get_global_dofs(node)
+            x = system.dof_vertices()
             x_loc = x[local_dofs,:]
             f_nodes = f(x_loc[:,0],x_loc[:,1])
             f_loc = system.f_eval_loc(f_nodes,cell=cell,x=x_test)
-            self.assertTrue(allclose(f_loc,f_test), \
+            self.assertTrue(np.allclose(f_loc,f_test), \
                                    'Function not correctly interpolated.')
         
             # -----------------------------------------------------------------
@@ -601,15 +809,16 @@ class TestSystem(unittest.TestCase):
             cell_rule = system.cell_rule() 
             wg = cell_rule.weights()*cell_rule.jacobian(cell)
             fg = system.f_eval_loc(f,cell=cell)
-            self.assertAlmostEqual(sum(fg*wg), cell_integrals[etype],\
+            self.assertAlmostEqual(np.sum(fg*wg), cell_integrals[etype],\
                                    8, 'Cell integral incorrect')
             
             n_edge = cell.get_edges('N')
             edge_rule = system.edge_rule()
             wg = edge_rule.weights()*edge_rule.jacobian(n_edge)
             fg = system.f_eval_loc(f,cell=cell, edge_loc='N')
-            self.assertAlmostEqual(sum(fg*wg), n_edge_integrals[etype],\
+            self.assertAlmostEqual(np.sum(fg*wg), n_edge_integrals[etype],\
                                    8, 'Cell integral incorrect')
+
             
     def test_form_eval(self):
         mesh = Mesh.newmesh(box=[1,2,1,2])
@@ -708,140 +917,18 @@ class TestSystem(unittest.TestCase):
         # 
         u = trial_functions['Q1']
         v = test_functions['Q1']
-        x = system.mesh_nodes()
+        x = system.dof_vertices()
         ui = u(x[:,0],x[:,1])
         vi = v(x[:,0],x[:,1])
         self.assertAlmostEqual(vi.dot(A.dot(ui)), 12, 8, 'Integral incorrect.')
-        
-        
-        
-    def test_shape_eval(self):
-        test_functions = {'Q1': (lambda x,y: (x+1)*(y-1), lambda x,y: y-1, \
-                                 lambda x,y: x+1), 
-                          'Q2': (lambda x,y: x**2 -1, lambda x,y: 2*x, \
-                                 lambda x,y: 0*x),
-                          'Q3': (lambda x,y: x**3 - y**3, lambda x,y: 3*x**2, \
-                                 lambda x,y: -3*y**2)}
-        #
-        # Over reference cell
-        # 
-        cell_integrals = {'Q1': [-0.75,-0.5,1.5], 
-                          'Q2': [-2/3.,1.0,0.0],
-                          'Q3': [0.,1.0,-1.0]}
-        edge_integrals_west = {'Q1': [-0.5,-0.5,1.0],
-                               'Q2': [-1.0,0.0,0.0],
-                               'Q3': [-0.25,0.0,-1.0]} 
-        derivatives = [(0,),(1,0),(1,1)]
-        mesh = Mesh.newmesh()
-        cell = mesh.root_quadcell() 
-        for etype in ['Q1','Q2','Q3']:
-            element = QuadFE(2,etype)
-            system = System(mesh,element)
-            n_dofs = element.n_dofs()
-            x_ref = element.reference_nodes()
-            #
-            # Sanity check
-            # 
-            I = eye(n_dofs)
-            self.assertTrue(allclose(system.shape_eval(x_ref=x_ref),I),\
-                            'Shape functions incorrect at reference nodes.')
-            y = random.rand(5,2)
-            weights = system.cell_rule().weights()
-            f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1])
-            for i in range(3):
-                phi = system.shape_eval(derivatives=derivatives[i], x_ref=y)
-                f = test_functions[etype][i]
-                #
-                # Interpolation
-                #
-                fvals = f(y[:,0],y[:,1])            
-                self.assertTrue(allclose(dot(phi,f_nodes),fvals),\
-                                'Shape function interpolation failed.')
-                #
-                # Integration
-                #
-                phi = system.shape_eval(derivatives=derivatives[i])  
-                self.assertAlmostEqual(dot(weights,dot(phi,f_nodes)),\
-                                 cell_integrals[etype][i],places=8,\
-                                 msg='Incorrect integral.')
-            #
-            # On Edges   
-            # 
-            y = random.rand(5)
-            for direction in ['W','E','S','N']:
-                edge = cell.get_edges(direction)
-                weights = system.edge_rule().weights()*\
-                    system.edge_rule().jacobian(edge)
-                #
-                # Sanity check
-                # 
-                edge_dofs = element.get_local_edge_dofs(direction)
-                x_ref_edge = x_ref[edge_dofs,:]  # element nodes on edge
-                phi = system.shape_eval(x_ref=x_ref_edge)
-                self.assertTrue(allclose(phi, I[edge_dofs,:]), \
-                                'Shape function incorrect at edge ref nodes.')
-                y_phys = system.edge_rule().map(edge, y)
-                f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1])
-                for i in range(3):
-                    #
-                    # Interpolation
-                    # 
-                    phi = system.shape_eval(derivatives=derivatives[i],\
-                                            x_ref=y_phys)
-                    f = test_functions[etype][i]
-                    fvals = f(y_phys[:,0],y_phys[:,1])
-                    self.assertTrue(allclose(dot(phi,f_nodes),fvals),\
-                                'Shape function interpolation failed.') 
-                    #
-                    # Quadrature
-                    # 
-                    if direction == 'W':
-                        phi = system.shape_eval(derivatives=derivatives[i],\
-                                                edge_loc=direction)
-                        self.assertAlmostEqual(dot(weights,dot(phi,f_nodes)),\
-                                 edge_integrals_west[etype][i],places=8,\
-                                 msg='Incorrect integral.')
-        #
-        # Over arbitrary cell
-        #
-        mesh = Mesh.newmesh(box=[1,4,1,3])
-        cell = mesh.root_quadcell()
-        y = np.random.rand(5,2)
-        for etype in ['Q1','Q2','Q3']:
-            element = QuadFE(2,etype)
-            system = System(mesh,element)
-            y_phys = system.cell_rule().map(cell, x=y)
-            x_ref = system.mesh_nodes()
-            f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1]) 
-            for i in range(3):
-                #
-                # Interpolation
-                #  
-                phi = system.shape_eval(derivatives=derivatives[i],\
-                                        cell=cell, x=y_phys)
-                f_vals = test_functions[etype][i](y_phys[:,0],y_phys[:,1])
-                self.assertTrue(allclose(dot(phi,f_nodes),f_vals),\
-                                'Shape function interpolation failed.')
-        mesh = Mesh.newmesh(box=[0,0.5,0,0.5])
-        cell = mesh.root_quadcell()
-        u = lambda x,y: x*y**2
-        v = lambda x,y: x**2*y
-        element = QuadFE(2,'Q2')
-        system = System(mesh,element)
-        x = system.mesh_nodes()
-        ui = u(x[:,0],x[:,1])
-        vi = v(x[:,0],x[:,1])
-        
-        phi = system.shape_eval(cell=cell)
-        uhat = phi.dot(ui)
-        vhat = phi.dot(vi)
-        weights = system.cell_rule().weights()*\
-                  system.cell_rule().jacobian(cell)
-        A = system.form_eval((1,'u','v'), cell)
-        self.assertAlmostEqual(vi.dot(A.dot(ui)), 0.000244141,8,\
-                               'Local bilinear form integral incorrect.')
-        self.assertAlmostEqual(vi.dot(A.dot(ui)), sum(uhat*vhat*weights),8,\
-                               'Local bilinear form integral does not match quad.')
+    
+    
+    def test_cell_rule(self):
+        pass
+    
+    
+    def test_edge_rule(self):
+        pass
     
                 
     def test_make_generic(self):

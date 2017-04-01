@@ -44,7 +44,7 @@ class TestPlot(unittest.TestCase):
         f = lambda x,y: np.sin(3*np.pi*x*y)
         dof_handler = DofHandler(mesh,element)
         dof_handler.distribute_dofs()
-        x = dof_handler.mesh_nodes()
+        x = dof_handler.dof_vertices()
         f_vec = f(x[:,0],x[:,1])
         ax = plot1.function(ax,f, mesh, element)
         #plt.colorbar(fig)

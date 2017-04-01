@@ -127,7 +127,7 @@ class Plot(object):
                 x0,x1,y0,y1 = cell.box()
                 x_pos = x0 + x_ref[:,0]*(x1-x0)
                 y_pos = y0 + x_ref[:,1]*(y1-y0)
-                cell_dofs = dofhandler.get_node_dofs(node)
+                cell_dofs = dofhandler.get_global_dofs(node)
                 for i in range(n_dofs):
                     ax.text(x_pos[i],y_pos[i],\
                             str(cell_dofs[i]), size = '7',\
@@ -193,7 +193,7 @@ class Plot(object):
                 z[:] = np.nan
         
                 for node in mesh.root_node().find_leaves():
-                    f_loc = f[system.get_node_dofs(node)]
+                    f_loc = f[system.get_global_dofs(node)]
                     cell = node.quadcell()
                     in_cell = cell.contains_point(xy)
                     xy_loc = xy[in_cell,:]
