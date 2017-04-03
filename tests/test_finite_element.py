@@ -13,7 +13,7 @@ from mesh import Mesh, Edge, Vertex
 import numpy as np
 import numpy.linalg as la
 from plot import Plot
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -172,43 +172,244 @@ class TestTriFE(unittest.TestCase):
     
 class TestDofHandler(unittest.TestCase):
     """
-    Test DofHandler class
+    Test dofhandler
     """
-    def test_constructor(self):
-        pass
-    
     def test_distribute_dofs(self):
         #
-        # Construct Complicated Mesh
+        # Mesh
         # 
         mesh = Mesh.newmesh()
-        mesh.root_node().mark()
         mesh.refine()
-        mesh.root_node().children['SE'].mark()
-        mesh.refine()
-        mesh.root_node().children['SE'].children['SW'] = None
-    
+        mesh.root_node().children['SE'].mark(1)
+        mesh.refine(1)
         
-    def test_fill_in_dofs(self):
-        pass
-            
-    def test_assign_dofs_to_pos(self):
-        pass
+        etype = 'Q1'
+        element = QuadFE(2,etype)
+        dofhandler = DofHandler(mesh,element)
+        dofhandler.distribute_dofs()
+        
+        exact_dofs = [[0,1,2,3],[1,4,5,6],[4,7,6,8],[5,6,3,9],
+                      [6,8,9,10],[2,3,11,12],[3,10,12,13]]
+        
+        count = 0
+        for leaf in mesh.root_node().find_leaves():
+            cell_dofs = dofhandler.get_global_dofs(leaf)
+            self.assertEqual(cell_dofs, exact_dofs[count],\
+                             'Cell %d dofs do not match given dofs.'%(count))
+            count += 1
        
+        #
+        # Nested version
+        # 
+        element = QuadFE(2,'Q1')
+        dofhandler = DofHandler(mesh,element) 
+        dofhandler.distribute_dofs()
+        dofcount = dofhandler.n_dofs() 
+        dofhandler.clear_dofs()
+        dofhandler.distribute_dofs(nested=True)
+        
+        # Can we access the root node's dofs? 
+        root_ndofs = len(dofhandler.get_global_dofs(mesh.root_node()))  
+        self.assertEqual(root_ndofs, element.n_dofs(),\
+                         'Root node dofs incorrect.')
+        
+        # Do we have the same total number of dofs? 
+        self.assertEqual(dofcount, dofhandler.n_dofs(),\
+                         'Discrepancy in number of dofs.')
+        
+        
+    def test_share_dofs_with_children(self):
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        # Expected dofs 
+        sw_child_dofs = {'Q1': [0,None,None,None],\
+                         'Q2': [0,6,4,8]+[None]*5,\
+                         'Q3': [0,None,None,None,\
+                                None,4,None,None,None,8,None,\
+                                None,None,None,None,12] }
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            dofhandler = DofHandler(mesh,element)
+            #
+            # Fill in Dofs for parental node
+            # 
+            node = mesh.root_node()
+            dofhandler.fill_dofs(node)
+            #
+            # Share dofs with children
+            #
+            dofhandler.share_dofs_with_children(node)
+            child = node.children['SW']
+            child_dofs = dofhandler.get_global_dofs(child)
+            dof_err = 'Dof inheritance incorrect for space %s'%(etype)
+            self.assertEqual(child_dofs, sw_child_dofs[etype], dof_err)
+            
+            
+    def test_share_dofs_with_neighbors(self):
+        #
+        # Mesh
+        # 
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        mesh.root_node().children['SE'].mark(1)
+        mesh.refine(1) 
+        
+        #
+        # Nodes
+        #
+        node = mesh.root_node().children['SW']
+        n_nbr = node.find_neighbor('N')
+        ne_nbr = node.find_neighbor('NE')
+        e_nw_nbr = node.find_neighbor('E').children['NW']
+        
+        dofs_to_check = {'Q1': {'N': [2,3,None,None], 
+                                'NE':[3,None,None,None], 
+                                'E-NW':[None,None,3,None]},
+                         'Q2': {'N': [2,3,None,None,None,None,7,None,None],
+                                'NE':[3]+[None]*8,
+                                'E-NW':[5,None,3]+[None]*6}, 
+                         'Q3': {'N': [2,3]+[None]*6+[10,11]+[None]*6,
+                                'NE':[3]+[None]*15,
+                                'E-NW':[None,None,3,None,7]+[None]*11}}
+        neighbors = {'N': n_nbr, 'NE': ne_nbr, 'E-NW': e_nw_nbr}
+        
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            dofhandler = DofHandler(mesh, element)
+        
+            #
+            # Fill in Dofs
+            # 
+            dofhandler.fill_dofs(node)
+            
+            #
+            # Share dofs with neighbors
+            #
+            dofhandler.share_dofs_with_neighbors(node)
+            for direction in ['N','NE','E-NW']:
+                nbr_dofs = dofhandler.get_global_dofs(neighbors[direction]) 
+                self.assertEqual(nbr_dofs, dofs_to_check[etype][direction],\
+                             'Dofs shared incorrectly %s:'%(direction))
+            
+        mesh = Mesh.newmesh(grid_size=(2,2))
+        mesh.refine()
+        element = QuadFE(2,'Q1')
+        dofhandler = DofHandler(mesh,element)
+        root = mesh.root_node()
+        dofhandler.fill_dofs(root)
+        root.info()
+        
+        dofhandler.share_dofs_with_children(root)
+        # TODO: Not resolved
+        #for child in root.children.values():
+        #    child.info()
+        #    print(dofhandler.get_global_dofs(root))
+            
+            
+    def test_fill_dofs(self):
+        mesh = Mesh.newmesh()
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            dpe = element.n_dofs()
+            dofhandler = DofHandler(mesh,element)
+            #
+            # Fill dofs for root node
+            # 
+            node = mesh.root_node()
+            dofhandler.fill_dofs(node)
+            node_dofs = dofhandler.get_global_dofs(node)
+            self.assertEqual(node_dofs, list(range(dpe)),\
+                             'Dofs not filled in correctly.')
+            dof_count_error = 'The total number of dofs should be %d'%(dpe)
+            self.assertEqual(dofhandler.n_dofs(), dpe, dof_count_error)
+            
+            #
+            # Refine mesh and fill in dofs for a child
+            #
+            mesh.refine()
+            child = node.children['SW']
+            dofhandler.fill_dofs(child)
+            child_dofs = dofhandler.get_global_dofs(child)
+            self.assertEqual(child_dofs, list(np.arange(dpe,2*dpe)),\
+                             'Child dofs not filled correctly.')
+            dof_count_error = 'The total number of dofs should be %d'%(2*dpe)
+            self.assertEqual(dofhandler.n_dofs(), 2*dpe, dof_count_error)
+            
+        #
+        # Check dof count 
+        # 
+        mesh = Mesh.newmesh(grid_size=(2,2))
+        element = QuadFE(2,'Q1')
+        dofhandler = DofHandler(mesh,element)
+        count = 0
+        for leaf in mesh.root_node().find_leaves():
+            dofhandler.fill_dofs(leaf)
+            self.assertEqual(dofhandler.n_dofs(),count+element.n_dofs(),\
+                             'Dof count is adjusted incorrectly.')
+        
+    
+    def test_assign_dofs(self):
+        mesh = Mesh.newmesh()
+        element = QuadFE(2,'Q2')
+        dofhandler = DofHandler(mesh,element)
+        count_1 = dofhandler.n_dofs()
+        node = mesh.root_node()
+        #
+        # Check Errors
+        #
+        self.assertRaises(IndexError, dofhandler.assign_dofs, node, 9, 12)
+        self.assertRaises(Exception, dofhandler.assign_dofs, node, 'SSW', 12)
+        self.assertRaises(Exception, dofhandler.assign_dofs, node, 2, -12)
+        
+        #
+        # Check output
+        # 
+        dofhandler.assign_dofs(node,'NW',50)
+        cell_dofs = dofhandler.get_global_dofs(node)
+        self.assertEqual(cell_dofs[2], 50, \
+                         'Dof in norhtwest corner should be 50')
+        
+        dofhandler.assign_dofs(node,[0,'NW'],[11,50])
+        cell_dofs = dofhandler.get_global_dofs(node)
+        self.assertEqual(cell_dofs[2], 50, \
+                         'Dof in norhtwest corner should be 50')
+        self.assertEqual(cell_dofs[0], 11, \
+                         'First Dof should be 11')
+        
+        mesh.refine()
+        child = node.children['SW']
+        dofhandler.assign_dofs(child,[0,'NW'],[20,22])
+        cell_dofs = dofhandler.get_global_dofs(child)
+        self.assertEqual(cell_dofs[2], 22, \
+                         'Dof in norhtwest corner should be 22')
+        
+        
+        #
+        # Make sure no extra dofs were counted during assignment
+        #
+        count_2 = dofhandler.n_dofs()
+        self.assertEqual(count_1, count_2, 'The dof count should remain the same')
+
+
+    def test_pos_to_int(self):
+        # TODO: test
+        pass
+    
+    def test_pos_to_dof(self):
+        # TODO: test
+        pass
+    
     def test_get_global_dofs(self):
+        # TODO: test
         pass
     
     def test_n_dofs(self):
+        # TODO: test
         pass
     
     def test_dof_vertices(self):
+        # TODO: test
         pass
-    
-    def test_set_hanging_nodes(self):
-        pass
-        
-    def test_get_hanging_nodes(self):
-        pass    
 
 
 class TestGaussRule(unittest.TestCase):

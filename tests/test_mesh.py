@@ -658,18 +658,20 @@ class TestQuadCell(unittest.TestCase):
         self.assertEqual(np.sum(np.array([0.,1.])-qc.normal(en)),0.0, 
                          'Unit normal should be [0,1].')
   
-            
+          
 class TestTriCell(unittest.TestCase):
     """
     Test TriCell Class
     """
     pass
 
+
 class TestEdge(unittest.TestCase):
     """
     Test Edge Class
     """
     pass
+
 
 class TestVertex(unittest.TestCase):
     """

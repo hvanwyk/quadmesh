@@ -27,11 +27,13 @@ class TestPlot(unittest.TestCase):
         element = QuadFE(2,'Q1')
         ax = plot.mesh(ax,mesh,element=element, cell_numbers=True, dofs=True)
         #plt.show()
-        element = QuadFE(2,'Q3')
         
+        """
+        element = QuadFE(2,'Q3')
         _, ax = plt.subplots()
         plot = Plot()
         ax = plot.mesh(ax,mesh,element=element,dofs=True)
+        """
         #plt.show()
     
     def test_plot_function(self):
@@ -48,7 +50,7 @@ class TestPlot(unittest.TestCase):
         f_vec = f(x[:,0],x[:,1])
         ax = plot1.function(ax,f, mesh, element)
         #plt.colorbar(fig)
-        #plot.function(f_vec,mesh, element)
+        plot1.function(ax,f_vec,mesh, element)
         
         mesh = Mesh.newmesh(grid_size=(5,5))
         mesh.refine()

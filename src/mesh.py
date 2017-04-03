@@ -28,16 +28,24 @@ class Mesh(object):
         self.__quadcell = quadcell
         self.__root_node = root_node
         self.__triangulated = False 
+     
+    @classmethod 
+    def copymesh(cls, mesh):
+        """
+        Copy existing mesh
+        """
+        quadcell = mesh.quadcell()
+        root_node = mesh.root_node().copy()
+        return cls(quadcell=quadcell, root_node=root_node)
+
         
     @classmethod
     def submesh(cls, mesh):
         """
         Construct new mesh from existing mesh 
         """
-        print('Inside Mesh.submesh()')
         quadcell = mesh.quadcell()
         root_node = mesh.root_node().copy()
-        print(root_node.children.keys())
         return cls(quadcell=quadcell, root_node=root_node) 
     
     
@@ -744,18 +752,56 @@ class Node(object):
     
     def traverse_tree(self):
         """
-        Return list of current node and ALL of its sub-nodes
-        
-        TODO: Not ordered the same way as the LEAF nodes
+        Return list of current node and ALL of its sub-nodes        
         """
+        
         all_nodes = []
+        #
+        # Add self to list
+        #
         all_nodes.append(self)
         if self.has_children():
-            for child in self.children.values():
-                if child != None:
-                    all_nodes.extend(child.traverse_tree())
+            #
+            # Iterate over children
+            #
+            if self.type == 'ROOT' and self.grid_size() is not None:
+                #
+                # Gridded root node: iterate from left to right, bottom to top
+                # 
+                nx, ny = self.grid_size()
+                for j in range(ny):
+                    for i in range(nx):
+                        child = self.children[(i,j)]
+                        if child is not None:
+                            all_nodes.extend(child.traverse_tree())
+            else:
+                #
+                # Usual quadcell division: traverse in bottom-to-top mirror Z order
+                # 
+                for key in ['SW','SE','NW','NE']:
+                    child = self.children[key]
+                    if child != None:
+                        all_nodes.extend(child.traverse_tree())
+            
         return all_nodes
     
+    
+    def traverse_depthwise(self, childlist=None):
+        """
+        Return node and all sub-nodes, ordered by depth
+        TODO: UNFINISHED
+        """
+        all_nodes = []
+        #
+        # Add self to list
+        # 
+        all_nodes.append(self)
+        node = self
+        has_children = node.has_children()
+        while has_children:
+            children = self.get_children()
+        return all_nodes
+        
         
     def find_leaves(self):
         """
@@ -772,7 +818,7 @@ class Node(object):
                 #
                 # Iterate
                 #
-                if self.type == 'ROOT' and self.grid_size() != None:
+                if self.type == 'ROOT' and self.grid_size() is not None:
                     #
                     # Gridded root node: iterate from left to right, bottom to top
                     # 
@@ -784,11 +830,12 @@ class Node(object):
                 else:
                     #
                     # Usual quadcell division: traverse in bottom-to-top mirror Z order
-                    # 
+                    #
                     for key in ['SW','SE','NW','NE']:
                         child = self.children[key]
                         if child != None:
                             leaves.extend(child.find_leaves())
+                    
         return leaves
     
     
@@ -830,6 +877,33 @@ class Node(object):
             return self.children[position] != None 
 
     
+    def get_children(self):
+        """
+        Returns a list of children, ordered 
+        
+        TODO: Test 
+        """
+        children = []
+        if self.has_children():
+            if self.type=='ROOT' and self.grid_size() is not None:
+                #
+                # Gridded root node - traverse from bottom to top, left to right
+                # 
+                nx, ny = self.grid_size()
+                for j in range(ny):
+                    for i in range(nx):
+                        child = self.children[(i,j)]
+                        if child is not None:
+                            children.append(child)
+                #
+                # Usual quadcell division: traverse in bottom-to-top mirror Z order
+                #  
+                else:
+                    for pos in ['SW','SE','NW','NE']:
+                        children.append(self.children[pos])
+        return children
+
+        
     def has_parent(self):
         """
         Determine whether node has parents

@@ -3,6 +3,8 @@ from scipy import sparse
 import numbers
 from mesh import QuadCell, Edge
 from bisect import bisect_left       
+from _operator import index
+from itertools import count
 
 """
 Finite Element Classes
@@ -175,6 +177,62 @@ class QuadFE(FiniteElement):
         self.__ref_nodes = ref_nodes
         if dim == 2:
             self.pattern = pattern
+    
+    
+    def local_dof_matrix(self):
+        if hasattr(self, '__local_dof_matrix'):
+            #
+            # Return matrix if already computed
+            #
+            return self.__local_dof_matrix
+        else:
+            #
+            # Construct matrix
+            # 
+            poly_degree = self.polynomial_degree()
+            n = poly_degree + 1
+            local_dof_matrix = np.zeros((n,n))
+            count = 0
+            #
+            # Vertices upside down Z
+            #
+            local_dof_matrix[[0,0,-1,-1],[0,-1,0,-1]] = np.arange(4)
+            count += 4
+            
+            #
+            # Edges
+            # 
+            dpe = self.n_dofs('edge')
+            
+            # East
+            local_dof_matrix[1:-1,0] = np.arange(count,count+dpe) 
+            count += dpe 
+            
+            # West
+            local_dof_matrix[1:-1,-1] = np.arange(count,count+dpe) 
+            count += dpe  
+            
+            # South
+            local_dof_matrix[0,1:-1] = np.arange(count,count+dpe) 
+            count += dpe 
+            
+            # North
+            local_dof_matrix[-1,1:-1] = np.arange(count,count+dpe) 
+            count += dpe 
+            
+            #
+            # Interior
+            # 
+            dpi = int(np.sqrt(self.n_dofs('cell')))
+            i_dofs = np.arange(count,count+dpi*dpi).reshape((dpi,dpi))
+            local_dof_matrix[1:-1,1:-1] = i_dofs
+            
+            self.__local_dof_matrix = local_dof_matrix
+            return local_dof_matrix
+        
+    def basis_index(self):
+        return self.__basis_index
+    
       
     def cell_type(self):
         return self.__cell_type
@@ -191,7 +249,7 @@ class QuadFE(FiniteElement):
         """
         Return the finite element's polynomial degree 
         """
-        return list(self.__element_type)[1]
+        return int(list(self.__element_type)[1])
     
         
     def n_dofs(self,key=None):
@@ -550,132 +608,251 @@ class DofHandler(object):
         """
         self.element = element
         self.mesh = mesh
-        self.__global_dofs = dict.fromkeys(mesh.root_node().find_leaves(),\
-                                           [None]*self.element.n_dofs()) 
+        self.__global_dofs = {}
         self.__hanging_nodes = {}
+        self.__dof_count = 0
         
-            
-    def distribute_dofs(self):
+    
+    def clear_dofs(self):
+        """
+        Clear all dofs
+        """
+        self.__global_dofs = {}
+        self.__dof_count = 0
+        
+                
+    def distribute_dofs(self, nested=False):
         """
         global enumeration of degrees of freedom
+        
+        TODO: Problem with nested enumeration when using grid.
         """
-        count = 0  # possibly change this with nested meshes...
-        opposite = {'N':'S', 'S':'N', 'W':'E', 'E':'W', 
-                    'SW':'NE','NE':'SW','SE':'NW','NW':'SE'}
-
-        for node in self.mesh.root_node().find_leaves():
-            # Initialize dofs list for node
-            dof_list = self.__global_dofs[node][:] 
-            
-            # ========================
-            # Fill in own nodes
-            # ========================
-            dof_list, count = self.fill_in_dofs(dof_list,count)
-            self.__global_dofs[node] = dof_list
-
-            # =========================
-            # Share dofs with neighbors
-            # =========================
-            #
-            # Diagonal directions
-            #
-            for diag_dir in ['SW','SE','NW','NE']:
-                nb = node.find_neighbor(diag_dir)
-                if nb != None:
-                    dof = self.pos_to_dof(dof_list,diag_dir)
-                    opp_dir = opposite[diag_dir] 
-                    if nb.has_children(opp_dir):
-                        nb = nb.children[opp_dir]
-                    self.assign_dofs_to_pos(nb,opp_dir,dof)    
-            
-            #
-            # W, E, S, N
-            # 
-            sub_pos = {'E':['SE','NE'], 'W':['SW','NW'], 
-                       'N':['NW','NE'], 'S':['SW','SE']}
-            dpe = self.element.n_dofs('edge')
-            ref_index = range(0,dpe+2) 
-            coarse_index = [2*r for r in ref_index]
-            for direction in ['W','E','S','N']:
-                opp_dir = opposite[direction]
-                n_pos = self.element.pos_on_edge(direction)
-                dofs = self.pos_to_dof(dof_list, n_pos)
-                nb = node.find_neighbor(direction)
-                if nb != None:
-                    if nb.has_children():
-                        #
-                        # Neighboring cell has children
-                        # 
-                        ch_count = 0
-                        for sp in sub_pos[opp_dir]:
-                            child = nb.children[sp]
-                            if child != None:
-                                ch_pos = \
-                                    self.element.pos_on_edge(opp_dir)
-                                fine_index = \
-                                    [r+(dpe+1)*ch_count for r in ref_index]
-                                to_pos = []
-                                to_dofs = []
-                                for i in range(len(fine_index)):
-                                    if fine_index[i] in coarse_index:
-                                        to_pos.append(ch_pos[i])
-                                        j = coarse_index.index(fine_index[i])
-                                        to_dofs.append(dofs[j])
-                                self.assign_dofs_to_pos(child,to_pos,to_dofs)   
-                            ch_count += 1
-                    elif nb.depth == node.depth:
-                        #
-                        # Same size cell
-                        #
-                        nb_pos = self.element.pos_on_edge(opp_dir)
-                        self.assign_dofs_to_pos(nb, nb_pos, dofs)
-                    elif nb.depth < node.depth:
-                        #
-                        # Neighbor larger than self
-                        # 
-                        nb_pos = self.element.pos_on_edge(opp_dir)
-                        offset = sub_pos[direction].index(node.position)
-                        fine_index = [r+(dpe+1)*offset for r in ref_index]
-                        to_pos = []
-                        to_dofs = []
-                        for i in range(len(coarse_index)):
-                            if coarse_index[i] in fine_index:
-                                to_pos.append(nb_pos[i])
-                                j = fine_index.index(coarse_index[i])
-                                to_dofs.append(dofs[j]) 
-                        self.assign_dofs_to_pos(nb, to_pos, to_dofs)
-        self.n_global_dofs = count
-     
+        if not nested:
+            for node in self.mesh.root_node().find_leaves():
+                # 
+                # Fill in own nodes
+                # 
+                self.fill_dofs(node)
+                # 
+                # Share dofs with neighbors
+                # 
+                self.share_dofs_with_neighbors(node)
+        else:
+            for node in self.mesh.root_node().traverse_tree():
+                #
+                # Fill in own nodes
+                # 
+                self.fill_dofs(node)
                 
-    def fill_in_dofs(self,node_dofs, count):
+                #
+                # Share dofs with neighbors
+                # 
+                self.share_dofs_with_neighbors(node, nested=True)
+                
+                #
+                # Share dofs with children
+                # 
+                self.share_dofs_with_children(node)
+     
+    
+    def share_dofs_with_children(self, node):
         """
-        Fill in cell's dofs
+        Assign shared degrees of freedom with children 
         
         Inputs:
         
-            node_dofs: list containing cell's global degrees of freedom
-            
-            count: int, current number of dofs stored
-        
-        Outputs: 
-        
-            node_dofs: updated list
-            
-            count: int, updated count
-            
-            
-        TODO: Fill in dofs for children ...
+            node: Node, whose global dofs are known
+         
+        TODO: SHARE DOFS WITH CHILDREN IS HARD WHEN THEY ARE IN A GRID.
         """
-        for i in range(self.element.n_dofs()):
-            if node_dofs[i] == None:
-                node_dofs[i] = count
-                count += 1
-        return node_dofs, count 
-        
+        if node.has_children():
             
-    def assign_dofs_to_pos(self, node, positions, dofs):
+            cell_dofs = self.__global_dofs[node][:]
+            cell_dofs = [-1 if c is None else c for c in cell_dofs]
+
+            #
+            # Construct useful array to store dofs of parent cell
+            # 
+            dps = self.element.n_dofs('edge')+2
+            n_fine = 2*dps-1
+            fine_dofs = -np.ones((n_fine,n_fine))
+            m = self.element.local_dof_matrix().astype(np.int)
+            i2 = [2*i for i in range(dps)]
+            fine_dofs[np.ix_(i2,i2)] = np.array(cell_dofs)[m]
+            #
+            # Extract child dofs as sub-matrices
+            # 
+            for pos in node.children.keys():
+                child = node.children[pos]
+                if child is not None:
+                    #
+                    # Determine sub-indices
+                    #
+                    i_pos,j_pos = pos
+                    if i_pos == 'S':
+                        y_rng = np.arange(dps)
+                    else:
+                        y_rng = np.arange(dps-1,2*dps-1)
+                    if j_pos == 'W':
+                        x_rng = np.arange(dps)
+                    else:
+                        x_rng = np.arange(dps-1,2*dps-1)
+                    #
+                    # Select sub-array corresponding to child position 
+                    #
+                    child_dofs = fine_dofs[np.ix_(y_rng,x_rng)]
+                    dofs = child_dofs[child_dofs!=-1]
+                    position = self.element.local_dof_matrix()[child_dofs!=-1]
+                    
+                    #
+                    # Assign global dofs to cell 
+                    #
+                    position = [int(p) for p in position] 
+                    dofs = [int(d) for d in dofs]
+                    self.assign_dofs(child, position, dofs) 
+                                     
+                    
+    def share_dofs_with_neighbors(self, node, nested=False):
         """
-        Assign the degrees of freedom (dofs) to positions in cell at node. 
+        Assign shared degrees of freedom to neighboring cells
+        
+        Inputs: 
+        
+            node: Node, cell in quadmesh
+            
+            dof_list: list, complete list of cell's global degrees of freedom
+            
+        Notes:
+            
+            We assume that the mesh is balanced 
+            
+        """
+        
+        opposite = {'N':'S', 'S':'N', 'W':'E', 'E':'W', 
+                    'SW':'NE','NE':'SW','SE':'NW','NW':'SE'}
+        dof_list = self.__global_dofs[node][:]
+        #
+        # Diagonal directions
+        #
+        for diag_dir in ['SW','SE','NW','NE']:
+            nb = node.find_neighbor(diag_dir)
+            if nb != None:
+                pos = self.pos_to_int(diag_dir)
+                dof = dof_list[pos]
+                opp_dir = opposite[diag_dir]
+                opp_pos = self.pos_to_int(opp_dir)
+                if nested:
+                    self.assign_dofs(nb, opp_pos, dof)
+                    self.share_dofs_with_children(nb)
+                else:  
+                    if nb.has_children(opp_dir):
+                        nb = nb.children[opp_dir]
+                    self.assign_dofs(nb,opp_pos,dof)    
+                
+        #
+        # W, E, S, N
+        # 
+        sub_pos = {'E':['SE','NE'], 'W':['SW','NW'], 
+                   'N':['NW','NE'], 'S':['SW','SE']}
+        dpe = self.element.n_dofs('edge')
+        ref_index = range(0,dpe+2) 
+        coarse_index = [2*r for r in ref_index]
+        for direction in ['W','E','S','N']:
+            opp_dir = opposite[direction]
+            n_pos = self.element.pos_on_edge(direction)
+            dofs = [dof_list[i] for i in self.pos_to_int(n_pos)]
+            nb = node.find_neighbor(direction)
+            if nb != None:
+                if not nested and nb.has_children():
+                    #
+                    # Neighboring cell has children
+                    # 
+                    ch_count = 0
+                    for sp in sub_pos[opp_dir]:
+                        child = nb.children[sp]
+                        if child != None:
+                            ch_pos = \
+                                self.element.pos_on_edge(opp_dir)
+                            fine_index = \
+                                [r+(dpe+1)*ch_count for r in ref_index]
+                            to_pos = []
+                            to_dofs = []
+                            for i in range(len(fine_index)):
+                                if fine_index[i] in coarse_index:
+                                    to_pos.append(ch_pos[i])
+                                    j = coarse_index.index(fine_index[i])
+                                    to_dofs.append(dofs[j])
+                            self.assign_dofs(child,to_pos,to_dofs)
+                        ch_count += 1
+                elif nb.depth == node.depth:
+                    #
+                    # Same size cell
+                    #
+                    nb_pos = self.element.pos_on_edge(opp_dir)
+                    self.assign_dofs(nb, nb_pos, dofs)
+                    if nested:
+                        self.share_dofs_with_children(nb)
+                elif nb.depth < node.depth:
+                    #
+                    # Neighbor larger than self
+                    # 
+                    nb_pos = self.element.pos_on_edge(opp_dir)
+                    offset = sub_pos[direction].index(node.position)
+                    fine_index = [r+(dpe+1)*offset for r in ref_index]
+                    to_pos = []
+                    to_dofs = []
+                    for i in range(len(coarse_index)):
+                        if coarse_index[i] in fine_index:
+                            to_pos.append(nb_pos[i])
+                            j = fine_index.index(coarse_index[i])
+                            to_dofs.append(dofs[j]) 
+                    self.assign_dofs(nb, to_pos, to_dofs)
+
+            
+    def fill_dofs(self,node):
+        """
+        Fill in cell's dofs 
+        
+        Inputs:
+        
+            node: cell, whose global degrees of freedom are to be augmented
+    
+        Modify: 
+        
+            __global_dofs[node]: updated global dofs
+            
+            __n_global_dofs: updated global dofs count
+        """
+        dofs_per_cell = self.element.n_dofs()
+        if not node in self.__global_dofs:
+            #
+            # Add node to dictionary if it's not there
+            # 
+            self.__global_dofs[node] = None
+        cell_dofs = self.__global_dofs[node]
+        if cell_dofs is None:
+            #
+            # Instantiate new list
+            # 
+            count = self.__dof_count
+            self.__global_dofs[node] = list(range(count,count+dofs_per_cell))
+            self.__dof_count += dofs_per_cell
+        else:
+            #
+            # Augment existing list
+            #
+            count = self.__dof_count
+            for k in range(dofs_per_cell):
+                if cell_dofs[k] is None:
+                    cell_dofs[k] = count
+                    count += 1
+            self.__global_dofs[node] = cell_dofs
+            self.__dof_count = count        
+                    
+            
+    def assign_dofs(self, node, positions, dofs):
+        """
+        Assign the degrees of freedom (dofs) to positions in cell (node). 
         The result is stored in the DofHandler's "global_dofs" dictionary. 
         
         Inputs:
@@ -686,40 +863,90 @@ class DofHandler(object):
             
             dofs: int, list (same length as positions) of degrees of freedom.    
         """    
-        # Initialize positions
-        p = self.element.pattern
-        dof_list = self.__global_dofs[node][:]
-        
-        # Turn positions and dofs into list
+        #
+        # Preprocessing
+        #
+        if not node in self.__global_dofs:
+            #
+            # Node not in dictionary -> add it
+            # 
+            self.__global_dofs[node] = None
+            
+        cell_dofs = self.__global_dofs[node]
+        if cell_dofs is None:
+            # 
+            # New doflist necessary
+            # 
+            cell_dofs = [None]*self.element.n_dofs()
+        #
+        # Turn positions and dofs into lists and check compatibility
+        # 
         if not(type(positions) is list):
             positions = [positions]
         if not(type(dofs) is list):
             dofs = [dofs]
         lengths_do_not_match = 'Number of dofs and positions do not match.'
         assert len(positions)==len(dofs),lengths_do_not_match
+        #
+        # Ensure dofs have correct format
+        # 
+        dof_is_int = all([type(d) is np.int for d in dofs])
+        assert dof_is_int, 'Degrees of freedom should be integers.' 
+        dof_is_nonneg = all([d>=0 for d in dofs])
+        assert dof_is_nonneg, 'Degrees of freedom should be nonnegative.'
+        
+        pos_is_int = all([type(p) is np.int for p in positions])
+        if not pos_is_int:
+            #
+            # Convert positions to integers
+            # 
+            positions = self.pos_to_int(positions)
+        
         for pos,dof in zip(positions,dofs):
+            if cell_dofs[pos] != None:
+                incompatible_dofs = 'Incompatible dofs. Something fishy.'
+                assert cell_dofs[pos] == dof, incompatible_dofs
+            else:
+                cell_dofs[pos] = dof
+        
+        self.__global_dofs[node] = cell_dofs
+        
+    
+    def pos_to_int(self, positions):
+        """
+        Convert a list of positions into indices 
+        """
+        return_int = False 
+        if (not type(positions) is list):
+            return_int = True
+            positions = [positions]
+        index = []
+        p = self.element.pattern
+        for pos in positions:
             if type(pos) is tuple:
                 direction, offset = pos
                 direction_error ='Only "W,E,S,N,I" admit multiple entries.'
                 assert direction in ['W','E','S','N','I'], direction_error
-                index = p.index(direction) + offset
-                if dof_list[index] != None:
-                    incompatible_dofs = 'Incompatible dofs. Something fishy.'
-                    assert dof_list[index] == dof, incompatible_dofs
-                else:
-                    dof_list[index] = dof
+                int_pos = p.index(direction) + offset
+            elif type(pos) is np.int:
+                int_pos = pos
             else:
                 position_error = 'Position %s not recognized.'%(pos)
                 assert pos in p, position_error
-                index = p.index(pos)
-                if dof_list[index] != None:
-                    incompatible_dofs = 'Incompatible dofs. Something fishy.'
-                    assert dof_list[index] == dof, incompatible_dofs
-                else:
-                    dof_list[index] = dof
-        self.__global_dofs[node] = dof_list
-        
-        
+                int_pos = p.index(pos)
+            index.append(int(int_pos))
+        if return_int:
+            #
+            # Return single integer 
+            # 
+            return index[0]
+        else:
+            #
+            # Return list of integers
+            #
+            return index
+    
+    
     def pos_to_dof(self, dof_list, positions):
         """
         Return a list of dofs corresponding to various positions within a cell
@@ -781,40 +1008,40 @@ class DofHandler(object):
         
              global_dofs: list of cell dofs or edge dofs. 
         """
-        cell_dofs = self.__global_dofs[node]
-        if edge_dir is None:
-            return cell_dofs
-        else: 
-            assert edge_dir in ['W','E','S','N'], \
-            'Edge should be one of W, E, S, or N.'    
-            edge_dofs = []
-            for i in range(self.element.n_dofs()):
-                if edge_dir in self.element.pattern[i]:
-                    #
-                    # If edge appears in an entry, record the dof
-                    # 
-                    edge_dofs.append(cell_dofs[i])
-            return edge_dofs
+        if node in self.__global_dofs:
+            cell_dofs = self.__global_dofs[node]
+            if edge_dir is None:
+                return cell_dofs
+            else: 
+                assert edge_dir in ['W','E','S','N'], \
+                'Edge should be one of W, E, S, or N.'    
+                edge_dofs = []
+                for i in range(self.element.n_dofs()):
+                    if edge_dir in self.element.pattern[i]:
+                        #
+                        # If edge appears in an entry, record the dof
+                        # 
+                        edge_dofs.append(cell_dofs[i])
+                return edge_dofs
+        else:
+            return None
+        
          
     
     def n_dofs(self):
         """
-        Return the total number of degrees of freedom
+        Return the total number of degrees of freedom distributed so far
         """
-        self.__getattribute__('n_global_dofs')
-        if hasattr(self, 'n_global_dofs'):
-            return self.n_global_dofs
-        else:
-            raise Exception('Dofs have not been distributed yet.')
+        return self.__dof_count
             
      
     def dof_vertices(self):
         """
         Return the mesh nodes
         """
-        assert hasattr(self, 'n_global_dofs'), \
+        assert hasattr(self, '_DofHandler__dof_count'), \
             'First distribute dofs.'
-        x = np.empty((self.n_global_dofs,2))
+        x = np.empty((self.n_dofs(),2))
         rule = GaussRule(1,shape='quadrilateral')
         x_ref = self.element.reference_nodes()
         for leaf in self.mesh.root_node().find_leaves():
@@ -869,8 +1096,7 @@ class DofHandler(object):
                         else:
                             print('Child is None')
         self.__hanging_nodes = hanging_nodes
-        
-      
+           
       
     def get_hanging_nodes(self):
         """
@@ -2068,3 +2294,61 @@ class System(object):
                 raise Exception('Only two variables allowed.')
         else:
             raise Exception('Higher order derivatives not supported.')
+        
+        
+    def interpolate(self, marker_coarse, marker_fine, u_coarse=None):
+        """
+        Interpolate a coarse grid function at fine grid points.
+        
+        Inputs:
+        
+            marker_coarse: str/int, tree node marker denoting the cells of the
+                coarse grid.
+            
+            marker_fine: str/int, tree node marker labeling the cells of the
+                fine grid.
+                
+            u_coarse: double, nodal vector defined on the coarse grid.
+            
+            
+        Outputs: 
+        
+            if u_coarse is not None:
+                
+                u_interp: double, nodal vector of interpolant
+                
+            if u_coarse is None:
+            
+                I: double, sparse interplation matrix, u_fine = I*u_coarse
+            
+        """
+        pass
+    
+    
+    def restrict(self, marker_coarse, marker_fine, u_fine=None):
+        """
+        Restrict a fine grid function to a coarse mesh.
+        
+        Inputs:
+        
+            marker_coarse: str/int, tree node marker denoting the cells of the
+                coarse grid.
+            
+            marker_fine: str/int, tree node marker labeling the cells of the
+                fine grid.
+                
+            u_fine: nodal vector defined on the fine grid. 
+            
+        
+        Outputs:
+        
+            if u_fine is not None:
+            
+                u_restrict: double, nodal vector defined on coarse grid
+                
+            if u_fine is None:
+            
+                R: double, sparse restriction matrix, u_restrict = R*u_fine
+
+        """
+        pass
