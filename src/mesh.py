@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from collections import deque
 
 """
 Created on Jun 29, 2016
@@ -786,21 +787,18 @@ class Node(object):
         return all_nodes
     
     
-    def traverse_depthwise(self, childlist=None):
+    def traverse_depthwise(self):
         """
-        Return node and all sub-nodes, ordered by depth
-        TODO: UNFINISHED
+        Iterate node and all sub-nodes, ordered by depth
         """
-        all_nodes = []
-        #
-        # Add self to list
-        # 
-        all_nodes.append(self)
-        node = self
-        has_children = node.has_children()
-        while has_children:
-            children = self.get_children()
-        return all_nodes
+        queue = deque([self]) 
+        while len(queue) != 0:
+            node = queue.popleft()
+            if node.has_children():
+                for child in node.get_children():
+                    if child is not None:
+                        queue.append(child)             
+            yield node
         
         
     def find_leaves(self):
@@ -883,7 +881,6 @@ class Node(object):
         
         TODO: Test 
         """
-        children = []
         if self.has_children():
             if self.type=='ROOT' and self.grid_size() is not None:
                 #
@@ -893,15 +890,15 @@ class Node(object):
                 for j in range(ny):
                     for i in range(nx):
                         child = self.children[(i,j)]
-                        if child is not None:
-                            children.append(child)
-                #
-                # Usual quadcell division: traverse in bottom-to-top mirror Z order
-                #  
-                else:
-                    for pos in ['SW','SE','NW','NE']:
-                        children.append(self.children[pos])
-        return children
+                        yield child
+            #
+            # Usual quadcell division: traverse in bottom-to-top mirror Z order
+            #  
+            else:
+                for pos in ['SW','SE','NW','NE']:
+                    yield self.children[pos]
+        else:
+            yield None
 
         
     def has_parent(self):

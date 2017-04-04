@@ -297,7 +297,6 @@ class TestDofHandler(unittest.TestCase):
         dofhandler = DofHandler(mesh,element)
         root = mesh.root_node()
         dofhandler.fill_dofs(root)
-        root.info()
         
         dofhandler.share_dofs_with_children(root)
         # TODO: Not resolved

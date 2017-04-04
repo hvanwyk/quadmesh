@@ -5,7 +5,7 @@ Created on Oct 23, 2016
 '''
 import unittest
 from mesh import Mesh, Node, QuadCell, TriCell, Edge, Vertex
-import matplotlib.pyplot as plt
+
 import numpy as np
 
 class TestMesh(unittest.TestCase):
@@ -23,15 +23,18 @@ class TestMesh(unittest.TestCase):
         box = [0.,1.,0.,1.] 
         quadcell = QuadCell(box=box)
         mesh = Mesh(quadcell=quadcell, root_node=node)
-        self.assertTrue(mesh.root_node()==node, 'Node not associated with mesh.')
-        self.assertTrue(mesh.root_quadcell()==quadcell, 'QuadCell not associated with mesh.')
+        self.assertTrue(mesh.root_node()==node,\
+                        'Node not associated with mesh.')
+        self.assertTrue(mesh.root_quadcell()==quadcell, \
+                        'QuadCell not associated with mesh.')
         
         #
         # Node and Quadcell incompatible
         # 
         node = Node(grid_size=(1,2))
         quadcell = QuadCell(box=box, grid_size=(2,2))
-        self.assertRaises(AssertionError, Mesh,quadcell=quadcell, root_node=node)
+        self.assertRaises(AssertionError, Mesh, \
+                          quadcell=quadcell, root_node=node)
         
         # ==============================
         # Using Mesh.newmesh()
@@ -98,16 +101,18 @@ class TestMesh(unittest.TestCase):
         # Iterate quadcells
         mesh_quadcells = mesh.iter_quadcells()
            
-        self.assertEqual(mesh_quadcells[0],mesh.root_node().children[(0,0)].quadcell(),\
+        self.assertEqual(mesh_quadcells[0], \
+                         mesh.root_node().children[(0,0)].quadcell(),\
                          'QuadCell (0,0) incorrectly numbered.')
-        self.assertEqual(mesh_quadcells[2],child_10.children['SE'].quadcell(), \
+        self.assertEqual(mesh_quadcells[2],\
+                         child_10.children['SE'].quadcell(), \
                          'QuadCell (1,0)-SE incorrectly numbered.')
-        self.assertEqual(mesh_quadcells[6],child_10_ne.children['NW'].quadcell(), \
+        self.assertEqual(mesh_quadcells[6],\
+                         child_10_ne.children['NW'].quadcell(), \
                          'QuadCell (1,0)-NE-NW incorrectly numbered.')
             
     
-    def test_mesh_iter_quadedges(self):
-        
+    def test_mesh_iter_quadedges(self):     
         #
         # Define new mesh and refine
         # 
@@ -169,6 +174,8 @@ class TestMesh(unittest.TestCase):
     
     
     def test_mesh_plot_quadmesh(self):        
+        """
+        TODO: moved this to Plot
         mesh = Mesh.newmesh()
         for _ in range(3):
             for leaf in mesh.root_node().find_leaves():
@@ -176,7 +183,7 @@ class TestMesh(unittest.TestCase):
             mesh.refine()   
         _, ax = plt.subplots() 
         mesh.plot_quadmesh(ax, edge_numbers=True)
-        
+        """
     
     def test_mesh_plot_trimesh(self):
         pass
@@ -261,6 +268,39 @@ class TestNode(unittest.TestCase):
         pass
     
     
+    def test_traverse_depthwise(self):
+        #
+        # Standard Node
+        # 
+        node = Node()
+        node.split()
+        node.children['SE'].split()
+        node.children['SE'].children['NW'].remove()
+        addresses = [[],[0],[1],[2],[3],[1,0],[1,1],[1,3]]
+        count = 0
+        for n in node.traverse_depthwise():
+            self.assertEqual(n.address, addresses[count],\
+                             'Incorrect address.')
+            count += 1
+         
+        #
+        # Gridded Node
+        #     
+        node = Node(grid_size=(3,3))
+        node.split()
+        addresses = [[]]
+        for j in range(3):
+            for i in range(3):
+                addresses.append([(i,j)])
+        count = 0
+        for n in node.traverse_depthwise():
+            self.assertEqual(n.address, addresses[count],\
+                             'Incorrect address.')
+            count += 1
+            
+        
+       
+            
     def test_node_find_leaves(self):
         #
         # Single node
@@ -325,6 +365,19 @@ class TestNode(unittest.TestCase):
     def test_node_has_children(self):
         pass
     
+    
+    def test_get_children(self):
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        node = mesh.root_node()
+        count = 0
+        pos = ['SW','SE','NW','NE']
+        for child in node.get_children():
+            self.assertEqual(child.position,pos[count],\
+                             'Incorrect child.')
+            count += 1
+            
+            
     def test_node_has_parent(self):
         pass
     
