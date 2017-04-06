@@ -37,7 +37,7 @@ class TestPlot(unittest.TestCase):
         #plt.show()
     
     def test_plot_function(self):
-        print("Matplotlib version: {0}".format(mpl.__version__))
+        #print("Matplotlib version: {0}".format(mpl.__version__))
         mesh = Mesh.newmesh(grid_size=(2,2))
         mesh.refine()
         element = QuadFE(2,'Q3')

@@ -19,23 +19,32 @@ class TestFiniteElement(unittest.TestCase):
     """
     Test FiniteElement class
     """
-
+    def test_cell_type(self):
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            t = element.cell_type()
+            self.assertEqual(t,'quadrilateral','Type should be quadrilateral.')
+            
+    # TODO: TEST TRIANGULAR, ONE DIMENSIONAL
+    
 
 class TestQuadFE(unittest.TestCase):
     """
     Test QuadFE class
-    """
-    def test_cell_type(self):
-        pass
-    
-    
+    """   
     def test_element_type(self):
         pass
     
     
     def test_polynomial_degree(self):
-        pass
-    
+        count = 1
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            n = element.polynomial_degree()
+            self.assertEqual(n, count,\
+                 'Incorrect polynomial degree %d for element %s'%(n,etype) )
+            count += 1
+            
     
     def test_n_dofs(self):
         element = QuadFE(2,'Q1')
@@ -296,13 +305,14 @@ class TestDofHandler(unittest.TestCase):
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh,element)
         root = mesh.root_node()
-        dofhandler.fill_dofs(root)
-        
-        dofhandler.share_dofs_with_children(root)
-        # TODO: Not resolved
-        #for child in root.children.values():
-        #    child.info()
-        #    print(dofhandler.get_global_dofs(root))
+        dofhandler.distribute_dofs(nested=True)
+        test_dofs = [[0,1,2,3],[1,4,3,5],[2,3,6,7],[3,5,7,8]]
+        count = 0
+        for child in root.get_children():
+            self.assertEqual(dofhandler.get_global_dofs(child),\
+                             test_dofs[count],\
+                             'Dofs incorrectly distributed in grid.')
+            count += 1
             
             
     def test_fill_dofs(self):
@@ -409,6 +419,7 @@ class TestDofHandler(unittest.TestCase):
     def test_dof_vertices(self):
         # TODO: test
         pass
+        
 
 
 class TestGaussRule(unittest.TestCase):
@@ -1155,4 +1166,51 @@ class TestSystem(unittest.TestCase):
                          'Zeroth derivative incorrectly parsed')
         self.assertEqual(system.parse_derivative_info('vy'), (1,1),\
                          'Zeroth derivative incorrectly parsed')
+    
         
+    def test_interpolate(self):
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        mesh.record()  # label 0
+        
+        mesh.refine()
+        mesh.root_node().children['SW'].children['NE'].mark('r')
+        mesh.refine('r')
+        mesh.record()  # label 1
+        
+        functions = {'Q1': lambda x,y: 2*x - 3*y, 
+                     'Q2': lambda x,y: 2*x**2*y - 3*y**2 + 2,\
+                     'Q3': lambda x,y: x**3 + y**3 - 2*x*y**2}
+        
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            system = System(mesh, element, nested=True)
+            x_coarse = system.dofhandler().dof_vertices(flag=0)
+            x_fine = system.dofhandler().dof_vertices(flag=1)
+            ufn = functions[etype]
+            u_coarse = ufn(x_coarse[:,0],x_coarse[:,1])
+            u_fine = ufn(x_fine[:,0],x_fine[:,1])
+            uh_fine = system.interpolate(0,1, u_coarse)
+            
+            #
+            # Direct interpolation
+            # 
+            self.assertTrue(np.allclose(u_fine,uh_fine,1e-9),\
+                            'Interpolant should match fine function')
+            # 
+            # Interpolation matrix
+            # 
+            I = system.interpolate(0,1)
+            I = I.tocsc()
+            n_dofs_coarse = system.dofhandler().n_dofs(0)
+            n_dofs_fine = system.dofhandler().n_dofs(1)
+            self.assertEqual(I.shape,(n_dofs_fine,n_dofs_coarse))
+            self.assertAlmostEqual(n_dofs_coarse, x_coarse.shape[0], 10,\
+                                   'Number of coarse nodes not equal n_dofs.')
+            self.assertTrue(np.allclose(u_fine,I.dot(u_coarse),1e-9),\
+                            'Interpolation matrix incorrect.')
+            #
+            # Restrict to coarse dofs
+            # 
+            R = system.restrict(0, 1)
+            self.assertTrue(np.allclose(np.dot(R,u_fine),u_coarse,1e-9))

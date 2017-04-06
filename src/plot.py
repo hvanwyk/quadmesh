@@ -23,10 +23,13 @@ class Plot(object):
         
         
     def mesh(self, ax, mesh, element=None, name=None, show=True, set_axis=True,
-         vertex_numbers=False, edge_numbers=False, cell_numbers=False, 
-         dofs=False):
+             vertex_numbers=False, edge_numbers=False, cell_numbers=False, 
+             dofs=False, node_flag=None):
         """
         Plot Mesh of QuadCells
+        
+        # TODO: With node_flag, we have to adjust vertex numbers, edge numbers, 
+                cell numbers ...
         """
         node = mesh.root_node()
         if set_axis:
@@ -41,7 +44,9 @@ class Plot(object):
         #
         # Plot QuadCells
         #                       
-        for cell in mesh.iter_quadcells():
+        for node in mesh.root_node().find_leaves(flag=node_flag):
+            
+            cell = node.quadcell()
              
             x0, y0 = cell.vertices['SW'].coordinate()
             x1, y1 = cell.vertices['NE'].coordinate() 
@@ -128,8 +133,6 @@ class Plot(object):
                 x_pos = x0 + x_ref[:,0]*(x1-x0)
                 y_pos = y0 + x_ref[:,1]*(y1-y0)
                 cell_dofs = dofhandler.get_global_dofs(node)
-                node.info()
-                print(cell_dofs)
                 for i in range(n_dofs):
                     ax.text(x_pos[i],y_pos[i],\
                             str(cell_dofs[i]), size = '7',\

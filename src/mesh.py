@@ -29,7 +29,9 @@ class Mesh(object):
         self.__quadcell = quadcell
         self.__root_node = root_node
         self.__triangulated = False 
-     
+        self.__mesh_count = 0
+        
+        
     @classmethod 
     def copymesh(cls, mesh):
         """
@@ -256,6 +258,7 @@ class Mesh(object):
                     #
                     quadvertex_list.append(vertex)
                     vertex.mark()
+        self.unmark(quadvertices=True)
         return quadvertex_list
     
     
@@ -332,8 +335,30 @@ class Mesh(object):
     def coarsen(self):
         """
         Coarsen mesh by merging marked LEAF nodes
+        
+        TODO: FINISH
         """
         pass
+    
+    
+    def record(self,flag=None):
+        """
+        Mark all mesh nodes with flag
+        """
+        count = self.__mesh_count
+        for node in self.root_node().traverse_depthwise():
+            if flag is None:
+                node.mark(count)
+            else:
+                node.mark(flag)
+        self.__mesh_count += 1
+    
+    
+    def n_meshes(self):
+        """
+        Return the number of recorded meshes
+        """
+        return self.__mesh_count 
     
     
     def plot_quadmesh(self, ax, name=None, show=True, set_axis=True, 
@@ -542,6 +567,7 @@ class Node(object):
         if self.type != 'ROOT':
             print('{0:10}: {1}'.format('Parent', self.parent.address))
             print('{0:10}: {1}'.format('Position', self.position))
+        print('{0:10}: {1}'.format('Flags', self.__flags))
         if self.has_children():
             if self.type == 'ROOT' and self.grid_size() != None:
                 nx, ny = self.grid_size()
@@ -800,17 +826,55 @@ class Node(object):
                         queue.append(child)             
             yield node
         
-        
-    def find_leaves(self):
+    
+    def find_leaves(self, flag=None):
         """
         Return all LEAF sub-nodes of current node
+        
+        Inputs:
+        
+            flag: If flag is specified, return all leaf nodes within labeled
+                submesh (or an empty list if there are none).
+        """
+        leaves = []
+        if flag is None:
+            if not self.has_children():
+                leaves.append(self)
+            else:
+                for child in self.get_children():
+                    leaves.extend(child.find_leaves(flag=flag))
+        else:
+            if not any([child.is_marked(flag) for child in self.get_children()]):
+                if self.is_marked(flag=flag):
+                    leaves.append(self)
+            else:
+                for child in self.get_children():
+                    leaves.extend(child.find_leaves(flag=flag))
+        return leaves
+        
+    '''    
+    def find_leaves(self, flag=None):
+        """
+        Return all LEAF sub-nodes of current node
+        
+        Inputs:
+        
+            flag: If flag is specified, return all leaf nodes within labeled
+                submesh (or an empty list if there are none).
         """
         leaves = []    
         if self.type == 'LEAF' or not(self.has_children()):
             # 
             # LEAF or childless ROOT
             # 
-            leaves.append(self)
+            if flag is not None:
+                #
+                # Extra condition imposed by flag
+                # 
+                if self.is_marked(flag):
+                    leaves.append(self)
+            else:
+                leaves.append(self)
         else:
             if self.has_children():
                 #
@@ -824,18 +888,17 @@ class Node(object):
                     for j in range(ny):
                         for i in range(nx):
                             child = self.children[(i,j)]
-                            leaves.extend(child.find_leaves())
+                            leaves.extend(child.find_leaves(flag=flag))
                 else:
                     #
                     # Usual quadcell division: traverse in bottom-to-top mirror Z order
                     #
-                    for key in ['SW','SE','NW','NE']:
-                        child = self.children[key]
+                    for child in self.get_children():
                         if child != None:
-                            leaves.extend(child.find_leaves())
+                            leaves.extend(child.find_leaves(flag=flag))
                     
         return leaves
-    
+    '''
     
     def find_root(self):
         """
@@ -879,7 +942,7 @@ class Node(object):
         """
         Returns a list of children, ordered 
         
-        TODO: Test 
+        Note: Only returns children that are None 
         """
         if self.has_children():
             if self.type=='ROOT' and self.grid_size() is not None:
@@ -890,23 +953,52 @@ class Node(object):
                 for j in range(ny):
                     for i in range(nx):
                         child = self.children[(i,j)]
-                        yield child
+                        if child is not None:
+                            yield child
             #
             # Usual quadcell division: traverse in bottom-to-top mirror Z order
             #  
             else:
                 for pos in ['SW','SE','NW','NE']:
-                    yield self.children[pos]
-        else:
-            yield None
+                    child = self.children[pos]
+                    if child is not None:
+                        yield child
+        
 
         
-    def has_parent(self):
+    def has_parent(self, flag=None):
         """
-        Determine whether node has parents
+        Determine whether node has parents (with a given flag)
         """
-        return self.type != 'ROOT'
+        if flag is None:
+            return self.type != 'ROOT'
+        else:
+            if self.type != 'ROOT':
+                parent = self.parent
+                if parent.is_marked(flag):
+                    return True
+                else:
+                    return parent.has_parent(flag=flag)
+            else:
+                return False 
     
+    
+    def get_parent(self, flag=None):
+        """
+        Return node's parent, or first ancestor with given flag (None if there
+        are none).
+        """
+        if flag is None:
+            if self.has_parent():
+                return self.parent
+        else:
+            if self.has_parent(flag):
+                parent = self.parent
+                if parent.is_marked(flag):
+                    return parent
+                else:
+                    return parent.get_parent(flag=flag)
+        
     
     def in_grid(self):
         """

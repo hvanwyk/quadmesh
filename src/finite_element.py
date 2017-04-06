@@ -1,5 +1,5 @@
 import numpy as np
-from scipy import sparse 
+from scipy import sparse, linalg
 import numbers
 from mesh import QuadCell, Edge
 from bisect import bisect_left       
@@ -17,14 +17,22 @@ class FiniteElement(object):
     def __init__(self, dim, element_type):   
         self.__element_type = element_type
         self.__dim = dim    
-    
+        self._cell_type = None
+        
     def dim(self):
         """
         Returns the spatial dimension
         """
         return self.__dim
      
-    
+     
+    def cell_type(self):
+        """
+        Returns 'quadrilateral', 'triangle' or None
+        """
+        return self._cell_type
+        
+        
 class QuadFE(FiniteElement):
     """
     Continuous Galerkin finite elements on quadrilateral cells 
@@ -168,7 +176,7 @@ class QuadFE(FiniteElement):
                                       [1./3.,2./3.],[2./3.,2./3.]])
                 pattern = ['SW','SE','NW','NE','W','W','E','E','S','S','N','N',
                            'I','I','I','I']
-        self.__cell_type = 'quadrilateral' 
+        self._cell_type = 'quadrilateral' 
         self.__dofs = {'vertex':dofs_per_vertex, 'edge':dofs_per_edge,'cell':dofs_per_cell}               
         self.__basis_index = basis_index
         self.__p = p
@@ -234,8 +242,8 @@ class QuadFE(FiniteElement):
         return self.__basis_index
     
       
-    def cell_type(self):
-        return self.__cell_type
+    #def cell_type(self):
+    #    return self.__cell_type
     
     
     def element_type(self):
@@ -625,7 +633,7 @@ class DofHandler(object):
         """
         global enumeration of degrees of freedom
         
-        TODO: Problem with nested enumeration when using grid.
+        Note: When root's children are in a grid, then the root has no DOFs 
         """
         if not nested:
             for node in self.mesh.root_node().find_leaves():
@@ -638,22 +646,25 @@ class DofHandler(object):
                 # 
                 self.share_dofs_with_neighbors(node)
         else:
-            for node in self.mesh.root_node().traverse_tree():
-                #
-                # Fill in own nodes
-                # 
-                self.fill_dofs(node)
-                
-                #
-                # Share dofs with neighbors
-                # 
-                self.share_dofs_with_neighbors(node, nested=True)
-                
-                #
-                # Share dofs with children
-                # 
-                self.share_dofs_with_children(node)
-     
+            for node in self.mesh.root_node().traverse_depthwise():
+                if node.type == 'ROOT' and node.grid_size() is not None:
+                    pass
+                else:       
+                    #
+                    # Fill in own nodes
+                    # 
+                    self.fill_dofs(node)
+                    
+                    #
+                    # Share dofs with neighbors
+                    # 
+                    self.share_dofs_with_neighbors(node, nested=True)
+                    
+                    #
+                    # Share dofs with children
+                    # 
+                    self.share_dofs_with_children(node)
+            
     
     def share_dofs_with_children(self, node):
         """
@@ -663,7 +674,7 @@ class DofHandler(object):
         
             node: Node, whose global dofs are known
          
-        TODO: SHARE DOFS WITH CHILDREN IS HARD WHEN THEY ARE IN A GRID.
+        Note: Cannot share dofs with children when children are in a grid
         """
         if node.has_children():
             
@@ -968,6 +979,7 @@ class DofHandler(object):
         
             dofs: list of degrees of freedom corresponding to given positions
          
+        TODO: I want to get rid of this eventually. 
         """
         dofs = []
         p = self.element.pattern
@@ -1028,25 +1040,44 @@ class DofHandler(object):
         
          
     
-    def n_dofs(self):
+    def n_dofs(self, flag=None):
         """
         Return the total number of degrees of freedom distributed so far
         """
-        return self.__dof_count
+        if flag is None:
+            return self.__dof_count
+        else:
+            #
+            # Count dofs explicitly
+            # 
+            dof_set = set()
+            for node in self.mesh.root_node().find_leaves(flag=flag):
+                dof_set.update(self.get_global_dofs(node))
+            return len(dof_set)
             
      
-    def dof_vertices(self):
+    def dof_vertices(self, node=None, flag=None):
         """
-        Return the mesh nodes
+        Return the mesh vertices (or vertices corresponding to node).
         """
         assert hasattr(self, '_DofHandler__dof_count'), \
             'First distribute dofs.'
-        x = np.empty((self.n_dofs(),2))
         rule = GaussRule(1,shape='quadrilateral')
         x_ref = self.element.reference_nodes()
-        for leaf in self.mesh.root_node().find_leaves():
-            g_dofs = self.get_global_dofs(leaf)
-            x[g_dofs,:] = rule.map(leaf.quadcell(),x=x_ref)
+        if node is not None:
+            #
+            # Vertices corresponding to a single Node->QuadCell
+            # 
+            g_dofs = self.get_global_dofs(node)
+            x = rule.map(node.quadcell(),x=x_ref)
+        else:
+            #
+            # Vertices over entire mesh
+            # 
+            x = np.empty((self.n_dofs(flag),2))
+            for leaf in self.mesh.root_node().find_leaves(flag=flag):
+                g_dofs = self.get_global_dofs(leaf)
+                x[g_dofs,:] = rule.map(leaf.quadcell(),x=x_ref)
         return x
     
                 
@@ -1575,7 +1606,7 @@ class System(object):
     """
     (Non)linear system to be defined and solved 
     """
-    def __init__(self, mesh, element, n_gauss=(3,16)):
+    def __init__(self, mesh, element, n_gauss=(3,16), nested=False):
         """
         Set up linear system
         
@@ -1602,13 +1633,21 @@ class System(object):
         self.__rule_1d = GaussRule(self.__n_gauss_1d,shape='edge')
         self.__rule_2d = GaussRule(self.__n_gauss_2d,shape=element.cell_type())
         self.__dofhandler = DofHandler(mesh,element)
-        self.__dofhandler.distribute_dofs()
+        self.__dofhandler.distribute_dofs(nested=nested)
         # Initialize reference shape functions
         self.__phi = {'cell':       {(0,): None, (1,0): None, (1,1): None},
                       ('edge','W'): {(0,): None, (1,0): None, (1,1): None},
                       ('edge','E'): {(0,): None, (1,0): None, (1,1): None},
                       ('edge','S'): {(0,): None, (1,0): None, (1,1): None},
                       ('edge','N'): {(0,): None, (1,0): None, (1,1): None}}  
+    
+    
+    def dofhandler(self):
+        """
+        Returns dofhandler
+        """
+        return self.__dofhandler
+    
     
     def assemble(self, bilinear_forms=None, linear_forms=None, 
                  boundary_conditions=None):
@@ -2317,12 +2356,71 @@ class System(object):
                 
                 u_interp: double, nodal vector of interpolant
                 
-            if u_coarse is None:
+            elif u_coarse is None:
             
                 I: double, sparse interplation matrix, u_fine = I*u_coarse
             
         """
-        pass
+        #
+        # Initialize
+        # 
+        n_coarse =  self.__dofhandler.n_dofs(marker_coarse)
+        n_fine = self.dofhandler().n_dofs(marker_fine)
+        if u_coarse is None:
+            #
+            # Initialize sparse matrix
+            # 
+            rows = []
+            cols = []
+            vals = []
+        else:
+            #
+            # Interpolated nodes
+            #
+            u_interp = np.empty(n_fine)
+        
+        #    
+        # Construct
+        # 
+        for node in self.__mesh.root_node().find_leaves(marker_fine):
+            if node.has_parent(marker_coarse):
+                parent = node.get_parent(marker_coarse)
+                node_dofs = self.__dofhandler.get_global_dofs(node)
+                parent_dofs = self.__dofhandler.get_global_dofs(parent)
+                x = self.__dofhandler.dof_vertices(node)
+                phi = self.shape_eval(cell=parent.quadcell(), x=x)
+                if u_coarse is not None:
+                    #
+                    # Update nodal vector
+                    # 
+                    u_interp[node_dofs] = \
+                        np.dot(phi,u_coarse[parent_dofs])
+                else:
+                    #
+                    # Update interpolation matrix
+                    # 
+                    for i in range(len(node_dofs)):
+                        fine_dof = node_dofs[i]
+                        if fine_dof not in rows:
+                            #
+                            # New fine dof
+                            # 
+                            for j in range(len(parent_dofs)):
+                                coarse_dof = parent_dofs[j]
+                                phi_val = phi[i,j] 
+                                if abs(phi_val) > 1e-9:
+                                    rows.append(fine_dof)
+                                    cols.append(coarse_dof)
+                                    vals.append(phi_val)
+        #
+        # Return 
+        # 
+        if u_coarse is not None:
+            return u_interp
+        else:
+            I = sparse.coo_matrix((vals,(rows,cols)),\
+                                  shape=(n_fine,n_coarse))
+            return I
     
     
     def restrict(self, marker_coarse, marker_fine, u_fine=None):
@@ -2349,6 +2447,10 @@ class System(object):
             if u_fine is None:
             
                 R: double, sparse restriction matrix, u_restrict = R*u_fine
-
         """
-        pass
+        I = self.interpolate(marker_coarse, marker_fine)
+        I = I.toarray()
+        Q,R = linalg.qr(I, mode='economic')
+        R = linalg.solve(R, Q.T)
+        return R
+         

@@ -47,7 +47,7 @@ class TestMesh(unittest.TestCase):
         # ==============================
         # Using Mesh.submesh()
         # ==============================
-        # TODO: Unfinished
+        # TODO: Unfinished - perhaps it's better to work with labels
         mesh.root_node().mark()
         mesh.refine()
         #print(mesh.root_node().children.keys())
@@ -169,10 +169,34 @@ class TestMesh(unittest.TestCase):
         pass
     
     
-    def test_mesh_coarsen(self):
+    def test_coarsen(self):
         pass
     
     
+    def test_record(self):
+        #
+        # Define and record simple 2,2 mesh
+        # 
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        mesh.record()
+        
+        #
+        # Refine and record
+        #    
+        mesh.root_node().children['SW'].mark('r1')
+        mesh.refine('r1')
+        mesh.record()
+        """
+        print("FINE MESH")
+        for node in mesh.root_node().find_leaves(1):
+            node.info()
+        print("COARSE MESH")
+        for node in mesh.root_node().find_leaves(0):
+            node.info()
+        """
+        
+            
     def test_mesh_plot_quadmesh(self):        
         """
         TODO: moved this to Plot
@@ -326,6 +350,25 @@ class TestNode(unittest.TestCase):
         self.assertEqual(len(leaves), 4, 'Node should have 4 leaves.')
     
     
+    def test_node_find_marked_leaves(self):
+        node = Node()
+        node.mark(1)
+        self.assertTrue(node in node.find_leaves(flag=1), \
+                        'Node should be a marked leaf node.')
+        self.assertTrue(node in node.find_leaves(), \
+                        'Node should be a marked leaf node.')
+    
+        node.split()
+        sw_child = node.children['SW']
+        sw_child.split()
+        sw_child.mark(1)
+        self.assertEqual(node.find_leaves(flag=1), \
+                         [sw_child], 'SW child should be only marked leaf')
+        
+        sw_child.remove()
+        self.assertEqual(node.find_leaves(flag=1), \
+                         [node], 'node should be only marked leaf')
+        
     def test_node_find_root(self):
         node = Node()
         self.assertEqual(node.find_root(), node, 'Node is its own root.')
@@ -377,10 +420,64 @@ class TestNode(unittest.TestCase):
                              'Incorrect child.')
             count += 1
             
+        #
+        # Now remove child
+        # 
+        node.children['SW'].remove()
+        count = 0 
+        for child in node.get_children():
+            count += 1
+        self.assertEqual(count, 3, 'There should only be 3 children left.')
+         
+         
+        #
+        # Node with no children   
+        # 
+        node = Node()
+        for child in node.get_children():
+            print('Hallo')
             
+        #
+        # Try a logical statement 
+        # 
+        self.assertFalse(any([child.is_marked(1) for \
+                              child in node.get_children()]), \
+                         'No marked children because there are none.')
+        
+        
     def test_node_has_parent(self):
-        pass
-    
+        node = Node()
+        node.split()
+        for child in node.get_children():
+            self.assertTrue(child.has_parent(),\
+                            'Nodes children should have a parent.')  
+        node.mark(1)
+        for child in node.get_children():
+            self.assertTrue(child.has_parent(1), \
+                            'Children should have parent labeled 1.')
+            self.assertFalse(child.has_parent(2),\
+                             'Children do not have parent labeled 2.')
+        
+        self.assertFalse(node.has_parent(1), \
+                         'Root node should not have parents of type 1.')
+        self.assertFalse(node.has_parent(), \
+                         'Root node should not have parents.')
+        
+        
+    def test_node_get_parent(self):
+        node = Node()
+        node.mark(1)
+        node.split()
+        sw_child = node.children['SW']
+        sw_child.split()
+        self.assertEqual(node,sw_child.children['NE'].get_parent(1),\
+                         'First marked ancestor should be node.')     
+        sw_child.mark(1)
+        self.assertEqual(sw_child,sw_child.children['NE'].get_parent(1),\
+                         'First marked ancestor should be sw_child.')
+        
+        
+        
     def test_node_in_grid(self):
         #
         # Standard positioning
