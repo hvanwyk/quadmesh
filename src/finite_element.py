@@ -1686,7 +1686,9 @@ class System(object):
                 
             b: double, right hand side vector determined by linear forms and 
                 boundary conditions.
-              
+        
+        
+        TODO: Include support for tensors.      
         """        
         n_nodes = self.__dofhandler.n_dofs()
         n_dofs = self.__element.n_dofs()   
@@ -1695,6 +1697,8 @@ class System(object):
         # Determine the forms to assemble
         #
         if bilinear_forms is not None:
+            assert type(bilinear_forms) is list, \
+                'Bilinear form should be passed in list.'
             bivals = []
         
         if linear_forms is not None:

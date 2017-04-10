@@ -3,11 +3,12 @@ Created on Feb 8, 2017
 
 @author: hans-werner
 '''
+from finite_element import System, QuadFE
+from mesh import Mesh
 import scipy.sparse as sp
-import pymetis
+#import pymetis
 from scikits.sparse.cholmod import cholesky
 import numpy as np
-from sklearn import datasets  
 from scipy.linalg import decomp_cholesky
 
 
@@ -16,7 +17,7 @@ class Gmrf(object):
     Gaussian Markov Random Field
     '''
 
-
+    
     def __init__(self, mu=None, precision=None, covariance=None, mesh=None, element=None):
         """
         Constructor
@@ -125,17 +126,58 @@ class Gmrf(object):
         pass
     
     
-    def __condition_hard_constraint(self):
+    def matern_precision(self, mesh, element, alpha, kappa):
         """
+        Return the precision matrix for the Matern random field defined on the 
+        spatial mesh. The field X satisfies
         
+            (k^2 - Delta)^{a/2} X = W
+        
+        Inputs: 
+        
+            mesh: Mesh, finite element mesh on which the field is defined
+            
+            element: QuadFE, finite element space of piecewise polynomials
+            
+            alpha: int, positive integer (doubles not yet implemented).
+            
+            kappa: double, positive regularization parameter.
+            
+            
+        Outputs:
+        
+            Q: sparse matrix, in CSC format
         """
-        pass
+        system = System(mesh, element)
+        
+        #
+        # Assemble (kappa * I + K)
+        # 
+        G = system.assemble(bilinear_forms=[(kappa,'u','v'),(1,'ux','vx'),(1,'uy','vy')])
+        G = G.tocsr()
+        
+        #
+        # Lumped mass matrix
+        # 
+        M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
+        M_lumped_inv = sp.diags(1/np.array(M.sum(axis=1)).squeeze())
         
         
-    def __condition_soft_constraint(self):
-        """
+        #Ml = sp.diags(Ml)
+        if np.mod(alpha,2) == 0:
+            #
+            # Even power alpha
+            # 
+            Q = G
+            count = 1
+        else:
+            #
+            # Odd power alpha
+            # 
+            Q = G.dot(M_lumped_inv.dot(G))
+            count = 2
+        while count < alpha:
+            Q = G.dot(M_lumped_inv.dot(Q.dot(M_lumped_inv.dot(G))))
+            count += 2
         
-        """
-        pass
-    
-    
+        return Q
