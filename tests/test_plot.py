@@ -69,6 +69,7 @@ class TestPlot(unittest.TestCase):
         _,ax = plt.subplots()
         plot2 = Plot()
         ax = plot2.function(ax,fm,mesh)
+        plt.title('Piecewise Constant Function.')
         plt.show()
         
 if __name__ == "__main__":
