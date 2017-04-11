@@ -24,7 +24,62 @@ class TestGmrf(unittest.TestCase):
         mu = np.zeros(4)
         X = Gmrf(mu=mu, precision=Q, covariance=S)
         X.Q()
+    
+    
+    def test_Q(self):
+        n = 10
+        a = np.array([1] + [2]*(n-2) + [1])
+        b = np.array([-1]*(n-1))
+        A = np.diag(a,0) + np.diag(b, -1) + np.diag(b, 1) + np.eye(n,n)
+        
+        
+    
+    
+    def test_Sigma(self):
+        pass
+    
+    
+    def test_L(self):
+        pass
+    
+    
+    def test_mu(self):
+        pass
+    
+    
+    def test_n(self):
+        pass
+    
+    
+    def test_Q_solve(self):
+        pass
+    
+    
+    def test_L_solve(self):
+        pass
+    
+    
+    def test_Lt_solve(self):
+        pass
+    
+    
+    def test_sample_covariance(self):
+        pass
+    
+    
+    def test_sample_precision(self):
+        pass
+    
+    
+    def test_sample_canonical(self):
+        pass
+    
+    
+    def test_condition(self):
+        pass
 
+
+    
     def test_sample(self):
         import scipy.sparse
 
@@ -47,7 +102,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Define mesh and element    
         # 
-        mesh = Mesh.newmesh(grid_size=(20,20))
+        mesh = Mesh.newmesh(grid_size=(50,50))
         mesh.refine()
         element = QuadFE(2,'Q3')
         dofhandler = DofHandler(mesh,element)

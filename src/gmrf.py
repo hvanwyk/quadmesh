@@ -14,6 +14,8 @@ import numpy as np
 class Gmrf(object):
     '''
     Gaussian Markov Random Field
+    
+    TODO: Decide whether to allow both precision and covariance matrix 
     '''
     
     
@@ -30,9 +32,10 @@ class Gmrf(object):
         #
         if precision is not None:
             self.__Q = precision
+            
             if sp.isspmatrix(precision):
                 self.__sparse_precision = True
-                self.__L = cholesky(precision.tocsc())
+                self.__L = cholesky(precision.tocsc(copy=True))
             else:
                 self.__sparse_precision = False
                 self.__L = np.linalg.cholesky(precision)
@@ -47,6 +50,7 @@ class Gmrf(object):
             #
             n_pre = precision.shape[0]
             n_cov = covariance.shape[0]
+            
             assert n_pre == n_cov, \
                 'Incompatibly shaped precision and covariance.'
                 
@@ -62,7 +66,9 @@ class Gmrf(object):
                 b = self.Qsolve(mu)
             else:
                 b = np.zeros(self.__n)
-        
+            self.__b = b
+            
+            
         if mesh is not None:
             self.mesh = mesh
         if element is not None:
@@ -84,6 +90,18 @@ class Gmrf(object):
         if self.__Sigma is not None:
             return self.__Sigma
         
+    
+    def L(self, b):
+        """
+        Return lower triangular Cholesky factor
+        
+        TODO: TEST 
+        """
+        if self.__sparse_precision:
+            return self.__L.L() 
+        else:
+            return self.__L 
+        
         
     def mu(self):
         """
@@ -101,23 +119,44 @@ class Gmrf(object):
     
     def Q_solve(self, b):
         """
-        Return the solution x of Qx = b
+        Return the solution x of Qx = b by successively solving 
+        Ly = b for y and hence L^T x = y for x.
+        
+        TODO: TEST 
         """
-        pass
+        if self.__sparse_precision:
+            return self.__L.solve_A(b)
+        else:
+            y = np.linalg.solve(self.__L, b)
+            return np.linalg.solve(self.__L.tranpose(),y)
     
     
     def L_solve(self, b):
         """
         Return the solution x of Lx = b
+        
+        TODO: TEST
         """
-        pass
+        if self.__sparse_precision:
+            # Sparse 
+            return self.__L.solve_L(b)
+        else: 
+            # Full
+            return np.linalg.solve(self.__L,b)
     
     
     def Lt_solve(self, b):
         """
         Return the solution x, of L^T x = b
+        
+        TODO: TEST
         """
-        pass
+        if self.__sparse_precision:
+            # Sparse
+            return self.__L.solve_Lt(b)
+        else:
+            # Full
+            return np.linalg.solve(self.__L.transpose(),b)
         
     
     def kl_expansion(self, k=None):
@@ -130,26 +169,32 @@ class Gmrf(object):
         pass
     
     
-    def sample_covariance(self, n_samples=None, z=None):
+    def sample_covariance(self, n_samples=10, z=None):
         """
         Generate sample realizations from N(mu, Sigma) 
         """
-        pass
+        if z is None:
+            z = np.random.normal(size=(self.n(), n_samples))
+        
+            
     
-    
-    def sample_precision(self, n_samples=None, z=None):
+    def sample_precision(self, n_samples=10, z=None):
         """
         Generate samples from N(mu, Q^{-1})
         """
-        pass
+        if z is None:
+            z = np.random.normal(size=(self.n(), n_samples))
+        
+        v = self.Lt_solve(z)
+        return v + np.tile(self.mu(), (n_samples,1)).transpose()  
     
     
-    def sample_canonical(self, n_samples=None, z=None):
+    def sample_canonical(self, n_samples=10, z=None):
         """
         Generate sample from Nc(b,Q) = N(Q\b,Q^{-1})
         """
-        pass
-    
+          
+        
     
     def condition(self, constraint=None, constraint_type='pointwise'):
         """
@@ -223,7 +268,8 @@ class Gmrf(object):
             count = 2
         while count < alpha:
             #
-            # TODO: To keep Q symmetric positive definite, perhaps compute cholesky early.
+            # TODO: To keep Q symmetric positive definite, 
+            #       perhaps compute cholesky early.
             # 
             Q = G.dot(M_lumped_inv.dot(Q.dot(M_lumped_inv.dot(G))))
             count += 2
