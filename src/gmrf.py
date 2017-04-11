@@ -7,16 +7,15 @@ from finite_element import System, QuadFE
 from mesh import Mesh
 import scipy.sparse as sp
 #import pymetis
-from scikits.sparse.cholmod import cholesky
+from scikits.sparse.cholmod import cholesky  # @UnresolvedImport
 import numpy as np
-from scipy.linalg import decomp_cholesky
 
 
 class Gmrf(object):
     '''
     Gaussian Markov Random Field
     '''
-
+    
     
     def __init__(self, mu=None, precision=None, covariance=None, mesh=None, element=None):
         """
@@ -31,9 +30,9 @@ class Gmrf(object):
         #
         if precision is not None:
             self.__Q = precision
-            if sp.isspmatrix_csr(precision):
+            if sp.isspmatrix(precision):
                 self.__sparse_precision = True
-                self.__L = cholesky(precision)
+                self.__L = cholesky(precision.tocsc())
             else:
                 self.__sparse_precision = False
                 self.__L = np.linalg.cholesky(precision)
@@ -54,11 +53,20 @@ class Gmrf(object):
             assert np.allclose(np.dot(covariance, precision),\
                                np.eye(n_pre),rtol=1e-10),\
                'Covariance and precision are not inverses.' 
-            
-            
-        self.__mu = mu
-        self.mesh = mesh
-        self.element = element
+        
+        if mu is not None:
+            self.__n = len(mu)
+            self.__mu = mu
+            if not np.allclose(mu, np.zeros(self.__n), 1e-8):
+                # mu is not zero
+                b = self.Qsolve(mu)
+            else:
+                b = np.zeros(self.__n)
+        
+        if mesh is not None:
+            self.mesh = mesh
+        if element is not None:
+            self.element = element
        
     
     
@@ -73,7 +81,8 @@ class Gmrf(object):
         """
         Return the covariance matrix
         """
-        pass
+        if self.__Sigma is not None:
+            return self.__Sigma
         
         
     def mu(self):
@@ -90,6 +99,27 @@ class Gmrf(object):
         return self.__n
     
     
+    def Q_solve(self, b):
+        """
+        Return the solution x of Qx = b
+        """
+        pass
+    
+    
+    def L_solve(self, b):
+        """
+        Return the solution x of Lx = b
+        """
+        pass
+    
+    
+    def Lt_solve(self, b):
+        """
+        Return the solution x, of L^T x = b
+        """
+        pass
+        
+    
     def kl_expansion(self, k=None):
         """
         Inputs:
@@ -100,9 +130,23 @@ class Gmrf(object):
         pass
     
     
-    def sample(self, ):
+    def sample_covariance(self, n_samples=None, z=None):
         """
-        
+        Generate sample realizations from N(mu, Sigma) 
+        """
+        pass
+    
+    
+    def sample_precision(self, n_samples=None, z=None):
+        """
+        Generate samples from N(mu, Q^{-1})
+        """
+        pass
+    
+    
+    def sample_canonical(self, n_samples=None, z=None):
+        """
+        Generate sample from Nc(b,Q) = N(Q\b,Q^{-1})
         """
         pass
     
@@ -126,7 +170,7 @@ class Gmrf(object):
         pass
     
     
-    def matern_precision(self, mesh, element, alpha, kappa):
+    def matern_precision(self, mesh, element, alpha, kappa, tau=None):
         """
         Return the precision matrix for the Matern random field defined on the 
         spatial mesh. The field X satisfies
@@ -147,6 +191,7 @@ class Gmrf(object):
         Outputs:
         
             Q: sparse matrix, in CSC format
+            
         """
         system = System(mesh, element)
         
@@ -177,6 +222,9 @@ class Gmrf(object):
             Q = G.dot(M_lumped_inv.dot(G))
             count = 2
         while count < alpha:
+            #
+            # TODO: To keep Q symmetric positive definite, perhaps compute cholesky early.
+            # 
             Q = G.dot(M_lumped_inv.dot(Q.dot(M_lumped_inv.dot(G))))
             count += 2
         

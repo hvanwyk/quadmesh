@@ -13,7 +13,7 @@ from finite_element import QuadFE, DofHandler
 import numpy as np
 import scipy.sparse as sp
 import matplotlib.pyplot as plt
-from scikits.sparse.cholmod import cholesky
+from scikits.sparse.cholmod import cholesky  # @UnresolvedImport
 
 class TestGmrf(unittest.TestCase):
 
@@ -35,7 +35,7 @@ class TestGmrf(unittest.TestCase):
         
         #C = decomp_cholesky.cho_factor(M.toarray())
 
-        plt.spy(M, markersize=1)
+        
         adjacency_list = [M.getrow(i).indices for i in range(M.shape[0])]
         #node_nd = pymetis.nested_dissection(adjacency=adjacency_list)
         #perm, iperm = np.array(node_nd[0]), np.array(node_nd[1])
