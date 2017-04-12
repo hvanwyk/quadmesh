@@ -15,6 +15,19 @@ import scipy.sparse as sp
 import matplotlib.pyplot as plt
 from scikits.sparse.cholmod import cholesky  # @UnresolvedImport
 
+
+def laplacian_precision(n, sparse=True):
+    """
+    Return the laplace precision matrix
+    """
+    a = np.array([1] + [2]*(n-2) + [1])
+    b = np.array([-1]*(n-1))
+    Q = np.diag(a,0) + np.diag(b, -1) + np.diag(b, 1) + np.eye(n,n)
+    if sparse:
+        return sp.coo_matrix(Q)
+    else:
+        return Q
+    
 class TestGmrf(unittest.TestCase):
 
 
@@ -27,12 +40,9 @@ class TestGmrf(unittest.TestCase):
     
     
     def test_Q(self):
-        n = 10
-        a = np.array([1] + [2]*(n-2) + [1])
-        b = np.array([-1]*(n-1))
-        A = np.diag(a,0) + np.diag(b, -1) + np.diag(b, 1) + np.eye(n,n)
-        
-        
+        Q = laplacian_precision(10)
+        X = Gmrf(precision=Q)
+        self.assertTrue(np.allclose(X.Q(),Q,1e-9),'')
     
     
     def test_Sigma(self):
