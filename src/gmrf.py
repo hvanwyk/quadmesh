@@ -6,8 +6,7 @@ Created on Feb 8, 2017
 from finite_element import System, QuadFE
 from mesh import Mesh
 import scipy.sparse as sp
-#import pymetis
-from scikits.sparse.cholmod import cholesky  # @UnresolvedImport
+from sksparse.cholmod import cholesky  # @UnresolvedImport
 from scipy.special import kv, gamma
 import numpy as np
 
@@ -108,7 +107,7 @@ class Gmrf(object):
     """
  
     def __init__(self, mu=None, precision=None, covariance=None, 
-                 mesh=None, element=None):
+                 mesh=None, element=None, discretization=None):
         """
         Constructor
         
@@ -125,6 +124,9 @@ class Gmrf(object):
             
             element: QuadFE, finite element
             
+            discretization: str, 'finite_elements' (default), or
+                'finite_differences'.
+                
             
         Attributes:
         
@@ -144,61 +146,112 @@ class Gmrf(object):
                 
             mesh: Mesh, Quadtree mesh
             
-            element: QuadFE, finite element     
+            element: QuadFE, finite element    
             
-        """
-        assert not(precision is None and covariance is None), \
-            'Specify at least precision and/or covariance.'
-        
+            discretization: str, 'finite_elements', or 'finite_differences' 
+            
+        """   
         n = None
         #
-        # Precision and Covariance
+        # Need at least one
         #
         if precision is None and covariance is None:
-            raise Exception('Specify precision or covariance (or both).')
-        elif precision is not None:
-            self.__Q = precision
-            n = precision.shape[0]
+            raise Exception('Specify precision or covariance (or both).')  
+        #
+        # Precision matrix
+        # 
+        self.__Q = precision
+        if precision is not None:
+            n = precision.shape[0]    
             if sp.isspmatrix(precision):
-                self.__sparse_precision = True
-                self.__Lprec = cholesky(precision.tocsc(copy=True))
+                self.__Lprec = cholesky(precision.tocsc())
             else:
-                self.__sparse_precision = False
-                self.__Lprec = np.linalg.cholesky(precision)
-        
+                self.__Lprec = np.linalg.cholesky(precision)        
+        #
+        # Covariance matrix
+        # 
+        self.__Sigma = covariance
         if covariance is not None:
-            self.__Sigma = covariance
-            self.__Lcov  = np.linalg.cholesky(covariance)    
-        
+            n = covariance.shape[0]
+            if sp.isspmatrix(covariance):
+                self.__Lcov = cholesky(covariance.tocsc())
+            else:
+                # Most likely
+                self.__Lcov  = np.linalg.cholesky(covariance)    
+        #
+        # Check compatibility
+        # 
         if covariance is not None and precision is not None:
-            #
-            # Both covariance and precision specified - check compatibility
-            #
             n_cov = covariance.shape[0]
-            
-            assert n == n_cov, \
+            n_prc = precision.shape[0]
+            assert n_prc == n_cov, \
                 'Incompatibly shaped precision and covariance.'
                 
             assert np.allclose(np.dot(covariance, precision),\
-                               np.eye(n),rtol=1e-10),\
+                               np.eye(n_prc),rtol=1e-10),\
                'Covariance and precision are not inverses.' 
-        
+        #
+        # Mean
+        # 
         if mu is not None:
-            n = len(mu)
-            self.__mu = mu
-            if not np.allclose(mu, np.zeros(self.__n), 1e-8):
-                # mu is not zero
-                b = self.Qsolve(mu)
-            else:
-                b = np.zeros(self.__n)
-            self.__b = b
-        
+            assert len(mu) == n, 'Mean incompatible with precision/covariance.'
+        else: 
+            mu = np.zeros(n)
+        self.__mu = mu
+        # 
+        # b = Q\mu
+        # 
+        if not np.allclose(mu, np.zeros(n), 1e-8):
+            # mu is not zero
+            b = self.Q_solve(mu)
+        else:
+            b = np.zeros(n)
+        self.__b = b
+        #
+        # Store
+        # 
         self.__n = n    
-            
+        #
+        # Store mesh and elements if available
+        #
         if mesh is not None:
             self.mesh = mesh
         if element is not None:
             self.element = element
+        
+    @classmethod
+    def from_covariance_kernel(cls, kfn, mesh, element=None, 
+                               discretization='finite_elements'):
+        """
+        Initialize Gmrf from covariance function
+        """ 
+        pass
+    
+    
+    @classmethod
+    def from_matern_pde(cls, alpha, kappa, mesh, element=None, tau=None):
+        """
+        Initialize finite element Gmrf from matern PDE
+        
+        Inputs: 
+        
+            alpha: double >0, smoothness parameter
+            
+            kappa: double >0, regularization parameter
+            
+            mesh: Mesh, computational mesh 
+            
+            *element: QuadFE, finite element (optional)
+            
+            *tau: double, matrix-valued function representing the structure
+                tensor S = [uxx uxy; uxy uyy].
+        """
+        if element is not None: 
+            discretization = 'finite_elements'
+        else:
+            discretization = 'finite_differences'
+            
+        pass
     
     
     def Q(self):
@@ -294,6 +347,13 @@ class Gmrf(object):
         return self.__mu
     
     
+    def b(self):
+        """
+        Return Q\mu
+        """
+        return self.__b
+    
+    
     def n(self):
         """
         Return the dimension of the random vector 
@@ -308,11 +368,12 @@ class Gmrf(object):
         
         TODO: TEST 
         """
-        if self.__sparse_precision:
+        if sp.isspmatrix(self.__Q):
             return self.__Lprec.solve_A(b)
         else:
             y = np.linalg.solve(self.__Lprec, b)
-            return np.linalg.solve(self.__Lprec.tranpose(),y)
+            return np.linalg.solve(self.__Lprec.transpose(),y)
+    
     
     
     def L_solve(self, b):
@@ -321,7 +382,7 @@ class Gmrf(object):
         
         TODO: TEST
         """
-        if self.__sparse_precision:
+        if sp.isspmatrix(self.__Q):
             # Sparse 
             return self.__Lprec.solve_L(b)
         else: 
