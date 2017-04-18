@@ -144,6 +144,7 @@ class TestGmrf(unittest.TestCase):
         x = np.array([1,2,3])
         b = L*x
         Q = L*L.T
+        
         #
         # Sparse
         # 
@@ -223,53 +224,48 @@ class TestGmrf(unittest.TestCase):
     
     
     def test_ssample(self):
+        #
+        # Don't know how to test this routine yet
+        # 
+        """
+        L = sp.csc_matrix([[1,0,0],[0,2,0],[1,2,3]])
+        x = np.array([1,2,3])
+        b = L.transpose()*x
+        Q = L*L.T
+        S = sp.csc_matrix(np.linalg.inv(Q.toarray()))
+        X = Gmrf(precision=Q, covariance=S)
+        print(X.L(b,mode='covariance')-x)
+        Ltilde = X.L(mode='covariance')
+        print((Ltilde).toarray())
+        print(np.linalg.inv(L.T.toarray()))
+        print((Ltilde*Ltilde.T*L*L.T).toarray())
+        print((Ltilde*Ltilde.T - S).toarray())
+        print(np.linalg.inv(L.toarray()).dot((Ltilde.T).toarray()))
+        print('{0}'.format(X.sample(z=b, mode='precision')))
+        print('{0}'.format(X.sample(z=b, mode='covariance')))
+        
         n = 5
         Q = laplacian_precision(n, sparse=True)
-        S = np.linalg.inv(Q.toarray())
+        S = sp.csc_matrix(np.linalg.inv(Q.toarray()))
         X = Gmrf(precision=Q, covariance=S)
         z = np.random.normal(size=(X.n(),1))
-        print(z.shape)
-        f = cholesky(Q.tocsc())
-        D = f.D()[f.P()][:,np.newaxis]
-        print('D shape ={0}'.format(D.shape))
-        print('z/sqrt((D)={0}'.format(z/np.sqrt(D)))
-        print('Ltsolve(z/sqrt(D))={0}'.format(f.solve_Lt(z/np.sqrt(D))))
+        
         x_prec = X.sample(z=z, mode='precision')
         x_cov = X.sample(z=z, mode='covariance')
         x_can = X.sample(z=z, mode='canonical')
-        print(x_prec)
-        print(x_cov)
         #for x in [x_prec,x_cov, x_can]:
         #    print(x)
-        self.assertTrue(np.allclose(x_prec,x_cov,1e-10), \
-                        'Precision samples differ from covariance samples.')
-        self.assertTrue(np.allclose(x_cov,x_can,1e-10), \
-                        'Covariance samples differ from canonical samples.')
-    
+        #self.assertTrue(np.allclose(x_prec,x_cov,1e-10), \
+        #                'Precision samples differ from covariance samples.')
+        #self.assertTrue(np.allclose(x_cov,x_can,1e-10), \
+        #                'Covariance samples differ from canonical samples.')
+        """
+        
     
     def test_condition(self):
         pass
 
 
-    
-    def test_sample(self):
-        import scipy.sparse
-
-        F = scipy.sparse.rand(100, 100, density=0.1)
-        M = F.transpose() * F + sp.eye(100, 100)
-        M = sp.csc_matrix(M)
-        factor = cholesky(M)
-        
-        #C = decomp_cholesky.cho_factor(M.toarray())
-
-        
-        adjacency_list = [M.getrow(i).indices for i in range(M.shape[0])]
-        #node_nd = pymetis.nested_dissection(adjacency=adjacency_list)
-        #perm, iperm = np.array(node_nd[0]), np.array(node_nd[1])
-        #plt.show()
-        #assert np.all(perm[iperm] == np.array(range(perm.size)))
-    
-    
     def test_matern_precision(self):
         """
         #

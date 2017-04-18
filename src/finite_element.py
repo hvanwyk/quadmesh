@@ -2203,6 +2203,8 @@ class System(object):
             elif len(x.shape) == 2:
                 # two dimensional input
                 return f(x[:,0],x[:,1])
+            elif len(x.shape) == 4:
+                pass
         elif isinstance(f,numbers.Real):
             # f is a constant
             return f*np.ones(x.shape[0])

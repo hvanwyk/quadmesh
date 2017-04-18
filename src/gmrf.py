@@ -393,25 +393,29 @@ class Gmrf(object):
     
     def L_solve(self, b, mode='precision'):
         """
-        Return the solution x of Lx = b
+        Return the solution x of Lx = b, where Q = LL' (or S=LL')
         
-        Note: CHOLMOD's solve_L assumes a factorization of the type LDL' = PQP'
+        Note: The 'L' CHOLMOD's solve_L is the one appearing in the 
+            factorization LDL' = PQP'. We first rewrite it as 
+            Q = WW', where W = P'*L*sqrt(D)*P
         """
         assert self.mode_supported(mode),\
             'Mode "'+ mode + '" not supported for this random field.'
         if mode == 'precision':
             if sp.isspmatrix(self.__Q):
                 # Sparse
-                D = self.__f_prec.D()[self.__f_prec.P()] 
-                return self.__f_prec.solve_L(b)/np.sqrt(D)
+                f = self.__f_prec
+                sqrtDinv = sp.diags(1/np.sqrt(f.D()))
+                return f.apply_Pt(sqrtDinv*f.solve_L(f.apply_P(b))) 
             else: 
                 # Full
                 return np.linalg.solve(self.__f_prec,b)
         elif mode == 'covariance':
             if sp.isspmatrix(self.__Sigma):
                 # Sparse
-                D = self.__f_cov.D()[self.__f_cov.P()]
-                return self.__f_cov.solve_L(b)/np.sqrt(D)
+                f = self.__f_cov
+                sqrtDinv = sp.diags(1/np.sqrt(f.D()))
+                return f.apply_Pt(sqrtDinv*f.solve_L(f.apply_P(b)))
             else:
                 # Full
                 return np.linalg.solve(self.__f_cov,b)
@@ -419,10 +423,11 @@ class Gmrf(object):
     
     def Lt_solve(self, b, mode='precision'):
         """
-        Return the solution x, of L^T x = b
+        Return the solution x, of L'x = b, where Q = LL' (or S=LL')
         
-        Note: CHOLMOD's solve_Lt assumes a factorization of the type 
-            LDL' = PQP'. To adjust, we solve P^T*sqrt(D)*L = b
+        Note: The 'L' CHOLMOD's solve_L is the one appearing in the 
+            factorization LDL' = PQP'. We first rewrite it as 
+            Q = WW', where W' = P'*sqrt(D)*L'*P.
         """
         assert self.mode_supported(mode), \
             'Mode "'+ mode + '" not supported for this random field.'
@@ -432,11 +437,9 @@ class Gmrf(object):
             # 
             if sp.isspmatrix(self.__Q):
                 # Sparse
-                D = self.__f_prec.D()[self.__f_prec.P()]
-                D1 = self.__f_prec.D()[self.__f_prec.P(),np.newaxis]
-                print('D = {0}'.format(D))
-                print('D1 = {0}'.format(D1))
-                return self.__f_prec.solve_Lt(b/np.sqrt(D))
+                f = self.__f_prec
+                sqrtDinv = sp.diags(1/np.sqrt(f.D()))
+                return f.apply_Pt(f.solve_Lt(sqrtDinv*(f.apply_P(b))))
             else:
                 # Full
                 return np.linalg.solve(self.__f_prec.transpose(),b)
@@ -446,8 +449,9 @@ class Gmrf(object):
             # 
             if sp.isspmatrix(self.__Sigma):
                 # Sparse
-                D = self.__f_cov.D()[self.__f_cov.P()]
-                return self.__f_cov.solve_Lt(b/np.sqrt(D))
+                f = self.__f_cov
+                sqrtDinv = sp.diags(1/np.sqrt(f.D()))
+                return f.apply_Pt(f.solve_Lt(sqrtDinv*(f.apply_P(b))))
             else:
                 # Full
                 return np.linalg.solve(self.__f_cov.transpose(),b)
@@ -479,6 +483,14 @@ class Gmrf(object):
         Outputs:
         
             x: (n,n_samples), samples paths of random field
+            
+            
+        Note: Samples generated from the cholesky decomposition of Q are 
+            different from those generated from that of Sigma. 
+                
+                Q = LL' (lower*upper)
+                  
+            =>  S = Q^(-1) = L'^(-1) L^(-1) (upper*lower) 
         """
         assert self.mode_supported(mode), \
             'Mode "'+ mode + '" not supported for this random field.'
@@ -490,27 +502,28 @@ class Gmrf(object):
                 'Specify either random array or sample size.'
             z = np.random.normal(size=(self.n(), n_samples))
         else:
-            assert n_samples is None or n_samples == z.shape[1], \
+            #
+            # Extract number of samples from z
+            #  
+            if len(z.shape) == 1:
+                nz = 1
+            else:
+                nz = z.shape[1]
+            assert n_samples is None or n_samples == nz, \
                 'Sample size incompatible with given random array.'
-            n_samples =  z.shape[1]
-        #if n_samples == 1:
-        #    z = z.ravel()
-        #    print('z shape = {0}'.format(z.shape))
-        
+            n_samples = nz
+        #
+        # Generate realizations
+        # 
         if mode in ['precision','canonical']:
-            v = self.Lt_solve(z, mode='precision')
-            print("mu repeated ={0}".format(self.mu(n_samples)))
-            x = v + self.mu(n_samples)
-            print('add mu={0}'.format(x))
-            return x
+            return self.Lt_solve(z, mode='precision') + self.mu(n_samples)
         elif mode == 'covariance':
-            v = self.L(z,mode=mode)
-            return v + self.mu(n_samples)
+            return self.L(z, mode='covariance') + self.mu(n_samples)
         
     
     def mode_supported(self, mode):
         """
-        Determine whether enough information
+        Determine whether enough information is available to process given mode
         """
         if mode == 'precision':
             return self.__Q is not None
