@@ -12,7 +12,6 @@ from finite_element import QuadFE, DofHandler
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
-import matplotlib.pyplot as plt
 from sksparse.cholmod import cholesky  # @UnresolvedImport
 
 
@@ -91,12 +90,24 @@ class TestGmrf(unittest.TestCase):
         X = Gmrf(precision=S)
         self.assertEqual(X.Sigma(), None, 'Should return None.')
         
-        
     
     def test_L(self):
-        pass
-    
-    
+        L = sp.csc_matrix([[1,0,0],[0,2,0],[1,2,3]])
+        x = np.array([1,2,3])      
+        b = L*x
+        X = Gmrf(precision=L*L.T)
+        self.assertTrue(np.allclose(X.L(x),b,1e-10),\
+                        'L*x incorrect.')
+        self.assertTrue(np.allclose(X.L().toarray(),L.toarray(),1e-10),\
+                        'L incorrect.')
+        self.assertRaises(AssertionError,X.L,b,mode='covariance')
+        
+        X = Gmrf(precision=(L*L.T).toarray())
+        self.assertTrue(np.allclose(X.L(x),b,1e-10),\
+                        'L*x incorrect.')
+        self.assertRaises(AssertionError,X.L,b,mode='covariance')
+        
+        
     def test_mu(self):
         Q = laplacian_precision(10)
         X = Gmrf(precision=Q)
@@ -121,53 +132,119 @@ class TestGmrf(unittest.TestCase):
             Q = laplacian_precision(n, sparse=sparse)
             b = np.random.rand(n)
             X = Gmrf(precision=Q)
-            
             self.assertTrue(np.allclose(Q.dot(X.Q_solve(b)),b,1e-10),\
                             'Q*Q^{-1}b should equal b.')
         
-        
-    
     
     def test_L_solve(self):
-        """
-        n = 3
-        for sparse in [False, True]:
-            print('Sparsity = {0}'.format(sparse))
-            Q = laplacian_precision(n, sparse)
-            b = np.random.rand(n)
-            X = Gmrf(precision=Q)
-            print('b={0}'.format(b))
-            print('L^(-1)b = {0}'.format(X.L_solve(b)))
-            print('L*L^(-1)b = {0}'.format(X.L(X.L_solve(b))))
-            self.assertTrue(np.allclose(X.L(X.L_solve(b)),b,1e-10),\
-                            'L*L^{-1}b should equal b.')
-        """
-        Q = laplacian_precision(3, sparse=True)
+        # ====================================================================
+        # Precision
+        # =====================================================================
+        L = sp.csc_matrix([[1,0,0],[0,2,0],[1,2,3]])
+        x = np.array([1,2,3])
+        b = L*x
+        Q = L*L.T
+        #
+        # Sparse
+        # 
         X = Gmrf(precision=Q)
-        f = cholesky(Q) 
-           
-        L = X.L().toarray()
-        print('L={0}'.format(L))
-        Qh = L.dot(L.transpose())
-        P = f.P()
-        print('Permutation = {0}'.format(f.P()))
-        PQPt = P.dot(Q.toarray().dot(P.transpose()))
-        print('Q-Qh={0}'.format(PQPt-Qh))    
-    
+        self.assertTrue(np.allclose(X.L_solve(b),x,1e-10),\
+                        'L solve returns incorrect result.')
+        self.assertRaises(AssertionError, X.L_solve,b, mode='covariance')
+        
+        #
+        # Dense
+        # 
+        X = Gmrf(precision=Q.toarray())
+        self.assertTrue(np.allclose(X.L_solve(b),x,1e-10),\
+                        'L solve returns incorrect result.')
+        
+        # =====================================================================
+        # Covariance 
+        # =====================================================================
+        #
+        # Sparse 
+        # 
+        X = Gmrf(covariance=Q)
+        self.assertTrue(np.allclose(X.L_solve(b,mode='covariance'),x,1e-10),\
+                        'L solve returns incorrect result.')
+        self.assertRaises(AssertionError, X.L_solve,b, mode='precision')
+        
+        #
+        # Dense
+        # 
+        X = Gmrf(covariance=Q.toarray())
+        self.assertTrue(np.allclose(X.L_solve(b,mode='covariance'),x,1e-10),\
+                        'L solve returns incorrect result.')
+        self.assertRaises(AssertionError, X.L_solve,b, mode='precision')
+        
+        
     def test_Lt_solve(self):
-        pass
+        # ====================================================================
+        # Precision
+        # =====================================================================
+        L = sp.csc_matrix([[1,0,0],[0,2,0],[1,2,3]])
+        x = np.array([1,2,3])
+        b = L.transpose()*x
+        Q = L*L.T
+        #
+        # Sparse
+        # 
+        X = Gmrf(precision=Q)
+        self.assertTrue(np.allclose(X.Lt_solve(b),x,1e-10),\
+                        'L solve returns incorrect result.')
+        self.assertRaises(AssertionError, X.Lt_solve,b, mode='covariance')
+        
+        #
+        # Dense
+        # 
+        X = Gmrf(precision=Q.toarray())
+        self.assertTrue(np.allclose(X.Lt_solve(b),x,1e-10),\
+                        'L solve returns incorrect result.')
+        
+        # =====================================================================
+        # Covariance 
+        # =====================================================================
+        #
+        # Sparse 
+        # 
+        X = Gmrf(covariance=Q)
+        self.assertTrue(np.allclose(X.Lt_solve(b,mode='covariance'),x,1e-10),\
+                        'L solve returns incorrect result.')
+        self.assertRaises(AssertionError, X.Lt_solve,b, mode='precision')
+        
+        #
+        # Dense
+        # 
+        X = Gmrf(covariance=Q.toarray())
+        self.assertTrue(np.allclose(X.Lt_solve(b,mode='covariance'),x,1e-10),\
+                        'L solve returns incorrect result.')
+        self.assertRaises(AssertionError, X.Lt_solve,b, mode='precision')    
     
     
-    def test_sample_covariance(self):
-        pass
-    
-    
-    def test_sample_precision(self):
-        pass
-    
-    
-    def test_sample_canonical(self):
-        pass
+    def test_ssample(self):
+        n = 5
+        Q = laplacian_precision(n, sparse=True)
+        S = np.linalg.inv(Q.toarray())
+        X = Gmrf(precision=Q, covariance=S)
+        z = np.random.normal(size=(X.n(),1))
+        print(z.shape)
+        f = cholesky(Q.tocsc())
+        D = f.D()[f.P()][:,np.newaxis]
+        print('D shape ={0}'.format(D.shape))
+        print('z/sqrt((D)={0}'.format(z/np.sqrt(D)))
+        print('Ltsolve(z/sqrt(D))={0}'.format(f.solve_Lt(z/np.sqrt(D))))
+        x_prec = X.sample(z=z, mode='precision')
+        x_cov = X.sample(z=z, mode='covariance')
+        x_can = X.sample(z=z, mode='canonical')
+        print(x_prec)
+        print(x_cov)
+        #for x in [x_prec,x_cov, x_can]:
+        #    print(x)
+        self.assertTrue(np.allclose(x_prec,x_cov,1e-10), \
+                        'Precision samples differ from covariance samples.')
+        self.assertTrue(np.allclose(x_cov,x_can,1e-10), \
+                        'Covariance samples differ from canonical samples.')
     
     
     def test_condition(self):
@@ -178,7 +255,7 @@ class TestGmrf(unittest.TestCase):
     def test_sample(self):
         import scipy.sparse
 
-        F = scipy.sparse.rand(100, 100, density=0.05)
+        F = scipy.sparse.rand(100, 100, density=0.1)
         M = F.transpose() * F + sp.eye(100, 100)
         M = sp.csc_matrix(M)
         factor = cholesky(M)

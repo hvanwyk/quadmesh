@@ -138,10 +138,10 @@ class Gmrf(object):
             
             __b: double, Q\mu (useful for sampling)
             
-            __Lprec: double, lower triangular left cholesky factor of precision
+            __f_prec: double, lower triangular left cholesky factor of precision
                 If Q is sparse, then use CHOLMOD.
                 
-            __Lcov: double, lower triangular left cholesky factor of covariance
+            __f_cov: double, lower triangular left cholesky factor of covariance
                 If Sigma is sparse, we use CHOLMOD.
                 
             mesh: Mesh, Quadtree mesh
@@ -164,9 +164,9 @@ class Gmrf(object):
         if precision is not None:
             n = precision.shape[0]    
             if sp.isspmatrix(precision):
-                self.__Lprec = cholesky(precision.tocsc())
+                self.__f_prec = cholesky(precision.tocsc())
             else:
-                self.__Lprec = np.linalg.cholesky(precision)        
+                self.__f_prec = np.linalg.cholesky(precision)        
         #
         # Covariance matrix
         # 
@@ -174,10 +174,10 @@ class Gmrf(object):
         if covariance is not None:
             n = covariance.shape[0]
             if sp.isspmatrix(covariance):
-                self.__Lcov = cholesky(covariance.tocsc())
+                self.__f_cov = cholesky(covariance.tocsc())
             else:
                 # Most likely
-                self.__Lcov  = np.linalg.cholesky(covariance)    
+                self.__f_cov  = np.linalg.cholesky(covariance)    
         #
         # Check compatibility
         # 
@@ -186,9 +186,10 @@ class Gmrf(object):
             n_prc = precision.shape[0]
             assert n_prc == n_cov, \
                 'Incompatibly shaped precision and covariance.'
-                
-            assert np.allclose(np.dot(covariance, precision),\
-                               np.eye(n_prc),rtol=1e-10),\
+            isI = precision.dot(covariance)
+            if sp.isspmatrix(isI):
+                isI = isI.toarray()
+                assert np.allclose(isI, np.eye(n_prc),rtol=1e-10),\
                'Covariance and precision are not inverses.' 
         #
         # Mean
@@ -201,7 +202,7 @@ class Gmrf(object):
         # 
         # b = Q\mu
         # 
-        if not np.allclose(mu, np.zeros(n), 1e-8):
+        if not np.allclose(mu, np.zeros(n), 1e-10):
             # mu is not zero
             b = self.Q_solve(mu)
         else:
@@ -289,45 +290,47 @@ class Gmrf(object):
                 
                 y = Lprec*b / y = Lcov*b: double, vector.
                 
-                 
-        TODO: TEST 
         """
         #
         # Parse mode
-        # 
+        #
+        assert self.mode_supported(mode), \
+            'Mode "'+mode+'" not supported by this random field.' 
         if mode == 'precision':
             #
             # Precision Matrix
             # 
-            assert self.__Lprec is not None, \
+            assert self.__f_prec is not None, \
                 'Precision matrix not specified.'
             if sp.isspmatrix(self.__Q):
                 #
                 # Sparse matrix, use CHOLMOD
                 #  
-                L = self.__Lprec.L()
+                P = self.__f_prec.P()
+                L = self.__f_prec.L()[P,:][:,P]
             else:
                 #
                 # Cholesky Factor stored as full matrix
                 # 
-                L = self.__Lprec
+                L = self.__f_prec
 
         elif mode == 'covariance':
             #
             # Covariance Matrix
             # 
-            assert self.__Lcov is not None, \
+            assert self.__f_cov is not None, \
                 'Covariance matrix not specified.'
             if sp.isspmatrix(self.__Sigma):
                 #
                 # Sparse Covariance matrix, use CHOLMOD
                 # 
-                L = self.__Lcov.L()
+                P = self.__f_cov.P()
+                L = self.__f_cov.L()[P,:][:,P]
             else:
                 #
                 # Cholesky Factor stored as full matrix
                 # 
-                L = self.__Lcov
+                L = self.__f_cov
         else:
             raise Exception('Mode not recognized. Use either' + \
                             '"precision" or "covariance".')
@@ -340,12 +343,25 @@ class Gmrf(object):
             return L.dot(b) 
         
         
-    def mu(self):
+    def mu(self,n_copies=None):
         """
         Return the mean of the random vector
+        
+        Inputs:
+        
+            n_copies: int, number of copies of the mean
+            
+        Output: 
+        
+            mu: (n,n_copies) mean
         """
-        return self.__mu
-    
+        if n_copies is not None:
+            assert type(n_copies) is np.int, \
+                'Number of copies should be an integer.'
+            return np.tile(self.__mu, (n_copies,1)).transpose()
+        else:
+            return self.__mu
+        
     
     def b(self):
         """
@@ -366,43 +382,78 @@ class Gmrf(object):
         Return the solution x of Qx = b by successively solving 
         Ly = b for y and hence L^T x = y for x.
         
-        TODO: TEST 
         """
         if sp.isspmatrix(self.__Q):
-            return self.__Lprec.solve_A(b)
+            return self.__f_prec(b)
         else:
-            y = np.linalg.solve(self.__Lprec, b)
-            return np.linalg.solve(self.__Lprec.transpose(),y)
+            y = np.linalg.solve(self.__f_prec, b)
+            return np.linalg.solve(self.__f_prec.transpose(),y)
     
     
     
-    def L_solve(self, b):
+    def L_solve(self, b, mode='precision'):
         """
         Return the solution x of Lx = b
         
-        TODO: TEST
+        Note: CHOLMOD's solve_L assumes a factorization of the type LDL' = PQP'
         """
-        if sp.isspmatrix(self.__Q):
-            # Sparse 
-            return self.__Lprec.solve_L(b)
-        else: 
-            # Full
-            return np.linalg.solve(self.__Lprec,b)
+        assert self.mode_supported(mode),\
+            'Mode "'+ mode + '" not supported for this random field.'
+        if mode == 'precision':
+            if sp.isspmatrix(self.__Q):
+                # Sparse
+                D = self.__f_prec.D()[self.__f_prec.P()] 
+                return self.__f_prec.solve_L(b)/np.sqrt(D)
+            else: 
+                # Full
+                return np.linalg.solve(self.__f_prec,b)
+        elif mode == 'covariance':
+            if sp.isspmatrix(self.__Sigma):
+                # Sparse
+                D = self.__f_cov.D()[self.__f_cov.P()]
+                return self.__f_cov.solve_L(b)/np.sqrt(D)
+            else:
+                # Full
+                return np.linalg.solve(self.__f_cov,b)
     
     
-    def Lt_solve(self, b):
+    def Lt_solve(self, b, mode='precision'):
         """
         Return the solution x, of L^T x = b
         
-        TODO: TEST
+        Note: CHOLMOD's solve_Lt assumes a factorization of the type 
+            LDL' = PQP'. To adjust, we solve P^T*sqrt(D)*L = b
         """
-        if self.__sparse_precision:
-            # Sparse
-            return self.__Lprec.solve_Lt(b)
+        assert self.mode_supported(mode), \
+            'Mode "'+ mode + '" not supported for this random field.'
+        if mode == 'precision':
+            #
+            # Precision matrix
+            # 
+            if sp.isspmatrix(self.__Q):
+                # Sparse
+                D = self.__f_prec.D()[self.__f_prec.P()]
+                D1 = self.__f_prec.D()[self.__f_prec.P(),np.newaxis]
+                print('D = {0}'.format(D))
+                print('D1 = {0}'.format(D1))
+                return self.__f_prec.solve_Lt(b/np.sqrt(D))
+            else:
+                # Full
+                return np.linalg.solve(self.__f_prec.transpose(),b)
+        elif mode == 'covariance':
+            #
+            # Covariance matrix
+            # 
+            if sp.isspmatrix(self.__Sigma):
+                # Sparse
+                D = self.__f_cov.D()[self.__f_cov.P()]
+                return self.__f_cov.solve_Lt(b/np.sqrt(D))
+            else:
+                # Full
+                return np.linalg.solve(self.__f_cov.transpose(),b)
         else:
-            # Full
-            return np.linalg.solve(self.__Lprec.transpose(),b)
-        
+            raise Exception('For mode, use "precision" or "covariance".')
+    
     
     def kl_expansion(self, k=None):
         """
@@ -414,35 +465,63 @@ class Gmrf(object):
         pass
     
     
-    def sample_covariance(self, n_samples=10, z=None):
+    def sample(self, n_samples=None, z=None, mode='precision'):
         """
-        Generate sample realizations from N(mu, Sigma) 
-        """
-        if z is None:
-            z = np.random.normal(size=(self.n(), n_samples))
-        else:
-            n_samples =  z.shape[1]
-            
-    
-    def sample_precision(self, n_samples=10, z=None):
-        """
-        Generate samples from N(mu, Q^{-1})
-        """
-        if z is None:
-            z = np.random.normal(size=(self.n(), n_samples))
-        else:
-            n_samples = z.shape[1]
-
-        v = self.Lt_solve(z)
-        return v + np.tile(self.mu(), (n_samples,1)).transpose()  
-    
-    
-    def sample_canonical(self, n_samples=10, z=None):
-        """
-        Generate sample from Nc(b,Q) = N(Q\b,Q^{-1})
-        """
-          
+        Generate sample realizations from Gaussian random field.
         
+        Inputs:
+        
+            n_samples: int, number of samples to generate
+            
+            z: (n,n_samples) random vector ~N(0,I).
+            
+            
+        Outputs:
+        
+            x: (n,n_samples), samples paths of random field
+        """
+        assert self.mode_supported(mode), \
+            'Mode "'+ mode + '" not supported for this random field.'
+        #
+        # Preprocess z   
+        # 
+        if z is None:
+            assert n_samples is not None, \
+                'Specify either random array or sample size.'
+            z = np.random.normal(size=(self.n(), n_samples))
+        else:
+            assert n_samples is None or n_samples == z.shape[1], \
+                'Sample size incompatible with given random array.'
+            n_samples =  z.shape[1]
+        #if n_samples == 1:
+        #    z = z.ravel()
+        #    print('z shape = {0}'.format(z.shape))
+        
+        if mode in ['precision','canonical']:
+            v = self.Lt_solve(z, mode='precision')
+            print("mu repeated ={0}".format(self.mu(n_samples)))
+            x = v + self.mu(n_samples)
+            print('add mu={0}'.format(x))
+            return x
+        elif mode == 'covariance':
+            v = self.L(z,mode=mode)
+            return v + self.mu(n_samples)
+        
+    
+    def mode_supported(self, mode):
+        """
+        Determine whether enough information
+        """
+        if mode == 'precision':
+            return self.__Q is not None
+        elif mode == 'covariance':
+            return self.__Sigma is not None
+        elif mode == 'canonical':
+            return self.__Q is not None
+        else:
+            raise Exception('For modes, use "precision", ' + \
+                            '"covariance", or "canonical".')
+            
     
     def condition(self, constraint=None, constraint_type='pointwise'):
         """

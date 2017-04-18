@@ -46,64 +46,103 @@ import unittest
 # you see this test fail, then please let us know, and we'll see about
 # wrapping the 64-bit API to cholmod.
 def real_matrix():
-        return sparse.csc_matrix([[10, 0, 3, 0],
-                                  [0, 5, 0, -2],
-                                  [3, 0, 5, 0],
-                                  [0, -2, 0, 2]])
-    
+    #
+    # Returns a real symmetric test matrix
+    #
+    return sparse.csc_matrix([[10, 0, 3, 0],
+                              [0, 5, 0, -2],
+                              [3, 0, 5, 0],
+                              [0, -2, 0, 2]])
+
 def complex_matrix():
+    #
+    # Returns a complex Hermitian test matrix
+    # 
     return sparse.csc_matrix([[10, 0, 3 - 1j, 0],
                               [0, 5, 0, -2],
                               [3 + 1j, 0, 5, 0],
                               [0, -2, 0, 2]])
         
 def factor_of(factor, matrix):
+    #
+    # Check whether a CHOLMOD factor factors a given matrix
+    #
     return np.allclose((factor.L() * factor.L().H).todense(),
                        matrix.todense()[factor.P()[:, np.newaxis],
                                         factor.P()[np.newaxis, :]])
     
 def mm_matrix(name):
-        from scipy.io import mmread
-        # Supposedly, it is better to use resource_stream and pass the resulting
-        # open file object to mmread()... but for some reason this fails?
-        from pkg_resources import resource_filename
-        filename = resource_filename(__name__, "test_data/%s.mtx.gz" % name)
-        matrix = mmread(filename)
-        if sparse.issparse(matrix):
-            matrix = matrix.tocsc()
-        return matrix
+    #
+    # Import test matrix from package directory
+    #
+    from scipy.io import mmread
+    # Supposedly, it is better to use resource_stream and pass the resulting
+    # open file object to mmread()... but for some reason this fails?
+    from pkg_resources import resource_filename
+    filename = resource_filename('sksparse', "test_data/%s.mtx.gz" % name)
+    matrix = mmread(filename)
+    if sparse.issparse(matrix):
+        matrix = matrix.tocsc()
+    return matrix
+
     
 class TestCholmod(unittest.TestCase):
+    """
+    Test (demonstrate) the CHOLMOD package
+    """
     def test_integer_size(self):
+        #
+        # Check whether scipy sparse still uses 32bit integers
+        # 
         m = sparse.eye(10, 10).tocsc()
         assert m.indices.dtype.itemsize == 4
         assert m.indptr.dtype.itemsize == 4
     
     def test_cholesky_smoke_test(self):
+        #
+        # You can use the cholesky factor to solve the system Ax=b for x: 
+        # 1) Let f = cholesky(A)
+        # 2) Call f(b)
+        # The original ordering is preserved 
+        #
+        f1 = cholesky(real_matrix())
+        d = np.array([1,2,3,4])
+        print(f1(d))
+        print(real_matrix().dot(f1(d)))
+        
         f = cholesky(sparse.eye(10, 10).tocsc())
+        #
+        # Right hand side is a (2,10) full matrix
+        # 
         d = np.arange(20).reshape(10, 2)
-        print("dense")
         assert np.allclose(f(d), d)
-        print("sparse")
+        #
+        # Right hand side is a sparse csc matrix
+        # 
         s_csc = sparse.csc_matrix(np.eye(10)[:, :2] * 1.)
         assert sparse.issparse(f(s_csc))
         assert np.allclose(f(s_csc).todense(), s_csc.todense())
-        print("csr")
+        #
+        # Right hand side is a sparse csr matrix
+        # 
         s_csr = s_csc.tocsr()
         assert sparse.issparse(f(s_csr))
         assert np.allclose(f(s_csr).todense(), s_csr.todense())
-        print("extract")
         assert np.all(f.P() == np.arange(10))
     
     
     def test_complex(self):
-        c = complex_matrix()
+        #
+        # Test cholesky factorization of a complex Hermitian/real symmetrix 
+        # matrix.
+        # Note: todense() converts sparse matrix to matrix type, whose inverse
+        #       is m.I and for which * means matrix multiplication.
+        # 
+        r = real_matrix()  # real symmetric matrix
+        fr = cholesky(r)   
+        c = complex_matrix()  # complex symmetrix
         fc = cholesky(c)
-        r = real_matrix()
-        fr = cholesky(r)
-        
         assert factor_of(fc, c)
-    
         assert np.allclose(fc(np.arange(4)),
                            (c.todense().I * np.arange(4)[:, np.newaxis]).ravel())
         assert np.allclose(fc(np.arange(4) * 1j),
@@ -114,6 +153,9 @@ class TestCholmod(unittest.TestCase):
         assert_raises(CholmodError, fr, np.arange(4) * 1j)
     
     def test_beta(self):
+        #
+        # Compute Cholesky factor of A+beta*I
+        # 
         for matrix in [real_matrix(), complex_matrix()]:
             for beta in [0, 1, 3.4]:
                 matrix_plus_beta = matrix + beta * sparse.eye(*matrix.shape)
@@ -123,7 +165,13 @@ class TestCholmod(unittest.TestCase):
                                      matrix_plus_beta)
     
     def test_update_downdate(self):
+        #
+        # 
+        # 
         m = real_matrix()
+        #
+        # Initialize Cholesky factor
+        # 
         f = cholesky(m)
         L = f.L()[f.P(), :]
         assert factor_of(f, m)
@@ -156,8 +204,9 @@ class TestCholmod(unittest.TestCase):
         assert_raises(CholmodError, f, sparse.eye(m.shape[0] + 1, m.shape[1]).tocsc())
     
     
-    """
+
     def test_cholesky_matrix_market(self):
+        
         for problem in ("well1033", "illc1033", "well1850", "illc1850"):
             X = mm_matrix(problem)
             y = mm_matrix(problem + "_rhs1")
@@ -228,13 +277,13 @@ class TestCholmod(unittest.TestCase):
                                        np.dot(D.todense().I, b))
     
                     assert np.allclose(f.apply_P(b), b[f.P(), :])
-                    assert np.allclose(f.solve_P(b), b[f.P(), :])
+                    #assert np.allclose(f.solve_P(b), b[f.P(), :])
                     # Pt is the inverse of P, and argsort inverts permutation
                     # vectors:
                     assert np.allclose(f.apply_Pt(b), b[np.argsort(f.P()), :])
-                    assert np.allclose(f.solve_Pt(b), b[np.argsort(f.P()), :])
+                    #assert np.allclose(f.solve_Pt(b), b[np.argsort(f.P()), :])
     
-    
+    """
     def test_deprecation(self):
         f = cholesky(sparse.eye(5, 5))
         b = np.ones((5,2))
@@ -246,6 +295,7 @@ class TestCholmod(unittest.TestCase):
                 assert issubclass(w[-1].category, DeprecationWarning)
                 assert "deprecated" in str(w[-1].message)
     """
+    
     def test_convenience(self):
         A_dense_seed = np.array([[10, 0, 3, 0],
                                  [0, 5, 0, -2],
