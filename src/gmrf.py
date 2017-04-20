@@ -6,7 +6,7 @@ Created on Feb 8, 2017
 from finite_element import System, QuadFE
 from mesh import Mesh
 import scipy.sparse as sp
-from sksparse.cholmod import cholesky  # @UnresolvedImport
+from sksparse.cholmod import cholesky, cholesky_AAt, Factor  # @UnresolvedImport
 from scipy.special import kv, gamma
 import numpy as np
 
@@ -97,6 +97,72 @@ def distance(x,y):
     return np.sqrt(np.sum((x-y)**2,axis=1)) 
         
      
+def matern_precision(mesh, element, alpha, kappa, tau=None):
+    """
+    Return the precision matrix for the Matern random field defined on the 
+    spatial mesh. The field X satisfies
+    
+        (k^2 - Delta)^{a/2} X = W
+    
+    Inputs: 
+    
+        mesh: Mesh, finite element mesh on which the field is defined
+        
+        element: QuadFE, finite element space of piecewise polynomials
+        
+        alpha: int, positive integer (doubles not yet implemented).
+        
+        kappa: double, positive regularization parameter.
+        
+        
+    Outputs:
+    
+        Q: sparse matrix, in CSC format
+        
+    """
+    print('mesh = {0}'.format(mesh))
+    print('element = {0}'.format(element))
+    print('alpha = {0}'.format(alpha))
+    print('kappa = {0}'.format(kappa))
+    print('tau={0}'.format(tau))
+    system = System(mesh, element)
+    
+    #
+    # Assemble (kappa * I + K)
+    # 
+    bf = [(kappa,'u','v'),(1,'ux','vx'),(1,'uy','vy')]
+    G = system.assemble(bilinear_forms=bf)
+    G = G.tocsr()
+    
+    #
+    # Lumped mass matrix
+    # 
+    M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
+    m_lumped = np.array(M.sum(axis=1)).squeeze()
+    
+        
+    if np.mod(alpha,2) == 0:
+        #
+        # Even power alpha
+        # 
+        Q = cholesky(G.tocsc())
+        count = 1
+    else:
+        #
+        # Odd power alpha
+        # 
+        Q = cholesky_AAt((G*sp.diags(1/np.sqrt(m_lumped))).tocsc())
+        count = 2
+    
+    while count < alpha:
+        #
+        # Update Q
+        #
+        Q = cholesky_AAt((G*sp.diags(1/m_lumped)*Q.apply_Pt(Q.L())).tocsc()) 
+        count += 2
+    
+    return Q
+
          
 # =============================================================================
 # Gaussian Markov Random Field Class
@@ -117,7 +183,7 @@ class Gmrf(object):
             mu: double, (n,) vector of expectations (default=0)
             
             precision: double, (n,n) sparse/full precision matrix
-            
+                    
             covariance: double, (n,n) sparse/full covariance matrix
             
             mesh: Mesh, quadtree mesh
@@ -160,13 +226,30 @@ class Gmrf(object):
         #
         # Precision matrix
         # 
-        self.__Q = precision
-        if precision is not None:
-            n = precision.shape[0]    
+        Q = None
+        if precision is not None:    
             if sp.isspmatrix(precision):
-                self.__f_prec = cholesky(precision.tocsc())
+                #
+                # Precision is sparse matrix
+                # 
+                n = precision.shape[0]
+                Q = precision
+                self.__f_prec = cholesky(Q.tocsc())
+                #
+                # Precision is cholesky factor
+                # 
+            elif type(precision) is Factor:
+                n = len(precision.P())
+                Q = (precision.L()*precision.L().transpose())
+                self.__f_prec = precision
             else:
-                self.__f_prec = np.linalg.cholesky(precision)        
+                #
+                # Precision is full matrix
+                #
+                n = precision.shape[0]
+                Q = precision 
+                self.__f_prec = np.linalg.cholesky(precision)
+        self.__Q = Q
         #
         # Covariance matrix
         # 
@@ -247,12 +330,13 @@ class Gmrf(object):
             *tau: double, matrix-valued function representing the structure
                 tensor S = [uxx uxy; uxy uyy].
         """
-        if element is not None: 
-            discretization = 'finite_elements'
-        else:
-            discretization = 'finite_differences'
+        #if element is not None: 
+        #    discretization = 'finite_elements'
+        #else:
+        #    discretization = 'finite_differences'
             
-        pass
+        Q = matern_precision(mesh, element, alpha, kappa, tau)
+        return cls(precision=Q, mesh=mesh, element=element)
     
     
     def Q(self):
@@ -501,24 +585,34 @@ class Gmrf(object):
             assert n_samples is not None, \
                 'Specify either random array or sample size.'
             z = np.random.normal(size=(self.n(), n_samples))
+            z_is_a_vector = False
         else:
             #
             # Extract number of samples from z
             #  
             if len(z.shape) == 1:
                 nz = 1
+                z_is_a_vector = True
             else:
                 nz = z.shape[1]
+                z_is_a_vector = False 
             assert n_samples is None or n_samples == nz, \
                 'Sample size incompatible with given random array.'
             n_samples = nz
         #
-        # Generate realizations
+        # Generate centered realizations
         # 
         if mode in ['precision','canonical']:
-            return self.Lt_solve(z, mode='precision') + self.mu(n_samples)
+            v = self.Lt_solve(z, mode='precision')
         elif mode == 'covariance':
-            return self.L(z, mode='covariance') + self.mu(n_samples)
+            v = self.L(z, mode='covariance')    
+        #
+        # Add mean
+        # 
+        if z_is_a_vector:
+            return v + self.mu()
+        else:
+            return v + self.mu(n_samples)
         
     
     def mode_supported(self, mode):
@@ -555,64 +649,3 @@ class Gmrf(object):
         pass
     
     
-    def matern_precision(self, mesh, element, alpha, kappa, tau=None):
-        """
-        Return the precision matrix for the Matern random field defined on the 
-        spatial mesh. The field X satisfies
-        
-            (k^2 - Delta)^{a/2} X = W
-        
-        Inputs: 
-        
-            mesh: Mesh, finite element mesh on which the field is defined
-            
-            element: QuadFE, finite element space of piecewise polynomials
-            
-            alpha: int, positive integer (doubles not yet implemented).
-            
-            kappa: double, positive regularization parameter.
-            
-            
-        Outputs:
-        
-            Q: sparse matrix, in CSC format
-            
-        """
-        system = System(mesh, element)
-        
-        #
-        # Assemble (kappa * I + K)
-        # 
-        bf = [(kappa,'u','v'),(1,'ux','vx'),(1,'uy','vy')]
-        G = system.assemble(bilinear_forms=bf)
-        G = G.tocsr()
-        
-        #
-        # Lumped mass matrix
-        # 
-        M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
-        M_lumped_inv = sp.diags(1/np.array(M.sum(axis=1)).squeeze())
-        
-        
-        #Ml = sp.diags(Ml)
-        if np.mod(alpha,2) == 0:
-            #
-            # Even power alpha
-            # 
-            Q = G
-            count = 1
-        else:
-            #
-            # Odd power alpha
-            # 
-            Q = G.dot(M_lumped_inv.dot(G))
-            count = 2
-        while count < alpha:
-            #
-            # TODO: To keep Q symmetric positive definite, 
-            #       perhaps compute cholesky earlier.
-            # 
-            Q = G.dot(M_lumped_inv.dot(Q.dot(M_lumped_inv.dot(G))))
-            count += 2
-        
-        return Q

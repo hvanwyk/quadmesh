@@ -8,12 +8,12 @@ import unittest
 
 from gmrf import Gmrf
 from mesh import Mesh
-from finite_element import QuadFE, DofHandler
+from finite_element import QuadFE, DofHandler, System
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from sksparse.cholmod import cholesky  # @UnresolvedImport
-
+import matplotlib.pyplot as plt
 
 def laplacian_precision(n, sparse=True):
     """
@@ -227,28 +227,28 @@ class TestGmrf(unittest.TestCase):
         #
         # Don't know how to test this routine yet
         # 
-        """
+       
         L = sp.csc_matrix([[1,0,0],[0,2,0],[1,2,3]])
         x = np.array([1,2,3])
         b = L.transpose()*x
         Q = L*L.T
         S = sp.csc_matrix(np.linalg.inv(Q.toarray()))
         X = Gmrf(precision=Q, covariance=S)
-        print(X.L(b,mode='covariance')-x)
-        Ltilde = X.L(mode='covariance')
-        print((Ltilde).toarray())
-        print(np.linalg.inv(L.T.toarray()))
-        print((Ltilde*Ltilde.T*L*L.T).toarray())
-        print((Ltilde*Ltilde.T - S).toarray())
-        print(np.linalg.inv(L.toarray()).dot((Ltilde.T).toarray()))
-        print('{0}'.format(X.sample(z=b, mode='precision')))
-        print('{0}'.format(X.sample(z=b, mode='covariance')))
+        #print(X.L(b,mode='covariance')-x)
+        #Ltilde = X.L(mode='covariance')
+        #print((Ltilde).toarray())
+        #print(np.linalg.inv(L.T.toarray()))
+        #print((Ltilde*Ltilde.T*L*L.T).toarray())
+        #print((Ltilde*Ltilde.T - S).toarray())
+        #print(np.linalg.inv(L.toarray()).dot((Ltilde.T).toarray()))
+        #print('{0}'.format(X.sample(z=b, mode='precision')))
+        #print('{0}'.format(X.sample(z=b, mode='covariance')))
         
         n = 5
         Q = laplacian_precision(n, sparse=True)
         S = sp.csc_matrix(np.linalg.inv(Q.toarray()))
         X = Gmrf(precision=Q, covariance=S)
-        z = np.random.normal(size=(X.n(),1))
+        z = np.random.normal(size=(X.n(),))
         
         x_prec = X.sample(z=z, mode='precision')
         x_cov = X.sample(z=z, mode='covariance')
@@ -259,7 +259,7 @@ class TestGmrf(unittest.TestCase):
         #                'Precision samples differ from covariance samples.')
         #self.assertTrue(np.allclose(x_cov,x_can,1e-10), \
         #                'Covariance samples differ from canonical samples.')
-        """
+        
         
     
     def test_condition(self):
@@ -267,11 +267,11 @@ class TestGmrf(unittest.TestCase):
 
 
     def test_matern_precision(self):
-        """
+        
         #
         # Define mesh and element    
         # 
-        mesh = Mesh.newmesh(grid_size=(50,50))
+        mesh = Mesh.newmesh(grid_size=(20,20))
         mesh.refine()
         element = QuadFE(2,'Q3')
         dofhandler = DofHandler(mesh,element)
@@ -279,19 +279,21 @@ class TestGmrf(unittest.TestCase):
         #kappa = lambda x,y: 1 + x**2*y;
         kappa = 1 
         alpha = 2
+        system = System(mesh,element)
+        X = Gmrf.from_matern_pde(alpha, kappa, mesh, element)
+        Xsmpl = X.sample(n_samples=1)
         
-        X = Gmrf.from_matern_pde(mesh,element)
-        Q = X.matern_precision(mesh, element, alpha, kappa)
-        Q = Q.tocsc()
-        factor = cholesky(Q)
-        P = factor.P()
-        plt.spy(Q[P[:, np.newaxis], P[np.newaxis, :]], markersize=0.2)
+        #Q = X.matern_precision(mesh, element, alpha, kappa)
+        #Q = Q.tocsc()
+        #factor = cholesky(Q)
+        #P = factor.P()
+        #plt.spy(Q[P[:, np.newaxis], P[np.newaxis, :]], markersize=0.2)
         #plt.spy(Q, markersize=0.5)
-        plt.show()
-        print(Q.nnz)
-        print('Number of rows: {0}'.format(Q.shape[0]))
-        print('Number of dofs: {0}'.format(dofhandler.n_dofs()))
-        """
+        #plt.show()
+        #print(Q.nnz)
+        #print('Number of rows: {0}'.format(Q.shape[0]))
+        #print('Number of dofs: {0}'.format(dofhandler.n_dofs()))
+        
         
         
 if __name__ == "__main__":
