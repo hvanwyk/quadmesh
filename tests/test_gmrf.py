@@ -271,18 +271,22 @@ class TestGmrf(unittest.TestCase):
         #
         # Define mesh and element    
         # 
-        mesh = Mesh.newmesh(grid_size=(20,20))
+        mesh = Mesh.newmesh(grid_size=(40,40), box=[0,20,0,20])
         mesh.refine()
-        element = QuadFE(2,'Q3')
+        element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh,element)
         dofhandler.distribute_dofs()
-        #kappa = lambda x,y: 1 + x**2*y;
-        kappa = 1 
-        alpha = 2
+        #kappa = lambda x,y: np.log(2+5*x**2 + 2*y**3);
+        kappa = 16
+        alpha = 4
         system = System(mesh,element)
         X = Gmrf.from_matern_pde(alpha, kappa, mesh, element)
         Xsmpl = X.sample(n_samples=1)
-        
+        from plot import Plot
+        fig, ax = plt.subplots()
+        plot = Plot()
+        plot.function(ax, Xsmpl, mesh, element)
+        plt.show()
         #Q = X.matern_precision(mesh, element, alpha, kappa)
         #Q = Q.tocsc()
         #factor = cholesky(Q)
