@@ -26,6 +26,7 @@ from gmrf import sqr_exponential_cov
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.linalg as la
+import scipy.stats as stats
 
 def trapezoidal(f,a,b,n):
     """
@@ -52,12 +53,64 @@ def trapezoidal(f,a,b,n):
     w = 0.5*(b-a)/n*np.array([1] + [2]*(n-1) + [1])
     return np.sum(w*fx)
 
-  
+ 
+def sample_field(mu, Cov, n_sample=None, z=None):
+    m = len(mu)
+    if n_sample is None and z is None:
+        raise Exception('Inputs n_sample and z cannot both be None.')
+    elif n_sample is not None and z is not None:
+        raise Exception('One of the inputs n_sample and z must be None.')
+    if z is None:
+        if n_sample == 1:
+            z = np.random.standard_normal(size=(m,))
+        else:
+            z = np.random.standard_normal(size=(m,n_sample))
+    if n_sample is None:
+        if len(z.shape) == 1:
+            n_sample = 1
+        else:
+            n_sample = z.shape[1]
+        
+    L = la.cholesky(Cov, lower=True)
+    if n_sample == 1:
+        return L.dot(z) + mu
+    else:
+        return L.dot(z) + np.tile(mu,(n_sample,1)).transpose() 
+            
+     
 if __name__ == '__main__':
-    f = lambda x: np.sin(0.5*np.pi*x)
-    a, b = 0, 1
-    l = .08
+    
+    mu_fn = lambda x: np.sin(np.pi*x)
+    cov_fn = lambda x,y: 0.1*(1+10*x**2)*np.exp(-np.abs(x-y))
     Ie = 2/np.pi
+    a, b = 0, 1
+    k_max = 10
+    n_sample = np.int(1e5)
+    fig, ax = plt.subplots(2,2)
+    for k in np.arange(1,k_max):
+        m = 2**k
+        xm = np.linspace(a,b,m+1)
+        mu_m = mu_fn(xm)
+        [X,Y] = np.meshgrid(xm,xm)
+        Cov = cov_fn(X.ravel(),Y.ravel()).reshape(m+1,m+1)
+        fX = sample_field(mu_m, Cov, n_sample=n_sample)
+        
+        ax[0,0].plot(xm, np.mean(fX,axis=1))
+        ax[0,1].plot(xm, np.var(fX,axis=1))
+        ax[1,1].plot(xm, fX[:,0])
+        #
+        # Compute integral
+        # 
+        w = 0.5*(b-a)/m*np.array([[1]+[2]*(m-1)+[1]])
+        IfX = np.sum(fX * np.tile(w,(n_sample,1)).transpose(), axis = 0)
+        IEfX = np.sum(w*np.mean(fX,axis=1)) 
+        
+        ax[1,0].loglog(m,np.abs(np.mean(IfX)-Ie),'.k',\
+                       m,np.abs(IEfX - Ie),'+r',\
+                       m,((b-a)/m)**2,'.b')
+                       
+    """    
+    
     E_trap = []
     n_quad_max = 100
     for n in np.arange(1,n_quad_max):
@@ -73,6 +126,7 @@ if __name__ == '__main__':
     ax[0,1].imshow(S)
     ax[1,0].imshow(np.abs(S-L.dot(L.T)))
     ax[1,1].loglog(n_range, np.array(E_trap),n_range,1/(n_range**2))
+    """
     plt.show()
         
         

@@ -277,8 +277,8 @@ class TestGmrf(unittest.TestCase):
         dofhandler = DofHandler(mesh,element)
         dofhandler.distribute_dofs()
         #kappa = lambda x,y: np.log(2+5*x**2 + 2*y**3);
-        kappa = 16
-        alpha = 4
+        kappa = 3
+        alpha =3
         system = System(mesh,element)
         X = Gmrf.from_matern_pde(alpha, kappa, mesh, element)
         Xsmpl = X.sample(n_samples=1)
