@@ -114,11 +114,10 @@ if __name__ == '__main__':
         # Trapezoidal integral of expectation
         Imu = np.sum(mu_m * w)  
         
-        print(Imu-Ie) 
         ax[1,0].loglog(m, np.abs(Imu-Ie)**2, '+k',
                        m, np.abs(varIfX)/n_sample, '+k',
-                       m, varIfX/n_sample + (Imu-Ie)**2,'.b',
-                       m, np.abs(np.mean(IfX)-Ie)**2, '.r')        
+                       m, varIfX/n_sample + (Imu-Ie)**2,'.b')
+        #               m, np.abs(np.mean(IfX)-Ie)**2, '.r')        
         #ax[1,0].loglog(m,np.abs(np.mean(IfX)-Ie)**2,'.k',\
         #               m,np.abs(IEfX - Ie),'+r',\
         #               m,((b-a)/m)**2,'.b')

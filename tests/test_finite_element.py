@@ -773,9 +773,6 @@ class TestSystem(unittest.TestCase):
         mesh.refine(2)
         element = QuadFE(2,'Q2')
         
-        #fig,ax = plt.subplots()
-        #plot = Plot()
-        #plot.mesh(ax,mesh,element=element,dofs=True)
                 
         system = System(mesh,element)
         A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
