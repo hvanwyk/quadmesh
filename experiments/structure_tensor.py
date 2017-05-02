@@ -15,6 +15,7 @@ from scipy.interpolate import interp2d
 from finite_element import System, QuadFE
 from mesh import Mesh
 from gmrf import Gmrf
+from scipy.interpolate.fitpack2 import RectBivariateSpline
 
 def two_by_two_eig(a,b,c):
     """
@@ -74,6 +75,10 @@ nx, ny = Axx.shape
 dx, dy = 2, 2
 xi = np.arange(0, nx)
 yi = np.arange(0, ny)
+axx = RectBivariateSpline(xi, yi, Axx)
+x = np.array([1,2,3])
+y = np.array([4,5,6])
+print(axx.ev(x,y))
 axx = interp2d(xi, yi, Axx.T) 
 axy = interp2d(xi, yi, Axy.T)
 ayy = interp2d(xi, yi, Ayy.T)
@@ -84,16 +89,18 @@ mesh.refine()
 element = QuadFE(2,'Q1')
 alpha = 2
 kappa = 9
-X = Gmrf.from_matern_pde(alpha,kappa,mesh,element,tau)
 
-"""
+
+#X = Gmrf.from_matern_pde(alpha,kappa,mesh,element,tau)
+
+
 for ix in np.arange(0,nx,dx):
     for iy in np.arange(0,ny,dy):
         e = structure_ellipse((iy,ix), Axx[ix,iy],Axy[ix,iy],Ayy[ix,iy])
         ax.add_artist(e)    
         
 plt.show()
-"""
+
 
 """
 
