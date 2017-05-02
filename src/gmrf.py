@@ -5,9 +5,11 @@ Created on Feb 8, 2017
 '''
 from finite_element import System, QuadFE
 from mesh import Mesh
+from numbers import Number
 import scipy.sparse as sp
 from sksparse.cholmod import cholesky, cholesky_AAt, Factor  # @UnresolvedImport
 from scipy.special import kv, gamma
+from scipy.sparse import linalg as spla
 import numpy as np
 
 # =============================================================================
@@ -97,12 +99,13 @@ def distance(x,y):
     return np.sqrt(np.sum((x-y)**2,axis=1)) 
         
      
-def matern_precision(mesh, element, alpha, kappa, tau=None):
+def matern_precision(mesh, element, alpha, kappa, tau=None, 
+                     boundary_conditions=None):
     """
     Return the precision matrix for the Matern random field defined on the 
     spatial mesh. The field X satisfies
     
-        (k^2 - Delta)^{a/2} X = W
+        (k^2 - div[T(x)grad(.)])^{a/2} X = W
     
     Inputs: 
     
@@ -114,24 +117,39 @@ def matern_precision(mesh, element, alpha, kappa, tau=None):
         
         kappa: double, positive regularization parameter.
         
+        tau: (Axx,Axy,Ayy) symmetric tensor or diffusion coefficient function.
+        
+        boundary_conditions: tuple of boundary locator function and boundary value
+            function (viz. finite_element.System)
+        
         
     Outputs:
     
         Q: sparse matrix, in CSC format
         
     """
-    print('mesh = {0}'.format(mesh))
-    print('element = {0}'.format(element))
-    print('alpha = {0}'.format(alpha))
-    print('kappa = {0}'.format(kappa))
-    print('tau={0}'.format(tau))
     system = System(mesh, element)
     
     #
-    # Assemble (kappa * I + K)
-    # 
-    bf = [(kappa,'u','v'),(1,'ux','vx'),(1,'uy','vy')]
-    G = system.assemble(bilinear_forms=bf)
+    # Assemble (kappa * M + K)
+    #
+    bf = [(kappa,'u','v')]
+    if tau is not None:
+        #
+        # Test whether tau is a symmetric tensor
+        # 
+        if type(tau) is tuple:
+            assert len(tau)==3, 'Symmetric tensor should have length 3.'
+            axx,axy,ayy = tau
+            bf += [(axx,'ux','vx'),(axy,'uy','vx'),
+                   (axy,'ux','vy'),(ayy,'uy','vy')]
+        else:
+            assert callable(tau) or isinstance(tau, Number)
+            bf += [(tau,'ux','vx'),(tau,'uy','vy')]
+    else:
+        bf += [(1,'ux','vx'),(1,'uy','vy')]
+    G = system.assemble(bilinear_forms=bf, 
+                        boundary_conditions=boundary_conditions)
     G = G.tocsr()
     
     #
@@ -328,7 +346,7 @@ class Gmrf(object):
             *element: QuadFE, finite element (optional)
             
             *tau: double, matrix-valued function representing the structure
-                tensor S = [uxx uxy; uxy uyy].
+                tensor tau(x,y) = [uxx uxy; uxy uyy].
         """
         #if element is not None: 
         #    discretization = 'finite_elements'
@@ -339,7 +357,7 @@ class Gmrf(object):
         return cls(precision=Q, mesh=mesh, element=element)
     
     
-    def Q(self):
+    def Q(self, i=None, j=None):
         """
         Return the precision matrix
         """
@@ -630,7 +648,8 @@ class Gmrf(object):
                             '"covariance", or "canonical".')
             
     
-    def condition(self, constraint=None, constraint_type='pointwise'):
+    def condition(self, constraint=None, constraint_type='pointwise',
+                  mode='precision'):
         """
         
         Inputs:
@@ -638,14 +657,38 @@ class Gmrf(object):
             constraint: tuple, parameters specifying the constraint, determined
                 by the constraint type:
                 
-                'pointwise': 
+                'pointwise': (dof_indices, constraint_values) 
                 
-                'hard':
+                'hard': (A, b) 
                 
-                'soft':
+                'soft': (A, Q)
         
             constraint_type: str, 'pointwise' (default), 'hard', 'soft'.
+            
+            mode: str, 'precision' (default), or 'covariance'.
+            
+            
+        Output:
+        
+            X: Gmrf, conditioned random field. 
         """
-        pass
+        if constraint_type == 'pointwise':
+            i_b, x_b = constraint
+            i_a = [i not in i_b for i in range(self.n())]
+            mu_a, mu_b = self.mu()[i_a], self.mu()[i_b]
+            #Q_aa = self.Q(i_a,i_a), Q_ab = self.Q(i_a,i_b)
+            #
+            # Conditional random field
+            # 
+            #mu_agb = mu_a - spla.spsolve(Q_aa, Q_ab.dot(x_b-mu_b))
+            #return Gmrf(mu=mu_agb, precision=Q_aa)
+            
+        elif constraint_type == 'hard':
+            pass
+        elif constraint_type == 'soft':
+            pass
+        else:
+            raise Exception('Input "constraint_type" should be:' + \
+                            ' "pointwise", "hard", or "soft"')
     
     
