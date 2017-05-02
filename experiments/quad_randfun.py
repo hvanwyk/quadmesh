@@ -100,14 +100,27 @@ if __name__ == '__main__':
         ax[1,1].plot(xm, fX[:,0])
         #
         # Compute integral
-        # 
+        #
+        # Integration weights 
         w = 0.5*(b-a)/m*np.array([[1]+[2]*(m-1)+[1]])
-        IfX = np.sum(fX * np.tile(w,(n_sample,1)).transpose(), axis = 0)
-        IEfX = np.sum(w*np.mean(fX,axis=1)) 
         
-        ax[1,0].loglog(m,np.abs(np.mean(IfX)-Ie),'.k',\
-                       m,np.abs(IEfX - Ie),'+r',\
-                       m,((b-a)/m)**2,'.b')
+        # Pathwise Trapezoidal Integral
+        IfX = np.sum(fX * np.tile(w,(n_sample,1)).transpose(), axis = 0)
+        varIfX = np.var(IfX)
+        
+        # Trapezoidal Integral of the mean
+        IEfX = np.sum(w*np.mean(fX,axis=1))
+        
+        # Trapezoidal integral of expectation
+        Imu = np.sum(mu_m * w)  
+        
+        ax[1,0].loglog(m, np.abs(Imu-Ie)**2, '+k',
+                       m, np.abs(varIfX)/n_sample, '+k',
+                       m, varIfX/n_sample + (Imu-Ie)**2,'.b')
+        #               m, np.abs(np.mean(IfX)-Ie)**2, '.r')        
+        #ax[1,0].loglog(m,np.abs(np.mean(IfX)-Ie)**2,'.k',\
+        #               m,np.abs(IEfX - Ie),'+r',\
+        #               m,((b-a)/m)**2,'.b')
                        
     """    
     
