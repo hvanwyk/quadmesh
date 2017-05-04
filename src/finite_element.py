@@ -2022,12 +2022,6 @@ class System(object):
         """
         Compute the local bilinear form over an element
         """
-        print('Shapes')
-        print('Weight: {0}'.format(weight.shape))
-        print('kernel: {0}'.format(kernel.shape))
-        print('trial: {0}'.format(trial.shape))
-        print('Test: {0}'.format(test.shape))
-        print(np.dot(test.T, np.dot(np.diag(weight*kernel),trial)))
         return np.dot(test.T, np.dot(np.diag(weight*kernel),trial))
     
     

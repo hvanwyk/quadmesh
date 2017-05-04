@@ -5,7 +5,8 @@ Created on Feb 8, 2017
 '''
 
 import matplotlib.pyplot as plt
-from matplotlib import colors, cm 
+import matplotlib.cm as cm
+from matplotlib import colors
 import numpy as np
 from finite_element import DofHandler, System
 
@@ -174,7 +175,7 @@ class Plot(object):
                 #
                 #my_map = cm.viridis
                 normal = colors.Normalize(f.min(), f.max())
-                color = plt.cm.viridis(normal(f))
+                color = plt.cm.Greys_r(normal(f))
                 for leaf,c in zip(mesh.root_node().find_leaves(),color):
                     cell = leaf.quadcell()
                     x0,x1,y0,y1 = cell.box()
@@ -203,5 +204,5 @@ class Plot(object):
                     in_cell = cell.contains_point(xy)
                     xy_loc = xy[in_cell,:]
                     z[in_cell] = system.f_eval_loc(f_loc,cell,x=xy_loc)     
-                ax.contourf(x,y,z.reshape(ny,nx),100)
+                ax.contourf(x,y,z.reshape(ny,nx),100, cmap=cm.Greys_r)
         return ax

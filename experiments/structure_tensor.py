@@ -16,6 +16,8 @@ from finite_element import System, QuadFE
 from mesh import Mesh
 from gmrf import Gmrf
 from scipy.interpolate.fitpack2 import RectBivariateSpline
+from plot import Plot
+import scipy.sparse.linalg as spla
 
 def two_by_two_eig(a,b,c):
     """
@@ -63,37 +65,49 @@ shale = shale[:,:,0]  # There is only 1 layer
 #
 # Plot image
 # 
+
 fig = plt.figure(0)
 ax = fig.add_subplot(111)
-ax.imshow(shale, cmap=cm.Greys_r);
+ax.imshow(shale.T, origin='lower', cmap=cm.Greys_r);
 
 #
 # Get structure tensor
 # 
-Axx, Axy, Ayy = feature.structure_tensor(shale)
+Axx, Axy, Ayy = feature.structure_tensor(shale, sigma=1)
 nx, ny = Axx.shape
+
 dx, dy = 2, 2
 xi = np.arange(0, nx)
 yi = np.arange(0, ny)
-axx = RectBivariateSpline(xi, yi, Axx)
-x = np.array([1,2,3])
-y = np.array([4,5,6])
-print(axx.ev(x,y))
-axx = interp2d(xi, yi, Axx.T) 
-axy = interp2d(xi, yi, Axy.T)
-ayy = interp2d(xi, yi, Ayy.T)
-tau = (axx, axy, ayy)
+axx = RectBivariateSpline(xi, yi, Axx, kx=1, ky=1)
+axy = RectBivariateSpline(xi, yi, Axy, kx=1, ky=1)
+ayy = RectBivariateSpline(xi, yi, Ayy, kx=1, ky=1)
+tau = (axx.ev, axy.ev, ayy.ev)
 
-mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(60,80))
+mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(120,160))
 mesh.refine()
-element = QuadFE(2,'Q1')
+element = QuadFE(2,'Q2')
 alpha = 2
-kappa = 9
-
+kappa = 1
+gmma = 4*np.pi
+f = lambda x,y: np.abs(gmma**2*(axx.ev(x,y)*ayy.ev(x,y)-axy.ev(x,y)**2))**(1/4)
+system = System(mesh=mesh, element=element)
+bf = [(1,'u','v'),(axx.ev,'ux','vx'),(axy.ev,'uy','vx'),
+      (axy.ev,'ux','vy'),(ayy.ev,'uy','vy')]
+A = system.assemble(bilinear_forms=bf)
+bf = [(f,'u','v')]
+M = system.assemble(bilinear_forms=bf)
+n = system.get_n_nodes()
+Z = np.random.normal(loc=0.25, scale=0.01, size=(n,))
+X = spla.spsolve(A.tocsc(), M.dot(Z))
 
 #X = Gmrf.from_matern_pde(alpha,kappa,mesh,element,tau)
-
-
+fig = plt.figure(1)
+ax = fig.add_subplot(111)
+plot = Plot()
+plot.function(ax,X,mesh,element=element)
+plt.show()
+"""
 for ix in np.arange(0,nx,dx):
     for iy in np.arange(0,ny,dy):
         e = structure_ellipse((iy,ix), Axx[ix,iy],Axy[ix,iy],Ayy[ix,iy])
@@ -101,8 +115,6 @@ for ix in np.arange(0,nx,dx):
         
 plt.show()
 
-
-"""
 
 l1, l2 = feature.structure_tensor_eigvals(Axx, Axy, Ayy)
 #
