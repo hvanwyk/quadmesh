@@ -204,5 +204,5 @@ class Plot(object):
                     in_cell = cell.contains_point(xy)
                     xy_loc = xy[in_cell,:]
                     z[in_cell] = system.f_eval_loc(f_loc,cell,x=xy_loc)     
-                ax.contourf(x,y,z.reshape(ny,nx),100, cmap=cm.Greys_r)
+                ax.contourf(x,y,z.reshape(ny,nx),100, cmap=cm.viridis_r)
         return ax

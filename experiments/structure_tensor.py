@@ -18,6 +18,7 @@ from gmrf import Gmrf
 from scipy.interpolate.fitpack2 import RectBivariateSpline
 from plot import Plot
 import scipy.sparse.linalg as spla
+import matplotlib
 
 def two_by_two_eig(a,b,c):
     """
@@ -65,17 +66,20 @@ shale = shale[:,:,0]  # There is only 1 layer
 #
 # Plot image
 # 
-
-fig = plt.figure(0)
+#matplotlib.rcParams
+fig = plt.figure(0, figsize=(4,3))
+#fig.figsize(4,3)
 ax = fig.add_subplot(111)
-ax.imshow(shale.T, origin='lower', cmap=cm.Greys_r);
+ax.imshow(shale.T, origin='lower', cmap=cm.Greys);
+ax.axis('off')
+fig.savefig('/home/hans-werner/Dropbox/work/presentations/2017_05_05_statistics_seminar/struc_tensor.jpg')
 
 #
 # Get structure tensor
 # 
 Axx, Axy, Ayy = feature.structure_tensor(shale, sigma=1)
 nx, ny = Axx.shape
-
+print(nx,ny)
 dx, dy = 2, 2
 xi = np.arange(0, nx)
 yi = np.arange(0, ny)
@@ -83,8 +87,8 @@ axx = RectBivariateSpline(xi, yi, Axx, kx=1, ky=1)
 axy = RectBivariateSpline(xi, yi, Axy, kx=1, ky=1)
 ayy = RectBivariateSpline(xi, yi, Ayy, kx=1, ky=1)
 tau = (axx.ev, axy.ev, ayy.ev)
-
-mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(120,160))
+print('Initializing mesh')
+mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(100,200))
 mesh.refine()
 element = QuadFE(2,'Q2')
 alpha = 2
@@ -94,18 +98,24 @@ f = lambda x,y: np.abs(gmma**2*(axx.ev(x,y)*ayy.ev(x,y)-axy.ev(x,y)**2))**(1/4)
 system = System(mesh=mesh, element=element)
 bf = [(1,'u','v'),(axx.ev,'ux','vx'),(axy.ev,'uy','vx'),
       (axy.ev,'ux','vy'),(ayy.ev,'uy','vy')]
+print('Assembling')
 A = system.assemble(bilinear_forms=bf)
 bf = [(f,'u','v')]
 M = system.assemble(bilinear_forms=bf)
 n = system.get_n_nodes()
-Z = np.random.normal(loc=0.25, scale=0.01, size=(n,))
+Z = np.random.normal(loc=0.1, scale=0.02, size=(n,))
+print('Solving Ax=Z')
 X = spla.spsolve(A.tocsc(), M.dot(Z))
-
+#plt.spy(M)
 #X = Gmrf.from_matern_pde(alpha,kappa,mesh,element,tau)
-fig = plt.figure(1)
+
+print('Plotting')
+fig = plt.figure(1, figsize=(3,4))
 ax = fig.add_subplot(111)
 plot = Plot()
 plot.function(ax,X,mesh,element=element)
+ax.axis('off')
+fig.savefig('/home/hans-werner/Dropbox/work/presentations/2017_05_05_statistics_seminar/structure_tensor.jpg')
 plt.show()
 """
 for ix in np.arange(0,nx,dx):
