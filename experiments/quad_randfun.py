@@ -80,32 +80,65 @@ def sample_field(mu, Cov, n_sample=None, z=None):
      
 if __name__ == '__main__':
     
-    mu_fn = lambda x: np.sin(np.pi*x)
-    cov_fn = lambda x,y: 0.1*(1+10*x**2)*np.exp(-np.abs(x-y))
-    Ie = 2/np.pi
-    a, b = 0, 1
-    k_max = 10
-    n_sample = np.int(1e5)
-    fig, ax = plt.subplots(2,2)
-    for k in np.arange(1,k_max):
-        m = 2**k
+    # =========================================================================
+    # Compute E[ I_[a,b] f(x,w) dx ]
+    # =========================================================================
+    a, b = 0, 1  # spatial domain
+
+    #
+    # Specify the Gaussian random field
+    #     
+    sgm = 0.1
+    mu_fn = lambda x: np.cos(2*np.pi*x)
+    cov_fn = lambda x,y: sgm*(1+10*x**2)*np.exp(-np.abs(x-y))
+    
+    #
+    # Investigate the behavior of the spatial/sampling error 
+    # 
+    k_max = 10  # number of refinement levels
+    n_sample = np.int(1e5)  # max sample size
+    Ie = 0
+    err_smpl_EIfX = np.empty((n_sample,k_max)) 
+    for k in np.arange(k_max):
+        print(k)
+        #
+        # Specify mu, Sigma at spatial refinement level
+        # 
+        m = 2**(k+1)  # number of subintervals
+        #
+        # Mean
+        # 
         xm = np.linspace(a,b,m+1)
         mu_m = mu_fn(xm)
-        [X,Y] = np.meshgrid(xm,xm)
-        Cov = cov_fn(X.ravel(),Y.ravel()).reshape(m+1,m+1)
-        fX = sample_field(mu_m, Cov, n_sample=n_sample)
-        
-        ax[0,0].plot(xm, np.mean(fX,axis=1))
-        ax[0,1].plot(xm, np.var(fX,axis=1))
-        ax[1,1].plot(xm, fX[:,0])
         #
-        # Compute integral
+        # Covariance matrix
+        # 
+        [X,Y] = np.meshgrid(xm,xm)
+        Cov = cov_fn(X.ravel(),Y.ravel()).reshape(m+1,m+1)  
+        #
+        # Sample field at given refinement level
+        # 
+        fX = sample_field(mu_m, Cov, n_sample=n_sample)
+        #
+        # Compute spatial integral
         #
         # Integration weights 
         w = 0.5*(b-a)/m*np.array([[1]+[2]*(m-1)+[1]])
         
         # Pathwise Trapezoidal Integral
         IfX = np.sum(fX * np.tile(w,(n_sample,1)).transpose(), axis = 0)
+        
+        #
+        # Sampling error
+        #
+        err_smpl_EIfX[:,k] = np.cumsum(IfX)/np.arange(1,n_sample+1)
+        
+        
+        
+        #ax[0,0].plot(xm, np.mean(fX,axis=1))
+        #ax[0,1].plot(xm, np.var(fX,axis=1))
+        #ax[1,1].plot(xm, fX[:,0])
+        
         varIfX = np.var(IfX)
         
         # Trapezoidal Integral of the mean
@@ -114,14 +147,18 @@ if __name__ == '__main__':
         # Trapezoidal integral of expectation
         Imu = np.sum(mu_m * w)  
         
-        ax[1,0].loglog(m, np.abs(Imu-Ie)**2, '+k',
-                       m, np.abs(varIfX)/n_sample, '+k',
-                       m, varIfX/n_sample + (Imu-Ie)**2,'.b')
+        #ax[1,0].loglog(m, np.abs(Imu-Ie)**2, '+k',
+        #               m, np.abs(varIfX)/n_sample, '+k',
+        #               m, varIfX/n_sample + (Imu-Ie)**2,'.b')
         #               m, np.abs(np.mean(IfX)-Ie)**2, '.r')        
         #ax[1,0].loglog(m,np.abs(np.mean(IfX)-Ie)**2,'.k',\
         #               m,np.abs(IEfX - Ie),'+r',\
         #               m,((b-a)/m)**2,'.b')
-                       
+    
+    print('Done')
+    # -------------------------------------------------------------------------                  
+    # Plot
+    # -------------------------------------------------------------------------
     """    
     
     E_trap = []

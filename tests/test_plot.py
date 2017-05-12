@@ -17,6 +17,7 @@ class TestPlot(unittest.TestCase):
 
     def testPlotMesh(self):
         mesh = Mesh.newmesh(grid_size=(2,2))
+        print(mpl.__version__)
         mesh.refine()
         mesh.root_node().children[1,1].mark('refine')
         mesh.refine('refine')
@@ -71,7 +72,33 @@ class TestPlot(unittest.TestCase):
         ax = plot2.function(ax,fm,mesh)
         plt.title('Piecewise Constant Function.')
         plt.show()
+     
+    def test_colorbar(self):
+        import matplotlib.colorbar as cbar
+        #import pylab as pl
+        import numpy as np
+
+        N = 50
+        xs = np.random.randint(0, 100, N)
+        ys = np.random.randint(0, 100, N)
+        ws = np.random.randint(10, 20, N)
+        hs = np.random.randint(10, 20, N)
+        vs = np.random.randn(N)
         
+        normal = mpl.colors.Normalize(vs.min(), vs.max())
+        colors = mpl.cm.jet(normal(vs))
+        
+        ax = mpl.pyplot.subplot(111)
+        for x,y,w,h,c in zip(xs,ys,ws,hs,colors):
+            rect = mpl.pyplot.Rectangle((x,y),w,h,color=c)
+            ax.add_patch(rect)
+        
+        cax, _ = cbar.make_axes(ax) 
+        cb2 = cbar.ColorbarBase(cax, cmap=mpl.cm.jet,norm=normal) 
+        
+        ax.set_xlim(0,120)
+        ax.set_ylim(0,120)
+        mpl.pyplot.show()
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()

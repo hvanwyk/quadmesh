@@ -68,7 +68,7 @@ shale = shale[:,:,0]  # There is only 1 layer
 
 fig = plt.figure(0)
 ax = fig.add_subplot(111)
-ax.imshow(shale.T, origin='lower', cmap=cm.Greys_r);
+ax.imshow(shale.T, origin='lower', cmap=cm.Greys);
 
 #
 # Get structure tensor
