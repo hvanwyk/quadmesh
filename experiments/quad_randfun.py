@@ -27,7 +27,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.linalg as la
 import scipy.stats as stats
-import matplotlib
 
 def trapezoidal(f,a,b,n):
     """
@@ -80,19 +79,13 @@ def sample_field(mu, Cov, n_sample=None, z=None):
             
      
 if __name__ == '__main__':
-    font = {'family' : 'normal',
-            'size'   : 14}
-    matplotlib.rc('font', **font)
+    
     mu_fn = lambda x: np.sin(np.pi*x)
-    #cov_fn = lambda x,y: 0.1*(1+10*x**2)*np.exp(-np.abs(x-y))
-    cov_fn = lambda x,y: 0.1*np.exp(-np.abs(x-y))
+    cov_fn = lambda x,y: 0.1*(1+10*x**2)*np.exp(-np.abs(x-y))
     Ie = 2/np.pi
     a, b = 0, 1
-    k_max = 7
-    n_sample = np.int(1e4)
-    err_mean = []
-    err_var = []
-    err_total = []
+    k_max = 10
+    n_sample = np.int(1e5)
     fig, ax = plt.subplots(2,2)
     for k in np.arange(1,k_max):
         m = 2**k
@@ -113,33 +106,22 @@ if __name__ == '__main__':
         
         # Pathwise Trapezoidal Integral
         IfX = np.sum(fX * np.tile(w,(n_sample,1)).transpose(), axis = 0)
-
         varIfX = np.var(IfX)
-        cumEIfx = np.cumsum(IfX)/np.arange(1,n_sample+1)
         
-        ax[1,1].plot(cumEIfx)
         # Trapezoidal Integral of the mean
         IEfX = np.sum(w*np.mean(fX,axis=1))
         
         # Trapezoidal integral of expectation
         Imu = np.sum(mu_m * w)  
         
-        err_mean.append(np.abs(Imu-Ie)**2)
-        err_var.append(np.abs(varIfX)/n_sample)
-        err_total.append(varIfX/n_sample + (Imu-Ie)**2)
-    mr = np.array([2**k for k in np.arange(1,k_max)]) 
-    fig1, ax1 = plt.subplots()
-    plt.rc('text', usetex=True)
-    plt.rc('font', family='serif')   
-    ax1.loglog(mr, err_mean, '*k',
-               mr, err_var, '+b',
-               mr, err_total,'r')
-    ax1.set_title(r'Total Error for Integral')
+        ax[1,0].loglog(m, np.abs(Imu-Ie)**2, '+k',
+                       m, np.abs(varIfX)/n_sample, '+k',
+                       m, varIfX/n_sample + (Imu-Ie)**2,'.b')
         #               m, np.abs(np.mean(IfX)-Ie)**2, '.r')        
         #ax[1,0].loglog(m,np.abs(np.mean(IfX)-Ie)**2,'.k',\
         #               m,np.abs(IEfX - Ie),'+r',\
         #               m,((b-a)/m)**2,'.b')
-    print(IfX.shape)                   
+                       
     """    
     
     E_trap = []

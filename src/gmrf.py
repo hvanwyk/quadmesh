@@ -31,17 +31,17 @@ def constant_cov(x,y,c):
     return c*np.ones(x.shape[0])
     
 
-def linear_cov(x,y):
+def linear_cov(x,y, sgm=1):
     """
     Linear covariance
     
-        C(x,y) = <x,y>  (Euclidean inner product)
+        C(x,y) = sgm2 + <x,y>  (Euclidean inner product)
      
     """
-    return np.sum(x*y, axis=1)
+    return sgm**2 + np.sum(x*y, axis=1)
 
     
-def sqr_exponential_cov(x,y,l):
+def sqr_exponential_cov(x,y,sgm=1, l=1):
     """
     Squared exponential covariance function
     
@@ -58,6 +58,11 @@ def ornstein_uhlenbeck_cov(x,y,l):
     
         C(x,y) = exp(-|x-y|/l)
         
+    Inputs: 
+    
+        x,y: np.array, spatial points
+        
+        l: range parameter
     """
     d = distance(x,y)
     return np.exp(-d/l)
@@ -66,6 +71,16 @@ def ornstein_uhlenbeck_cov(x,y,l):
 def matern_cov(x,y,sgm,nu,l):
     """
     Matern covariance function
+    
+    Inputs:
+    
+        x,y: np.array, spatial points
+        
+        sgm: variance
+        
+        nu: shape parameter (k times differentiable if nu > k)
+        
+        l: range parameter 
     """
     d = distance(x,y)
     K = sgm**2*2**(1-nu)/gamma(nu)*(np.sqrt(2*nu)*d/l)**nu*\
