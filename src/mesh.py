@@ -2498,9 +2498,7 @@ class TriCell(object):
             #
             # Define vertices and Half-Edges with minimun information
             # 
-            v.append(Vertex(vertices[i],2))
-            #e.append(riHalfEdge(v[i]))
-        
+            v.append(Vertex(vertices[i],2))        
         #
         # Some edge on outerboundary
         # 

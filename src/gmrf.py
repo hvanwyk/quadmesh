@@ -21,40 +21,49 @@ Commonly used covariance functions
 For each function, we assume the input is given by two d-dimensional
 vectors of length n. 
 """
-def constant_cov(x,y,c):
+def constant_cov(x,y,sgm=1):
     """
     Constant covariance kernel
     
-        C(x,y) = c
+        C(x,y) = sgm
     
+    Inputs: 
+    
+        x,y: double, two (n,d) arrays
+        
+        sgm: double >0, standard deviation
+            
+    Outputs:
+    
+        double, (n,) array of covariances  
     """
-    return c*np.ones(x.shape[0])
+    return sgm*np.ones(x.shape[0])
     
 
-def linear_cov(x,y, sgm=1):
+def linear_cov(x,y,sgm=1, M=None):
     """
     Linear covariance
     
-        C(x,y) = sgm2 + <x,y>  (Euclidean inner product)
+        C(x,y) = sgm2 + <x,My>  (Euclidean inner product)
      
     """
-    return sgm**2 + np.sum(x*y, axis=1)
+    return sgm**2 + np.sum(x*y,axis=1)
 
     
-def sqr_exponential_cov(x,y,sgm=1, l=1):
+def sqr_exponential_cov(x,y,sgm=1,l=1,M=None):
     """
     Squared exponential covariance function
     
         C(x,y) = exp(-|x-y|^2/(2l^2))
     
     """
-    d = distance(x,y)
+    d = distance(x,y,M)
     return np.exp(-d**2/(2*l**2))
 
     
-def ornstein_uhlenbeck_cov(x,y,l):
+def exponential_cov(x,y,l,M=None):
     """
-    Ornstein-Uhlenbeck covariance function
+    Exponential covariance function
     
         C(x,y) = exp(-|x-y|/l)
         
@@ -64,11 +73,11 @@ def ornstein_uhlenbeck_cov(x,y,l):
         
         l: range parameter
     """
-    d = distance(x,y)
+    d = distance(x,y,M)
     return np.exp(-d/l)
 
     
-def matern_cov(x,y,sgm,nu,l):
+def matern_cov(x,y,sgm,nu,l,M=None):
     """
     Matern covariance function
     
@@ -82,7 +91,7 @@ def matern_cov(x,y,sgm,nu,l):
         
         l: range parameter 
     """
-    d = distance(x,y)
+    d = distance(x,y,M)
     K = sgm**2*2**(1-nu)/gamma(nu)*(np.sqrt(2*nu)*d/l)**nu*\
         kv(nu,np.sqrt(2*nu)*d/l)
     #
@@ -92,26 +101,50 @@ def matern_cov(x,y,sgm,nu,l):
     return K
     
     
-def rational_cov(x,y,a):
+def rational_cov(x,y,a,M):
     """
     Rational covariance
     
         C(x,y) = 1/(1 + |x-y|^2)^a
          
     """
-    d = distance(x,y)
+    d = distance(x,y,M)
     return (1/(1+d**2))**a
 
 
-def distance(x,y):
+def distance(x,y,M=None):
     """
     Compute the Euclidean distance vector between rows in x and rows in y
+    
+    Inputs: 
+    
+        x,y: (1,n) colum vectors
+        
+        M: double, (2,2) positive semidefinite matrix
+        
+        
+    Outputs: 
+    
+        d: double, (n,1) vector |x[i]-y[i]| of Euclidean distances
+         
     """
     #
     # Check wether x and y have the same dimensions
     # 
     assert x.shape == y.shape, 'Vectors x and y have incompatible shapes.'
-    return np.sqrt(np.sum((x-y)**2,axis=1)) 
+    if M is None:
+        return np.sqrt(np.sum((x-y)**2,axis=1))
+    else:
+        assert all(np.linalg.eigvals(M)>=0) and np.allclose(M,M.transpose()),\
+        'M should be symmetric positive definite.'
+        
+        n = x.shape[0]
+        d = np.empty(n)
+        xmy = x-y
+        for i in range(n):
+            d[i] = xmy[i,:].dot(M.dot(xmy[i,:].transpose()))
+        return np.sqrt(d)
+             
         
      
 def matern_precision(mesh, element, alpha, kappa, tau=None, 
