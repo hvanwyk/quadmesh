@@ -44,7 +44,7 @@ def linear_cov(x,y,sgm=1, M=None):
     """
     Linear covariance
     
-        C(x,y) = sgm2 + <x,My>  (Euclidean inner product)
+        C(x,y) = sgm^2 + <x,My>  (Euclidean inner product)
      
     """
     return sgm**2 + np.sum(x*y,axis=1)
@@ -370,13 +370,25 @@ class Gmrf(object):
             self.element = element
         
     @classmethod
-    def from_covariance_kernel(cls, kfn, mesh, element=None, 
-                               discretization='finite_elements'):
+    def from_covariance_kernel(cls, cov_fn, mesh, element=None):
         """
         Initialize Gmrf from covariance function
         """ 
-        pass
-    
+        #
+        # Discretize the covariance function
+        # 
+        if element is None:
+            #
+            # Pointwise evaluation of the kernel
+            #
+            x = mesh.quadvertices()
+            X,Y = np.meshgrid(x,x)
+             
+        else:
+            #
+            # Finite element discretization of the kernel
+            # 
+            pass
     
     @classmethod
     def from_matern_pde(cls, alpha, kappa, mesh, element=None, tau=None):

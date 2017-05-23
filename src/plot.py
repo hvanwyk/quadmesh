@@ -65,7 +65,7 @@ class Plot(object):
         # Plot Vertex Numbers
         #    
         if vertex_numbers:
-            vertices = mesh.iter_quadvertices()
+            vertices = mesh.quadvertices()
             v_count = 0
             for v in vertices:
                 x,y = v.coordinate()

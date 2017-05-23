@@ -236,7 +236,7 @@ class Mesh(object):
         return quadedge_list
         
                     
-    def iter_quadvertices(self):
+    def quadvertices(self):
         """
         Iterate over quad cell vertices
         
@@ -397,7 +397,7 @@ class Mesh(object):
         # Plot Vertex Numbers
         #    
         if vertex_numbers:
-            vertices = self.iter_quadvertices()
+            vertices = self.quadvertices()
             v_count = 0
             for v in vertices:
                 x,y = v.coordinate()

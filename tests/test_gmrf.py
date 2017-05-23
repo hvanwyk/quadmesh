@@ -36,7 +36,15 @@ class TestGmrf(unittest.TestCase):
         mu = np.zeros(4)
         X = Gmrf(mu=mu, precision=Q, covariance=S)
         
-    
+        #
+        # From covariance kernel
+        #
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        x = mesh.quadvertices()
+        print(x)
+        
+        
     def test_Q(self):
         # 
         # Full

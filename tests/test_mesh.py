@@ -160,7 +160,7 @@ class TestMesh(unittest.TestCase):
         child_10_ne.mark('split')
         mesh.refine('split')
         
-        quadvertices = mesh.iter_quadvertices()    
+        quadvertices = mesh.quadvertices()    
     
         self.assertEqual(len(quadvertices),22,'There should be 22 vertices in total.')
         
