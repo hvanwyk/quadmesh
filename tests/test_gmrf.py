@@ -41,8 +41,8 @@ class TestGmrf(unittest.TestCase):
         #
         mesh = Mesh.newmesh()
         mesh.refine()
-        x = mesh.quadvertices()
-        print(x)
+        x = mesh.quadvertices(coordinate_array=True)
+        
         
         
     def test_Q(self):

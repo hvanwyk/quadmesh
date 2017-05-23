@@ -236,9 +236,13 @@ class Mesh(object):
         return quadedge_list
         
                     
-    def quadvertices(self):
+    def quadvertices(self, coordinate_array=False):
         """
         Iterate over quad cell vertices
+        
+        Inputs: 
+        
+            coordinate_arrays: bool, if true, return vertices as arrays 
         
         Output: 
         
@@ -259,7 +263,10 @@ class Mesh(object):
                     quadvertex_list.append(vertex)
                     vertex.mark()
         self.unmark(quadvertices=True)
-        return quadvertex_list
+        if coordinate_array:
+            return np.array([v.coordinate() for v in quadvertex_list])
+        else:
+            return quadvertex_list
     
     
     def iter_tricells(self):

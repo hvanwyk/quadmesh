@@ -370,10 +370,20 @@ class Gmrf(object):
             self.element = element
         
     @classmethod
-    def from_covariance_kernel(cls, cov_fn, mesh, element=None):
+    def from_covariance_kernel(cls, cov_name, cov_par, mesh, mu=None, element=None):
         """
         Initialize Gmrf from covariance function
+        
+        Inputs: 
+        
+            cov_name: string, name of one of the positive definite covariance
+                functions that are supported 
+                
+                    ['constant', 'linear', 'sqr_exponential', 'exponential', 
+                     'matern', 'rational']. 
         """ 
+        m = globals()['gmrf']()
+        cov_fn = getattr(m, cov_name+'_cov')
         #
         # Discretize the covariance function
         # 
@@ -383,12 +393,17 @@ class Gmrf(object):
             #
             x = mesh.quadvertices()
             X,Y = np.meshgrid(x,x)
-             
+            Sigma = cov_fn(X.ravel(),Y.ravel(),**cov_par).reshape(X.shape)
+            discretization = 'finite_differences'
         else:
             #
             # Finite element discretization of the kernel
             # 
-            pass
+            discretization = 'finite_elements'
+            
+        
+        return cls(mu=mu, covariance=Sigma, mesh=mesh, element=element, \
+                   discretization=discretization)
     
     @classmethod
     def from_matern_pde(cls, alpha, kappa, mesh, element=None, tau=None):
