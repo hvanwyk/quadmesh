@@ -98,7 +98,8 @@ A = system.assemble(bilinear_forms=bf)
 bf = [(f,'u','v')]
 M = system.assemble(bilinear_forms=bf)
 n = system.get_n_nodes()
-Z = np.random.normal(loc=0.25, scale=0.01, size=(n,))
+Z = np.random.normal(loc=0.25, scale=0.1, size=(n,))
+
 X = spla.spsolve(A.tocsc(), M.dot(Z))
 
 #X = Gmrf.from_matern_pde(alpha,kappa,mesh,element,tau)

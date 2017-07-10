@@ -22,9 +22,9 @@ f = lambda x,y: 10*((e(10*x**2)-1)*(x-1)**2*x**2* (e(10*y**2)-1)*(y-1)**2\
                     + 200*e(10*x**2)*(x-1)**2*x**4*(e(10*y**2)-1)*(y-1)**2*y**2\
                     + 40*e(10*x**2)*(x-1)*x**3*(e(10*y**2)-1)*(y-1)**2*y**2)
     
-mesh = Mesh.newmesh(grid_size=(8,8))
+mesh = Mesh.newmesh(grid_size=(30,30))
 mesh.refine()
-element = QuadFE(2,'Q1')
+element = QuadFE(2,'Q2')
 fig,ax = plt.subplots()
 plot = Plot()
 plot.function(ax, f, mesh, element)

@@ -2458,5 +2458,7 @@ class System(object):
         I = I.toarray()
         Q,R = linalg.qr(I, mode='economic')
         R = linalg.solve(R, Q.T)
-        return R
-         
+        if u_fine is None:
+            return R
+        else:
+            return R.dot(u_fine)
