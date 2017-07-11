@@ -5,6 +5,11 @@ Multiscale Gaussian random field with standard anisotropic, homogeneous
 exponential covariance matrix. 
 
 @author: hans-werner
+
+Strategy for obtaining covariance matrix: 
+
+    On finest mesh level: Compute the covariance for all relative distances
+    Loop over the cells: 
 '''
 from mesh import Mesh
 import matplotlib.pyplot as plt
@@ -26,6 +31,7 @@ def covh(mesh,a,b):
     ii,jj = np.meshgrid(range(nx),range(ny))
     h = np.sqrt((ii.flatten()*dx)**2/a + (jj.flatten()*dy)**2/b)
     return np.reshape(np.exp(-h),(ny,nx)) 
+  
     
 def get_fine_cell_range(node_address,max_level):
     """
@@ -52,7 +58,22 @@ def get_fine_cell_range(node_address,max_level):
     cell_level = len(node_address)
     dilation = 2**(max_level-cell_level) 
     return i*dilation, (i+1)*dilation, j*dilation, (j+1)*dilation
+
+
+def fine_scale_midpoints():
+    """
+    Return the midpoints of 
+    """   
+    pass
     
+def covariance_matrix(mesh, cov):
+    """
+    Construct the covariance matrix on the given mesh 
+    """ 
+    n = mesh.depth()
+    x_min, x_max, y_min, y_max = mesh.box()
+    
+
 
 m = Mesh.newmesh([0,20,0,8],(5,2))
 _,ax = plt.subplots()
@@ -70,6 +91,7 @@ for i in range(5):
 m.plot_quadmesh(ax, show=True, set_axis=True, cell_numbers=False)
 plt.show()
 
+print('Number of cells = %d'%(m.get_number_of_cells()))
 
 nx,ny = m.grid_size() 
 x0,x1,y0,y1 = m.box()
