@@ -592,10 +592,10 @@ class TestSystem(unittest.TestCase):
             # Assemble without boundary conditions
             # 
             A, b = s.assemble(bilinear_forms=bf, linear_forms=lf)
-            AA = s.form_eval((1,'u','v'), cell)
-            AAx = s.form_eval((1,'ux','vx'),cell)
-            AAy = s.form_eval((1,'uy','vy'),cell)
-            bb  = s.form_eval((f,'v'),cell)
+            AA = s.form_eval((1,'u','v'), node)
+            AAx = s.form_eval((1,'ux','vx'),node)
+            AAy = s.form_eval((1,'uy','vy'),node)
+            bb  = s.form_eval((f,'v'),node)
             self.assertTrue(np.allclose(AA+AAx+AAy,A.toarray()), 
                             'System matrix not correct')
             self.assertTrue(np.allclose(bb,b),'Forcing term incorrect.') 
@@ -608,7 +608,7 @@ class TestSystem(unittest.TestCase):
                     'robin': None}
             A,b = s.assemble(bilinear_forms=bf, linear_forms=lf,\
                              boundary_conditions=bc_1)
-            bb_neu = s.form_eval((g_neumann,'v'), cell, edge_loc='E')
+            bb_neu = s.form_eval((g_neumann,'v'), node, edge_loc='E')
             self.assertTrue(np.allclose(bb+bb_neu,b),'Forcing term incorrect.')
             
             #
@@ -622,11 +622,11 @@ class TestSystem(unittest.TestCase):
             A,b = s.assemble(bilinear_forms=bf, linear_forms=lf, \
                              boundary_conditions=bc_2)
             
-            bb_R1 = gamma_1*s.form_eval((g_robin_1,'v'), cell, edge_loc='S')
-            AA_R1 = gamma_1*s.form_eval((g_robin_1,'u','v'),cell,edge_loc='S')
+            bb_R1 = gamma_1*s.form_eval((g_robin_1,'v'), node, edge_loc='S')
+            AA_R1 = gamma_1*s.form_eval((g_robin_1,'u','v'),node,edge_loc='S')
         
-            bb_R2 = gamma_2*s.form_eval((g_robin_2,'v'),cell,edge_loc='N')
-            AA_R2 = gamma_2*s.form_eval((g_robin_2,'u','v'),cell, edge_loc='N')
+            bb_R2 = gamma_2*s.form_eval((g_robin_2,'v'),node,edge_loc='N')
+            AA_R2 = gamma_2*s.form_eval((g_robin_2,'u','v'),node, edge_loc='N')
             
             
             self.assertTrue(np.allclose(AA+AAx+AAy+AA_R1+AA_R2,A.toarray()), 
@@ -726,9 +726,8 @@ class TestSystem(unittest.TestCase):
                 A = s.assemble(bilinear_forms=[bf_list[i]])
                 AA = np.zeros((n_nodes,n_nodes))
                 for node in mesh.root_node().find_leaves():
-                    cell = node.quadcell()
                     cell_dofs = s.get_global_dofs(node)
-                    AA_loc = s.form_eval(bf_list[i], cell)
+                    AA_loc = s.form_eval(bf_list[i], node)
                     block = np.ix_(cell_dofs,cell_dofs)
                     AA[block] = AA[block] + AA_loc 
                 
@@ -953,6 +952,7 @@ class TestSystem(unittest.TestCase):
                                 'Shape function interpolation failed.')
         mesh = Mesh.newmesh(box=[0,0.5,0,0.5])
         cell = mesh.root_quadcell()
+        node = mesh.root_node()
         u = lambda x,y: x*y**2
         v = lambda x,y: x**2*y
         element = QuadFE(2,'Q2')
@@ -966,7 +966,7 @@ class TestSystem(unittest.TestCase):
         vhat = phi.dot(vi)
         weights = system.cell_rule().weights()*\
                   system.cell_rule().jacobian(cell)
-        A = system.form_eval((1,'u','v'), cell)
+        A = system.form_eval((1,'u','v'), node)
         self.assertAlmostEqual(vi.dot(A.dot(ui)), 0.000244141,8,\
                                'Local bilinear form integral incorrect.')
         self.assertAlmostEqual(vi.dot(A.dot(ui)), np.sum(uhat*vhat*weights),8,\
@@ -1046,6 +1046,7 @@ class TestSystem(unittest.TestCase):
                           'Q2': [30,30], 
                           'Q3': [240,360]}
         cell = mesh.root_quadcell() 
+        node = mesh.root_node()
         f = lambda x,y: (x-1)*(y-1)**2
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
@@ -1056,15 +1057,17 @@ class TestSystem(unittest.TestCase):
             
             #
             # Bilinear form
-            # 
-            b_uv = system.form_eval((1,'u','v'), cell)
+            #
+            
+            # TODO: Test fails - investigate 
+            b_uv = system.form_eval((1,'u','v'), node)
             self.assertAlmostEqual(v.dot(b_uv.dot(u)),
                                    cell_integrals[etype][0],8, 
                                    '{0}: Bilinear form (1,u,v) incorrect.'\
                                    .format(etype))
             
             
-            b_uvx = system.form_eval((1,'u','vx'), cell)
+            b_uvx = system.form_eval((1,'u','vx'), node)
             self.assertAlmostEqual(v.dot(b_uvx.dot(u)),
                                    cell_integrals[etype][1],8, 
                                    '{0}: Bilinear form (1,u,vx) incorrect.'\
@@ -1074,13 +1077,13 @@ class TestSystem(unittest.TestCase):
             #
             # Edges
             #
-            be_uv = system.form_eval((1,'u','v'), cell=cell, edge_loc='E')
+            be_uv = system.form_eval((1,'u','v'), node, edge_loc='E')
             self.assertAlmostEqual(v.dot(be_uv.dot(u)),
                                    edge_integrals[etype][0],8, 
                                    '{0}: Bilinear form (1,u,v) incorrect.'\
                                    .format(etype))
             
-            be_uvx = system.form_eval((1,'u','vx'), cell=cell, edge_loc='E')
+            be_uvx = system.form_eval((1,'u','vx'), node, edge_loc='E')
             self.assertAlmostEqual(v.dot(be_uvx.dot(u)),
                                    edge_integrals[etype][1],8, 
                                    '{0}: Bilinear form (1,u,vx) incorrect.'\
@@ -1091,23 +1094,24 @@ class TestSystem(unittest.TestCase):
             
             # cell
             f = trial_functions[etype] 
-            f_v = system.form_eval((f,'v'), cell)
+            f_v = system.form_eval((f,'v'), node)
             self.assertAlmostEqual(f_v.dot(v), cell_integrals[etype][0],8, 
                                    '{0}: Linear form (f,v) incorrect.'\
                                    .format(etype))
             
-            f_vx = system.form_eval((f,'vx'), cell)
+            
+            f_vx = system.form_eval((f,'vx'), node)
             self.assertAlmostEqual(f_vx.dot(v), cell_integrals[etype][1],8, 
                                    '{0}: Linear form (f,vx) incorrect.'\
                                    .format(etype))
             
             # edges
-            fe_v = system.form_eval((f,'v'), cell=cell, edge_loc='E')
+            fe_v = system.form_eval((f,'v'), node, edge_loc='E')
             self.assertAlmostEqual(fe_v.dot(v), edge_integrals[etype][0],8, 
                                    '{0}: Linear form (f,v) incorrect.'\
                                    .format(etype))
             
-            fe_vx = system.form_eval((f,'vx'), cell=cell, edge_loc='E')
+            fe_vx = system.form_eval((f,'vx'), node, edge_loc='E')
             self.assertAlmostEqual(fe_vx.dot(v), edge_integrals[etype][1],8, 
                                    '{0}: Linear form (f,vx) incorrect.'\
                                    .format(etype))
@@ -1119,7 +1123,8 @@ class TestSystem(unittest.TestCase):
         element = QuadFE(2,'Q1')
         system = System(mesh,element)
         cell = mesh.root_quadcell()
-        A = system.form_eval((1,'ux','vx'),cell)
+        node = mesh.root_node()
+        A = system.form_eval((1,'ux','vx'),node)
         #
         # Use form to integrate
         # 

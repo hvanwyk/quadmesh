@@ -1623,7 +1623,7 @@ class System(object):
     """
     (Non)linear system to be defined and solved 
     """
-    def __init__(self, mesh, element, n_gauss=(3,9), nested=False):
+    def __init__(self, mesh, element, n_gauss=(4,16), nested=False):
         """
         Set up linear system
         
@@ -1770,7 +1770,7 @@ class System(object):
                                 #
                                 # Update local linear form
                                 #
-                                lf_loc += self.form_eval((g_neu,'v'),cell, \
+                                lf_loc += self.form_eval((g_neu,'v'),node, \
                                                          edge_loc=direction)
                                 break
                         #
