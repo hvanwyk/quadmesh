@@ -5,8 +5,6 @@ Created on Feb 8, 2017
 '''
 
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from matplotlib import colors
 import numpy as np
 from finite_element import DofHandler, System
 
@@ -173,15 +171,19 @@ class Plot(object):
                 #
                 # Mesh function 
                 #
-                #my_map = cm.viridis
-                normal = colors.Normalize(f.min(), f.max())
-                color = plt.cm.Greys_r(normal(f))
-                for leaf,c in zip(mesh.root_node().find_leaves(),color):
+                #normal = colors.Normalize(f.min(), f.max())
+                #color = plt.cm.Greys_r(normal(f))
+                #count = 0
+                for leaf, f_node in zip(mesh.root_node().find_leaves(),f):
                     cell = leaf.quadcell()
                     x0,x1,y0,y1 = cell.box()
-                    hx,hy = x1-x0, y1-y0
-                    rect = plt.Rectangle((x0,y0),hx,hy, facecolor=c)
-                    ax.add_patch(rect)
+                    X,Y = np.meshgrid(np.array([x0,x1]),np.array([y0,y1]))
+                    c = ax.contourf(X,Y,f_node*np.ones(X.shape), cmap='viridis',\
+                                vmin=f.min(), vmax=f.max(), origin='lower')
+                    #hx,hy = x1-x0, y1-y0
+                    #rect = plt.Rectangle((x0,y0),hx,hy, facecolor=c)
+                    #ax.add_patch(rect)
+                plt.colorbar(c)
             else:
                 #
                 # A Node function
@@ -204,5 +206,5 @@ class Plot(object):
                     in_cell = cell.contains_point(xy)
                     xy_loc = xy[in_cell,:]
                     z[in_cell] = system.f_eval_loc(f_loc,cell,x=xy_loc)     
-                ax.contourf(x,y,z.reshape(ny,nx),100, cmap=cm.viridis_r)
+                ax.contourf(x,y,z.reshape(ny,nx),100, cmap='viridis_r')
         return ax
