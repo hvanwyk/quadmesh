@@ -75,6 +75,13 @@ class Mesh(object):
         """
         return self.__quadcell.grid_size
     
+    
+    def depth(self):
+        """
+        Return the maximum refinement level
+        """    
+        return self.__root_node.max_depth()
+    
         
     def get_number_of_cells(self):
         """
