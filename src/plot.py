@@ -25,7 +25,7 @@ class Plot(object):
         
     def mesh(self, ax, mesh, element=None, name=None, show=True, set_axis=True,
              vertex_numbers=False, edge_numbers=False, cell_numbers=False, 
-             dofs=False, node_flag=None):
+             dofs=False, node_flag=None, nested=False):
         """
         Plot Mesh of QuadCells
         

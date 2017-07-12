@@ -236,13 +236,13 @@ class Mesh(object):
         return quadedge_list
         
                     
-    def quadvertices(self, coordinate_array=False):
+    def quadvertices(self, coordinate_array=True):
         """
         Iterate over quad cell vertices
         
         Inputs: 
         
-            coordinate_arrays: bool, if true, return vertices as arrays 
+            coordinate_array: bool, if true, return vertices as arrays 
         
         Output: 
         

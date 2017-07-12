@@ -40,8 +40,25 @@ class QuadFE(FiniteElement):
     def __init__(self, dim, element_type):
         FiniteElement.__init__(self, dim, element_type)
         
-        
-        if element_type == 'Q1':
+        if element_type == 'Q0':
+            """
+            -------------------------------------------------------------------
+            Constant Elements
+            -------------------------------------------------------------------
+            
+            -----     
+            | 0 |
+            -----
+            
+            TODO: Finish
+            """
+            p = lambda x: np.ones(shape=x.shape)
+            px = lambda x: np.zeros(shape=x.shape)
+            dofs_per_vertex = 0
+            dofs_per_edge = 0
+            dofs_per_cell = 1
+         
+        elif element_type == 'Q1':
             """
             -------------------------------------------------------------------
             Linear Elements
@@ -1688,7 +1705,8 @@ class System(object):
                 boundary conditions.
         
         
-        TODO: Include support for tensors.      
+        TODO: Include support for tensors. 
+        TODO: Include option to assemble multiple matrices     
         """        
         n_nodes = self.__dofhandler.n_dofs()
         n_dofs = self.__element.n_dofs()   
@@ -1724,12 +1742,12 @@ class System(object):
             if bilinear_forms is not None:
                 bf_loc = np.zeros((n_dofs,n_dofs))
                 for bf in bilinear_forms:
-                    bf_loc += self.form_eval(bf, cell)
+                    bf_loc += self.form_eval(bf, node)
                     
             if linear_forms is not None:
                 lf_loc = np.zeros((n_dofs,))
                 for lf in linear_forms:
-                    lf_loc += self.form_eval(lf,cell)
+                    lf_loc += self.form_eval(lf, node)
                     
             if boundary_conditions:
                 #
@@ -1771,14 +1789,14 @@ class System(object):
                                     #
                                     bf_loc += \
                                         gamma_rob*self.form_eval((g_rob,'u','v'),\
-                                                                 cell,\
+                                                                 node,\
                                                                  edge_loc=direction)
                                     #
                                     # Update local linear form
                                     # 
                                     lf_loc += \
                                         gamma_rob*self.form_eval((g_rob,'v'),\
-                                                                 cell,\
+                                                                 node,\
                                                                  edge_loc=direction)
                                     break                           
                 #
@@ -2206,11 +2224,14 @@ class System(object):
             elif len(x.shape) == 4:
                 pass
         elif isinstance(f,numbers.Real):
+            #
             # f is a constant
+            #
             return f*np.ones(x.shape[0])
         elif len(f) == n_dofs:
+            #
             # f is a nodal vector
-                        
+            #            
             # Evaluate shape functions on reference entity
             phi = self.shape_eval(derivatives=derivatives,cell=cell,\
                                   edge_loc=edge_loc,x_ref=x_ref) 
@@ -2218,7 +2239,7 @@ class System(object):
         
                 
           
-    def form_eval(self, form, cell, edge_loc=None):
+    def form_eval(self, form, node, edge_loc=None):
         """
         Evaluates the local kernel, test, (and trial) functions of a (bi)linear
         form on a given entity.
@@ -2233,7 +2254,7 @@ class System(object):
                 
                 test_type: str, 'v', 'vx', 'vy'    
                 
-            cell: QuadCell, physical cell  
+            node: Node, tree node linked to physical cell  
             
             edge_loc: str, location of edge over        
         
@@ -2242,6 +2263,8 @@ class System(object):
             (Bi)linear form
                             
         """
+        assert node.is_linked(), 'Tree node must be linked to cell.'
+        cell = node.quadcell()
         #
         # Quadrature weights
         # 
@@ -2255,6 +2278,20 @@ class System(object):
         # kernel
         # 
         f = form[0]
+        """
+        if len(f) == self.get_n_nodes():
+            #
+            # Nodal function defined on dof vertices
+            # 
+            cell_dofs = self.get_global_dofs(node)
+            f = f[cell_dofs]
+        elif len(f) == self.__mesh.get_number_of_cells():
+            #
+            # Piecewise constant function, defined on cells
+            #
+            # TODO: Piecewise Constant functions 
+            pass
+        """
         kernel = self.f_eval_loc(f,cell=cell, edge_loc=edge_loc)
         
         if len(form) > 1:

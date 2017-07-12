@@ -39,8 +39,33 @@ class TestGmrf(unittest.TestCase):
         #
         # From covariance kernel
         #
+        cov_names = ['linear', 'sqr_exponential', 'exponential', 
+                     'matern', 'rational']
+        anisotropy = [None, np.diag([2,1])]
         mesh = Mesh.newmesh()
         mesh.refine()
+        element = QuadFE(2,'Q1')
+        for M in anisotropy:
+            print('Anisotropy: {0}'.format(M))
+            cov_pars = {'linear': {'sgm': 1, 'M': M}, 
+                        'sqr_exponential': {'sgm': 1, 'l': 0.1 ,'M': M}, 
+                        'exponential': {'l': 0.1, 'M': M}, 
+                        'matern': {'sgm': 1, 'nu': 2, 'l': 0.5, 'M': M}, 
+                        'rational': {'a': 3, 'M': M}}
+            for cov_name in cov_names:
+                print(cov_name)
+                cov_par = cov_pars[cov_name]
+                #
+                # Finite Difference
+                # 
+                X_fd = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh)
+                
+                #
+                # Finite Elements
+                # 
+                X_fe = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh, \
+                                                   element=element)
+        
         x = mesh.quadvertices(coordinate_array=True)
         
         
@@ -231,9 +256,9 @@ class TestGmrf(unittest.TestCase):
         self.assertRaises(AssertionError, X.Lt_solve,b, mode='precision')    
     
     
-    def test_ssample(self):
+    def test_sample(self):
         #
-        # Don't know how to test this routine yet
+        # TODO Don't know how to test this routine yet
         # 
        
         L = sp.csc_matrix([[1,0,0],[0,2,0],[1,2,3]])

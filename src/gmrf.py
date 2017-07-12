@@ -45,6 +45,14 @@ def linear_cov(x,y,sgm=1, M=None):
     Linear covariance
     
         C(x,y) = sgm^2 + <x,My>  (Euclidean inner product)
+        
+    Inputs: 
+    
+        x,y: double, np.array
+        
+        sgm: double >0, standard deviation
+        
+        M: double, positive definite anisotropy tensor 
      
     """
     return sgm**2 + np.sum(x*y,axis=1)
@@ -326,6 +334,7 @@ class Gmrf(object):
                 self.__f_cov = cholesky(covariance.tocsc())
             else:
                 # Most likely
+                print(covariance)
                 self.__f_cov  = np.linalg.cholesky(covariance)    
         #
         # Check compatibility
@@ -380,10 +389,12 @@ class Gmrf(object):
                 functions that are supported 
                 
                     ['constant', 'linear', 'sqr_exponential', 'exponential', 
-                     'matern', 'rational']. 
-        """ 
-        m = globals()['gmrf']()
-        cov_fn = getattr(m, cov_name+'_cov')
+                     'matern', 'rational'].
+                     
+        Note: In the case of finite element discretization, mass lumping is used. 
+        """
+        # Convert covariance name to function 
+        cov_fn = globals()[cov_name+'_cov']
         #
         # Discretize the covariance function
         # 
@@ -392,16 +403,33 @@ class Gmrf(object):
             # Pointwise evaluation of the kernel
             #
             x = mesh.quadvertices()
-            X,Y = np.meshgrid(x,x)
-            Sigma = cov_fn(X.ravel(),Y.ravel(),**cov_par).reshape(X.shape)
-            discretization = 'finite_differences'
+            n_verts = x.shape[0]
+            Y = np.repeat(x, n_verts, axis=0)
+            X = np.tile(x, (n_verts,1))
+            Sigma = cov_fn(X,Y,**cov_par).reshape(n_verts,n_verts)
+            discretization = 'finite_differences' 
+        elif element.element_type() == 'Q0':
+            #
+            # Piecewise
+            # 
+            pass
         else:
             #
             # Finite element discretization of the kernel
             # 
             discretization = 'finite_elements'
+            system = System(mesh, element)
+            Sigma = system.assemble([(cov_fn,'u','v')])
+            #
+            # Lumped mass matrix
+            # 
+            M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
+            m_lumped = np.array(M.sum(axis=1)).squeeze()
+            #
+            # Adjust covariance
+            #
+            Sigma = sp.spdiags(1/m_lumped)*Sigma
             
-        
         return cls(mu=mu, covariance=Sigma, mesh=mesh, element=element, \
                    discretization=discretization)
     
@@ -656,12 +684,15 @@ class Gmrf(object):
             
             z: (n,n_samples) random vector ~N(0,I).
             
+            mode: str, specify parameters used to simulate random field
+                ['precision', 'covariance', 'canonical']
+            
             
         Outputs:
         
             x: (n,n_samples), samples paths of random field
             
-            
+                
         Note: Samples generated from the cholesky decomposition of Q are 
             different from those generated from that of Sigma. 
                 
