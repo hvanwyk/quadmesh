@@ -15,14 +15,27 @@ import matplotlib as mpl
 class TestPlot(unittest.TestCase):
 
 
+    def test_plot_mesh(self):
+        """
+        Plot the computational mesh
+        """
+        mesh = Mesh.newmesh(grid_size=(2,2))
+        mesh.refine()
+        mesh.root_node().children[1,1].mark(1)
+        #mesh.refine('refine')
+        
+        
+        fig, ax = plt.subplots()
+        plot = Plot()
+        ax = plot.mesh(ax, mesh)
+        plt.show()
+        
+        
     def testPlotMesh(self):
         mesh = Mesh.newmesh(grid_size=(2,2))
-        print(mpl.__version__)
+        mesh.refine()      
+        mesh.root_node().children[1,1].mark()
         mesh.refine()
-        mesh.root_node().children[1,1].mark('refine')
-        mesh.refine('refine')
-        #mesh.root_node().children[1,1].mark('smaller')
-        #mesh.refine(flag='smaller')
         fig, ax = plt.subplots() 
         plot = Plot()
         element = QuadFE(2,'Q1')
@@ -49,13 +62,13 @@ class TestPlot(unittest.TestCase):
         dof_handler.distribute_dofs()
         x = dof_handler.dof_vertices()
         f_vec = f(x[:,0],x[:,1])
-        ax = plot1.function(ax,f, mesh, element)
+        ax = plot1.contour(ax,fig,f, mesh, element)
         #plt.colorbar(fig)
-        plot1.function(ax,f_vec,mesh, element)
+        plot1.contour(ax,fig, f_vec,mesh, element)
         
         mesh = Mesh.newmesh(grid_size=(5,5))
         mesh.refine()
-        for i in range(4):
+        for _ in range(4):
             for leaf in mesh.root_node().find_leaves():
                 if np.random.rand() < 0.5:
                     leaf.mark('refine')
@@ -69,36 +82,10 @@ class TestPlot(unittest.TestCase):
         fm = np.array(fm)
         _,ax = plt.subplots()
         plot2 = Plot()
-        ax = plot2.function(ax,fm,mesh)
-        plt.title('Piecewise Constant Function.')
-        plt.show()
-     
-    def test_colorbar(self):
-        import matplotlib.colorbar as cbar
-        #import pylab as pl
-        import numpy as np
-
-        N = 50
-        xs = np.random.randint(0, 100, N)
-        ys = np.random.randint(0, 100, N)
-        ws = np.random.randint(10, 20, N)
-        hs = np.random.randint(10, 20, N)
-        vs = np.random.randn(N)
-        
-        normal = mpl.colors.Normalize(vs.min(), vs.max())
-        colors = mpl.cm.jet(normal(vs))
-        
-        ax = mpl.pyplot.subplot(111)
-        for x,y,w,h,c in zip(xs,ys,ws,hs,colors):
-            rect = mpl.pyplot.Rectangle((x,y),w,h,color=c)
-            ax.add_patch(rect)
-        
-        cax, _ = cbar.make_axes(ax) 
-        cb2 = cbar.ColorbarBase(cax, cmap=mpl.cm.jet,norm=normal) 
-        
-        ax.set_xlim(0,120)
-        ax.set_ylim(0,120)
-        mpl.pyplot.show()
+        ax = plot2.contour(ax,fig,fm,mesh)
+        #plt.title('Piecewise Constant Function.')
+ 
+ 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()

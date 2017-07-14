@@ -5,8 +5,11 @@ Created on Feb 8, 2017
 '''
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from matplotlib import colors, cm
 import numpy as np
 from finite_element import DofHandler, System
+from matplotlib.collections import PatchCollection
 
 class Plot(object):
     """
@@ -46,15 +49,11 @@ class Plot(object):
         for node in mesh.root_node().find_leaves(flag=node_flag):
             
             cell = node.quadcell()
+            x0, x1, y0, y1 = cell.box()
              
-            x0, y0 = cell.vertices['SW'].coordinate()
-            x1, y1 = cell.vertices['NE'].coordinate() 
-
-            # Plot current cell
-            # plt.plot([x0, x0, x1, x1],[y0, y1, y0, y1],'r.')
             points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-            if cell.is_marked():
-                rect = plt.Polygon(points, fc='r', edgecolor='k')
+            if node.is_marked():
+                rect = plt.Polygon(points, fc='darkorange', edgecolor='k')
             else:
                 rect = plt.Polygon(points, fc='w', edgecolor='k')
             ax.add_patch(rect)
@@ -140,9 +139,11 @@ class Plot(object):
                             backgroundcolor='w')
         return ax
 
-    def function(self,ax,f,mesh,element=None,resolution=(100,100)):
+
+
+    def contour(self,ax, fig, f, mesh, element=None, resolution=(100,100)):
         """
-        Plot a function defined at the element nodes
+        Plot a contour defined at the element nodes
         
         Loop over cells
             get local dofs
@@ -159,34 +160,47 @@ class Plot(object):
         x,y = np.meshgrid(x_range,y_range)
         if callable(f):
             #
-            # A function 
+            # A contour 
             # 
             z = f(x,y)  
-            ax.contourf(x,y,z.reshape(ny,nx),100)
+            cm = ax.contourf(x,y,z.reshape(ny,nx),100)
         else:
             #
             # A vector
             #
             if len(f)==mesh.get_number_of_cells():
+                print('Plotting mesh function.')
                 #
-                # Mesh function 
+                # Mesh contour 
                 #
-                #normal = colors.Normalize(f.min(), f.max())
-                #color = plt.cm.Greys_r(normal(f))
-                #count = 0
-                for leaf, f_node in zip(mesh.root_node().find_leaves(),f):
+                patches = []
+                for leaf in mesh.root_node().find_leaves():
+                    cell = leaf.quadcell()
+                    x0,x1,y0,y1 = cell.box()
+                    rectangle = Rectangle((x0,y0), x1-x0, y1-y0)
+                    patches.append(rectangle)
+                    
+                p = PatchCollection(patches)
+                p.set_array(f)
+                cm = ax.add_collection(p)
+                """
+                normal = colors.Normalize(f.min(), f.max())
+                color = plt.cm.Greys_r(normal(f))
+                count = 0
+                for leaf, c in zip(mesh.root_node().find_leaves(),f):
                     cell = leaf.quadcell()
                     x0,x1,y0,y1 = cell.box()
                     X,Y = np.meshgrid(np.array([x0,x1]),np.array([y0,y1]))
-                    c = ax.contourf(X,Y,f_node*np.ones(X.shape), cmap='viridis',\
-                                vmin=f.min(), vmax=f.max(), origin='lower')
-                    #hx,hy = x1-x0, y1-y0
-                    #rect = plt.Rectangle((x0,y0),hx,hy, facecolor=c)
-                    #ax.add_patch(rect)
-                plt.colorbar(c)
+                    #ax.contourf(X,Y,f_node*np.ones(X.shape), cmap='viridis',\
+                    #            vmin=f.min(), vmax=f.max(), origin='lower')
+                    hx,hy = x1-x0, y1-y0
+                    rect = plt.Rectangle((x0,y0),hx,hy, facecolor=c)
+                    ax.add_patch(rect)
+                #plt.colorbar(c)
+                """
             else:
                 #
-                # A Node function
+                # A Node contour
                 #  
                 assert element is not None, \
                 'Require element information for node functions'
@@ -206,5 +220,16 @@ class Plot(object):
                     in_cell = cell.contains_point(xy)
                     xy_loc = xy[in_cell,:]
                     z[in_cell] = system.f_eval_loc(f_loc,cell,x=xy_loc)     
-                ax.contourf(x,y,z.reshape(ny,nx),100, cmap='viridis_r')
+                cm = ax.contourf(x,y,z.reshape(ny,nx),100, cmap='viridis_r')
+        fig.colorbar(cm, ax=ax)
         return ax
+    
+    
+    def surface(self, ax, fig, f, mesh, element, resolution=(100,100)):
+        """
+        Plot the surface of a function defined on the finite element mesh
+        
+        Inputs: 
+        
+            ax, fig: axis and figure
+        """

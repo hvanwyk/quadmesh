@@ -738,7 +738,7 @@ class TestQuadCell(unittest.TestCase):
         #x = numpy.linspace(0,1,100)
         #plt.plot(x,numpy.sin(x))
         plt.show()
-        """
+        """        
         
     def test_quadcell_mark(self):
         box = [0.,1.,0.,1.]

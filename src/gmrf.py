@@ -244,6 +244,25 @@ def matern_precision(mesh, element, alpha, kappa, tau=None,
 class Gmrf(object):
     """
     Gaussian Markov Random Field
+    
+    Inputs may be: covariance/precision
+                   sparse/full
+                   full rank/degenerate
+                   finite difference / finite element
+                   
+    Modes:  
+        
+        Cholesky:
+            Exploits sparsity
+            
+        
+        Singular value decomposition (KL)
+            Computationally expensive
+            Conditioning is easy
+            
+        
+               
+        
     """
  
     def __init__(self, mu=None, precision=None, covariance=None, 
@@ -283,6 +302,9 @@ class Gmrf(object):
                 
             __f_cov: double, lower triangular left cholesky factor of covariance
                 If Sigma is sparse, we use CHOLMOD.
+                
+            __dim: int, effective dimension
+            
                 
             mesh: Mesh, Quadtree mesh
             
@@ -367,7 +389,7 @@ class Gmrf(object):
             b = np.zeros(n)
         self.__b = b
         #
-        # Store
+        # Store size of matrix
         # 
         self.__n = n    
         #
@@ -391,6 +413,15 @@ class Gmrf(object):
                     ['constant', 'linear', 'sqr_exponential', 'exponential', 
                      'matern', 'rational'].
                      
+            cov_par: dict, parameter name value pairs
+            
+            mesh: Mesh, computational mesh
+            
+            mu: double, expectation vector
+            
+            element: QuadFE, element (necessary for finite element discretization).
+             
+                     
         Note: In the case of finite element discretization, mass lumping is used. 
         """
         # Convert covariance name to function 
@@ -410,7 +441,7 @@ class Gmrf(object):
             discretization = 'finite_differences' 
         elif element.element_type() == 'Q0':
             #
-            # Piecewise
+            # Piecewise constant 
             # 
             pass
         else:

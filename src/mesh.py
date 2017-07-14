@@ -1183,7 +1183,7 @@ class Node(object):
         # If node is linked to cell, split cell and attach children
         #
         assert not(self.has_children()),'Node already has children.' 
-        if self.__quadcell != None: 
+        if self.__quadcell is not None: 
             cell = self.__quadcell
             #
             # Ensure cell has children
