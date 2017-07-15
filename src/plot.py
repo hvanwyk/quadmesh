@@ -6,10 +6,12 @@ Created on Feb 8, 2017
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from matplotlib import colors, cm
+from matplotlib.collections import PatchCollection
+from mpl_toolkits.mplot3d import *
+from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
 import numpy as np
 from finite_element import DofHandler, System
-from matplotlib.collections import PatchCollection
+
 
 class Plot(object):
     """
@@ -160,7 +162,7 @@ class Plot(object):
         x,y = np.meshgrid(x_range,y_range)
         if callable(f):
             #
-            # A contour 
+            # A function 
             # 
             z = f(x,y)  
             cm = ax.contourf(x,y,z.reshape(ny,nx),100)
@@ -171,11 +173,11 @@ class Plot(object):
             if len(f)==mesh.get_number_of_cells():
                 print('Plotting mesh function.')
                 #
-                # Mesh contour 
+                # Mesh function 
                 #
                 patches = []
-                for leaf in mesh.root_node().find_leaves():
-                    cell = leaf.quadcell()
+                for node in mesh.root_node().find_leaves():
+                    cell = node.quadcell()
                     x0,x1,y0,y1 = cell.box()
                     rectangle = Rectangle((x0,y0), x1-x0, y1-y0)
                     patches.append(rectangle)
@@ -225,11 +227,76 @@ class Plot(object):
         return ax
     
     
-    def surface(self, ax, fig, f, mesh, element, resolution=(100,100)):
+    def surface(self, ax, fig, f, mesh, element, derivatives=(0,), 
+                shading=True, grid=True, resolution=(50,50),
+                edge_resolution=10):
         """
         Plot the surface of a function defined on the finite element mesh
         
         Inputs: 
         
             ax, fig: axis and figure
+            
+            f: function, 
         """
+        x0,x1,y0,y1 = mesh.box()
+        hx = x1 - x0
+        hy = y1 - y0
+        ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
+        ax.set_ylim(y0-0.1*hy, y1+0.1*hy)
+        system = System(mesh,element)
+        if shading:
+            #
+            # 
+            #
+            
+            # Define Grid
+            nx, ny = resolution
+            x,y = np.linspace(x0,x1,nx), np.linspace(y0,y1,ny)
+            xx, yy = np.meshgrid(x,y)
+            xy = np.array([xx.ravel(),yy.ravel()]).transpose()
+            
+            # Evaluate function
+            
+            zz = system.f_eval(f, xy, derivatives)
+        
+            ax.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
+                            linewidth=0, antialiased=False, alpha=0.4)
+            
+            
+        if grid:
+            #
+            # Wirefunction
+            # 
+            ne = edge_resolution
+            x_list, y_list, z_list = [], [], []
+            lines = []
+            for node in mesh.root_node().find_leaves():
+                cell = node.quadcell()
+                for edge in cell.get_edges():
+                    v = edge.vertex_coordinates()
+                    x0, y0 = v[0]
+                    x1, y1 = v[1] 
+                    
+                    t = np.linspace(0,1,ne)
+                    xx = (1-t)*x0 + t*x1 
+                    yy = (1-t)*y0 + t*y1
+                    zz = system.f_eval_loc(f, cell, x=np.array([xx,yy]).T)
+                    
+                    for i in range(ne-1):
+                        lines.append([(xx[i],yy[i],zz[i]),(xx[i+1],yy[i+1],zz[i+1])])
+                        #x_ends = [xx[i],xx[i+1]]
+                        #y_ends = [yy[i],yy[i+1]]
+                        #z_ends = [zz[i],zz[i+1]]
+                        #x_list.extend([xx[i],xx[i+1]])
+                        #y_list.extend([yy[i],yy[i+1]])
+                        #z_list.extend([zz[i],zz[i+1]])
+                        #lines.append((x_ends,y_ends,z_ends)) 
+                        
+                    #x_list.append(None)
+                    #y_list.append(None)
+                    #z_list.append(None)
+                    
+            ax.add_collection(Line3DCollection(lines, colors='k', linewidth=1))        
+            #ax.plot(x_list,y_list,z_list,'k')
+            

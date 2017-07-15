@@ -9,6 +9,7 @@ from plot import Plot
 from mesh import Mesh
 from finite_element import QuadFE, DofHandler
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import matplotlib as mpl 
 
@@ -19,6 +20,7 @@ class TestPlot(unittest.TestCase):
         """
         Plot the computational mesh
         """
+        print(mpl.__version__)
         mesh = Mesh.newmesh(grid_size=(2,2))
         mesh.refine()
         mesh.root_node().children[1,1].mark(1)
@@ -85,7 +87,21 @@ class TestPlot(unittest.TestCase):
         ax = plot2.contour(ax,fig,fm,mesh)
         #plt.title('Piecewise Constant Function.')
  
- 
+    def test_plot_surface(self):
+        """
+        Surface plots
+        """
+        f = lambda x,y: np.exp(-x**2-y**2)
+        mesh = Mesh.newmesh(box=[-1,1,-1,1], grid_size=(10,10))
+        mesh.refine()
+        element = QuadFE(2,'Q2')
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1, projection='3d')
+        plot = Plot()
+        plot.surface(ax, fig, f, mesh, element)
+        plt.show()
+        
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()
+    

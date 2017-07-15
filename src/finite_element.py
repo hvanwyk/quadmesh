@@ -2161,7 +2161,66 @@ class System(object):
         return c*phi
              
     
-    
+    def f_eval(self, f, x, derivatives=(0,)):
+        """
+        Evaluate a function (or its partial derivatives) at a set of points in
+        the domain
+        
+        Inputs: 
+        
+            f: function to be evaluated, either defined explicitly, or by its 
+                node values, or as a mesh function (cellwise)
+                
+            x: double, (n,dim) array of points at which to evaluate f.
+            
+            
+        Output:
+        
+            f_vec: double, (n,) vector of function values at the interpolation points.
+        """
+        dim = 1 if len(x.shape)==1 else x.shape[1]
+        if callable(f):
+            #
+            # Function explicitly given
+            #
+            if dim==1:
+                f_vec = f(x)
+            elif dim==2:
+                f_vec = f(x[:,0],x[:,1])
+            else:
+                raise Exception('Only 1D and 2D points supported.')
+        elif len(f)==self.__mesh.get_number_of_cells():
+            #
+            # Mesh function
+            # 
+            f_vec = np.empty(x.shape[0])
+            f_vec[:] = np.nan
+            count = 0
+            for node in self.__mesh.root_node().find_leaves():
+                cell = node.quadcell()
+                in_cell = cell.contains_point(x)
+                f_vec[in_cell] = f[count]
+                count += 1 
+        elif len(f)==self.get_n_nodes():
+            #
+            # Nodal function
+            # 
+            f_vec = np.empty(x.shape[0])
+            f_vec[:] = np.nan
+            for node in self.__mesh.root_node().find_leaves():
+                cell = node.quadcell()
+                f_loc = f[self.get_global_dofs(node)]
+                in_cell = cell.contains_point(x)
+                x_loc = x[in_cell,:]
+                f_vec[in_cell] = \
+                    self.f_eval_loc(f_loc, cell, derivatives=derivatives,\
+                                    x=x_loc)
+        else:
+            raise Exception('Function must be explicit, nodal, or cellwise.')
+        
+        return f_vec
+            
+        
     def f_eval_loc(self, f, cell, edge_loc=None, derivatives=(0,), x=None):
         """
         Evaluates a function (or its partial derivatives) at a set of 
@@ -2490,6 +2549,8 @@ class System(object):
             if u_fine is None:
             
                 R: double, sparse restriction matrix, u_restrict = R*u_fine
+                
+        TODO: The "correct" restriction operator is the transpose of the interpolation operator.
         """
         I = self.interpolate(marker_coarse, marker_fine)
         I = I.toarray()

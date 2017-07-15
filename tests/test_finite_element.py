@@ -972,8 +972,38 @@ class TestSystem(unittest.TestCase):
         self.assertAlmostEqual(vi.dot(A.dot(ui)), np.sum(uhat*vhat*weights),8,\
                                'Local bilinear form integral does not match quad.')
         
-   
-
+    def test_f_eval(self):
+        """
+        TODO: Finish, mesh function and derivatives
+        """
+        test_functions = {'Q1': lambda x,y: (2+x)*(y-3),
+                          'Q2': lambda x,y: (2+x**2+x)*(y-2)**2,
+                          'Q3': lambda x,y: (2*x**3-3*x)*(y**2-2*y)}
+        mesh = Mesh.newmesh(grid_size=(5,5))
+        mesh.refine()
+        x_test = np.random.rand(10,2)
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            system = System(mesh,element)
+            f = test_functions[etype]
+            f_test = f(x_test[:,0],x_test[:,1])
+            # 
+            # Function given explicitly
+            # 
+            self.assertTrue(np.allclose(system.f_eval(f, x_test),f_test,1e-10),\
+                            'Explicit function not correctly interpolated')
+            #
+            # Nodal function
+            #
+            x = system.dof_vertices()
+            fn = f(x[:,0],x[:,1])
+            self.assertTrue(np.allclose(system.f_eval(fn, x_test),f_test,1e-10),\
+                            'Explicit function not correctly interpolated')
+            
+            #
+            # Mesh function
+            # 
+            
     def test_f_eval_loc(self):
         mesh = Mesh.newmesh()
         cell = mesh.root_quadcell()
