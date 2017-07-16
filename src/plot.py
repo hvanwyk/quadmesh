@@ -15,47 +15,75 @@ from finite_element import DofHandler, System
 
 class Plot(object):
     """
-    classdocs
+    Plots related to finite element mesh and functions
     """
-
-
+    
     def __init__(self):
         """
         Constructor
         """
         
         
-        
-    def mesh(self, ax, mesh, element=None, name=None, show=True, set_axis=True,
+    def mesh(self, ax, mesh, element=None, show_axis=False, color_marked=None,
              vertex_numbers=False, edge_numbers=False, cell_numbers=False, 
              dofs=False, node_flag=None, nested=False):
         """
-        Plot Mesh of QuadCells
+        Plot computational mesh
         
-        # TODO: With node_flag, we have to adjust vertex numbers, edge numbers, 
-                cell numbers ...
+        Inputs: 
+        
+            ax: current axes
+            
+            mesh: Mesh, computational mesh
+            
+            *element: QuadFE, element
+            
+            *show_axis: boolean, set axis on or off
+            
+            *color_marked: list of flags for cells that must be colored
+            
+            *vertex/edge/cell_numbers: bool, display vertex/edge/cell numbers.
+            
+            *dofs: boolean, display degrees of freedom
+            
+            *node_flag: boolean, plot only cells with the given flag
+            
+            *nested: boolean, traverse grid in a nested fashion. 
+        
+        
+        Outputs:
+        
+            ax: axis, 
+            
         """
         node = mesh.root_node()
-        if set_axis:
-            x0, x1, y0, y1 = node.quadcell().box()          
-            hx = x1 - x0
-            hy = y1 - y0
-            ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
-            ax.set_ylim(y0-0.1*hy, y1+0.1*hy)
-            rect = plt.Polygon([[x0,y0],[x1,y0],[x1,y1],[x0,y1]],
-                               fc='k',alpha=0.1)
-            ax.add_patch(rect)
+        
+        x0, x1, y0, y1 = node.quadcell().box()          
+        hx = x1 - x0
+        hy = y1 - y0
+        ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
+        ax.set_ylim(y0-0.1*hy, y1+0.1*hy) 
+        
+        points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+        rect = plt.Polygon(points, fc='w', edgecolor='k')
+        ax.add_patch(rect)
+        
         #
         # Plot QuadCells
-        #                       
-        for node in mesh.root_node().find_leaves(flag=node_flag):
-            
+        # 
+        color_list = ['gold', 'darkorange','r']                      
+        for node in mesh.root_node().find_leaves(flag=node_flag, \
+                                                 nested=nested):
             cell = node.quadcell()
             x0, x1, y0, y1 = cell.box()
-             
             points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-            if node.is_marked():
-                rect = plt.Polygon(points, fc='darkorange', edgecolor='k')
+            if color_marked is not None:
+                count = 0
+                for flag in color_marked:
+                    if node.is_marked(flag):                        
+                        rect = plt.Polygon(points, fc=color_list[count],\
+                                           edgecolor='k')
+                    count += 1
             else:
                 rect = plt.Polygon(points, fc='w', edgecolor='k')
             ax.add_patch(rect)
@@ -64,7 +92,8 @@ class Plot(object):
         # Plot Vertex Numbers
         #    
         if vertex_numbers:
-            vertices = mesh.quadvertices()
+            vertices = mesh.quadvertices(flag=node_flag, nested=nested, \
+                                         coordinate_array=False)
             v_count = 0
             for v in vertices:
                 x,y = v.coordinate()
@@ -78,7 +107,7 @@ class Plot(object):
         # Plot Edge Numbers
         #
         if edge_numbers:
-            edges = mesh.iter_quadedges()
+            edges = mesh.iter_quadedges(flag=node_flag, nested=nested)
             e_count = 0
             for e in edges:
                 if not(e.is_marked()):
@@ -89,12 +118,13 @@ class Plot(object):
                     if x0 == x1:
                         # vertical
                         ax.text(x_pos,y_pos,str(e_count),
-                                rotation=-90, size='smaller',
+                                rotation=-90, size='7',
                                 verticalalignment='center',
                                 backgroundcolor='w')
                     else:
                         # horizontal
-                        y_offset = 0.05*np.abs((x1-x0))
+                        #y_offset = 0.05*np.abs((x1-x0))
+                        y_offset = 0
                         ax.text(x_pos,y_pos+y_offset,str(e_count),
                                 size='7',
                                 horizontalalignment='center',
@@ -106,7 +136,7 @@ class Plot(object):
         # Plot Cell Numbers
         #
         if cell_numbers:
-            cells = mesh.iter_quadcells()
+            cells = mesh.iter_quadcells(flag=node_flag, nested=nested)
             c_count = 0
             for c in cells:
                 x0,x1,y0,y1 = c.box()
@@ -120,14 +150,16 @@ class Plot(object):
         #
         # Degrees of freedom
         # 
+        # FIXME: Something strange is going on with the flagged nodes.
         if dofs:
             assert element is not None, \
             'Require element information to plot dofs'
             x_ref = element.reference_nodes()
             n_dofs = element.n_dofs()
             dofhandler = DofHandler(mesh, element)
-            dofhandler.distribute_dofs(nested=True)
-            for node in mesh.root_node().find_leaves():
+            dofhandler.distribute_dofs(nested=nested)
+            for node in mesh.root_node().find_leaves(nested=nested,\
+                                                     flag=node_flag):
                 cell = node.quadcell()
                 x0,x1,y0,y1 = cell.box()
                 x_pos = x0 + x_ref[:,0]*(x1-x0)
@@ -139,11 +171,15 @@ class Plot(object):
                             horizontalalignment='center',
                             verticalalignment='center',
                             backgroundcolor='w')
+        if not show_axis:
+            ax.axis('off')
+            
         return ax
 
 
 
-    def contour(self,ax, fig, f, mesh, element=None, resolution=(100,100)):
+    def contour(self,ax, fig, f, mesh, element=None, derivatives=(0,), \
+                colorbar=True, resolution=(100,100)):
         """
         Plot a contour defined at the element nodes
         
@@ -171,7 +207,6 @@ class Plot(object):
             # A vector
             #
             if len(f)==mesh.get_number_of_cells():
-                print('Plotting mesh function.')
                 #
                 # Mesh function 
                 #
@@ -185,21 +220,6 @@ class Plot(object):
                 p = PatchCollection(patches)
                 p.set_array(f)
                 cm = ax.add_collection(p)
-                """
-                normal = colors.Normalize(f.min(), f.max())
-                color = plt.cm.Greys_r(normal(f))
-                count = 0
-                for leaf, c in zip(mesh.root_node().find_leaves(),f):
-                    cell = leaf.quadcell()
-                    x0,x1,y0,y1 = cell.box()
-                    X,Y = np.meshgrid(np.array([x0,x1]),np.array([y0,y1]))
-                    #ax.contourf(X,Y,f_node*np.ones(X.shape), cmap='viridis',\
-                    #            vmin=f.min(), vmax=f.max(), origin='lower')
-                    hx,hy = x1-x0, y1-y0
-                    rect = plt.Rectangle((x0,y0),hx,hy, facecolor=c)
-                    ax.add_patch(rect)
-                #plt.colorbar(c)
-                """
             else:
                 #
                 # A Node contour
@@ -207,29 +227,20 @@ class Plot(object):
                 assert element is not None, \
                 'Require element information for node functions'
                 
+                xy = np.array([x.ravel(), y.ravel()]).transpose()
                 system = System(mesh,element)
-                
-                assert len(f)==system.get_n_nodes(), \
-                'Functions vectors should have length n_cells or n_dofs' 
-                      
-                xy = np.array([x.flatten(),y.flatten()]).T
-                z = np.empty((nx*ny,))
-                z[:] = np.nan
-        
-                for node in mesh.root_node().find_leaves():
-                    f_loc = f[system.get_global_dofs(node)]
-                    cell = node.quadcell()
-                    in_cell = cell.contains_point(xy)
-                    xy_loc = xy[in_cell,:]
-                    z[in_cell] = system.f_eval_loc(f_loc,cell,x=xy_loc)     
+                z = system.f_eval(f, xy, derivatives=derivatives)
                 cm = ax.contourf(x,y,z.reshape(ny,nx),100, cmap='viridis_r')
-        fig.colorbar(cm, ax=ax)
-        return ax
+                
+        if colorbar:
+            fig.colorbar(cm, ax=ax)
+            
+        return fig, ax
     
     
-    def surface(self, ax, fig, f, mesh, element, derivatives=(0,), 
+    def surface(self, ax, f, mesh, element, derivatives=(0,), 
                 shading=True, grid=True, resolution=(50,50),
-                edge_resolution=10):
+                edge_resolution=5):
         """
         Plot the surface of a function defined on the finite element mesh
         
@@ -239,15 +250,11 @@ class Plot(object):
             
             f: function, 
         """
-        x0,x1,y0,y1 = mesh.box()
-        hx = x1 - x0
-        hy = y1 - y0
-        ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
-        ax.set_ylim(y0-0.1*hy, y1+0.1*hy)
+        x0,x1,y0,y1 = mesh.box()        
         system = System(mesh,element)
         if shading:
             #
-            # 
+            # Colormap
             #
             
             # Define Grid
@@ -255,13 +262,16 @@ class Plot(object):
             x,y = np.linspace(x0,x1,nx), np.linspace(y0,y1,ny)
             xx, yy = np.meshgrid(x,y)
             xy = np.array([xx.ravel(),yy.ravel()]).transpose()
-            
-            # Evaluate function
-            
-            zz = system.f_eval(f, xy, derivatives)
         
+            # Evaluate function
+            zz = system.f_eval(f, xy, derivatives)
+            
+            if grid:
+                alpha = 0.2
+            else:
+                alpha = 1
             ax.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
-                            linewidth=0, antialiased=False, alpha=0.4)
+                            linewidth=1, antialiased=True, alpha=alpha)
             
             
         if grid:
@@ -269,34 +279,68 @@ class Plot(object):
             # Wirefunction
             # 
             ne = edge_resolution
-            x_list, y_list, z_list = [], [], []
             lines = []
-            for node in mesh.root_node().find_leaves():
+            node_count = 0
+            initialize_min_max = True
+            for node in mesh.root_node().find_leaves():                
+                #
+                # Function type  
+                # 
+                if callable(f):
+                    #
+                    # Explicit function
+                    #
+                    assert derivatives==(0,),\
+                        'Discretize before plotting derivatives.'
+                    f_loc = f
+                    
+                elif len(f)==system.get_n_nodes():
+                    #
+                    # Nodal function
+                    #
+                    f_loc = f[system.get_global_dofs(node)]
+            
+                elif len(f)==mesh.get_number_of_cells():
+                    #
+                    # Mesh function
+                    #
+                    f_loc = f[node_count] 
+                
                 cell = node.quadcell()
                 for edge in cell.get_edges():
+                    # Points on edges
                     v = edge.vertex_coordinates()
                     x0, y0 = v[0]
                     x1, y1 = v[1] 
-                    
                     t = np.linspace(0,1,ne)
                     xx = (1-t)*x0 + t*x1 
                     yy = (1-t)*y0 + t*y1
-                    zz = system.f_eval_loc(f, cell, x=np.array([xx,yy]).T)
                     
+                    # Evaluate function at edge points 
+                    zz = system.f_eval_loc(f_loc, cell, x=np.array([xx,yy]).T, \
+                                           derivatives=derivatives)
+                    if initialize_min_max:
+                        z_min = zz.min()
+                        z_max = zz.max()
+                        initialize_min_max = False
+                    else:
+                        z_max = max(zz.max(),z_max) 
+                        z_min = min(zz.min(),z_min)
+             
                     for i in range(ne-1):
                         lines.append([(xx[i],yy[i],zz[i]),(xx[i+1],yy[i+1],zz[i+1])])
-                        #x_ends = [xx[i],xx[i+1]]
-                        #y_ends = [yy[i],yy[i+1]]
-                        #z_ends = [zz[i],zz[i+1]]
-                        #x_list.extend([xx[i],xx[i+1]])
-                        #y_list.extend([yy[i],yy[i+1]])
-                        #z_list.extend([zz[i],zz[i+1]])
-                        #lines.append((x_ends,y_ends,z_ends)) 
-                        
-                    #x_list.append(None)
-                    #y_list.append(None)
-                    #z_list.append(None)
-                    
-            ax.add_collection(Line3DCollection(lines, colors='k', linewidth=1))        
-            #ax.plot(x_list,y_list,z_list,'k')
+                node_count += 1   
+            ax.add_collection(Line3DCollection(lines, colors='k', linewidth=1))
+        
+        x0,x1,y0,y1 = mesh.box()
+        hx = x1 - x0
+        hy = y1 - y0
+        hz = z_max - z_min
+        spc = 0.1
+        #print(z_min,z_max)
+        ax.set_xlim(x0-spc*hx, x1+spc*hx)
+        ax.set_ylim(y0-spc*hy, y1+spc*hy)
+        ax.set_zlim(z_min-spc*hz, z_max+spc*hz)
+                
+        return ax    
             

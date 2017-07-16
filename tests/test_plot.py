@@ -7,11 +7,11 @@ Created on Feb 24, 2017
 import unittest
 from plot import Plot
 from mesh import Mesh
+from finite_element import System
 from finite_element import QuadFE, DofHandler
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import *  # @UnresolvedImport
 import numpy as np
-import matplotlib as mpl 
 
 class TestPlot(unittest.TestCase):
 
@@ -20,54 +20,91 @@ class TestPlot(unittest.TestCase):
         """
         Plot the computational mesh
         """
-        print(mpl.__version__)
-        mesh = Mesh.newmesh(grid_size=(2,2))
-        mesh.refine()
-        mesh.root_node().children[1,1].mark(1)
-        #mesh.refine('refine')
-        
-        
-        fig, ax = plt.subplots()
+        plt.close('all')
+
+        #
+        # Initialize
+        #
+        fig, ax = plt.subplots(3,3)
         plot = Plot()
-        ax = plot.mesh(ax, mesh)
-        plt.show()
-        
-        
-    def testPlotMesh(self):
+        #
+        # Define mesh
+        # 
         mesh = Mesh.newmesh(grid_size=(2,2))
         mesh.refine()      
-        mesh.root_node().children[1,1].mark()
-        mesh.refine()
-        fig, ax = plt.subplots() 
-        plot = Plot()
+        mesh.root_node().children[1,1].mark(1)
+        mesh.refine(1)
+        
+        # Plot simple mesh
+        ax[0,0] = plot.mesh(ax[0,0], mesh)
+        
+        #
+        # Flag a few cells
+        # 
+        mesh.unmark(nodes=True)
+        mesh.root_node().children[0,0].mark(2)
+        mesh.root_node().children[1,0].mark(1)
+        mesh.root_node().children[1,1].children['SW'].mark(3)
+        mesh.root_node().children[1,1].children['NE'].mark(3)
+        
+        # Color flagged cells
+        ax[0,1] = plot.mesh(ax[0,1], mesh, color_marked=[1,2,3])
+        
+        # Plot vertex numbers
+        ax[0,2] = plot.mesh(ax[0,2], mesh, vertex_numbers=True)
+        
+        # Plot edge numbers
+        ax[1,0] = plot.mesh(ax[1,0], mesh, edge_numbers=True)
+        
+        # Plot cell numbers nested off
+        mesh.refine(2)
+        ax[1,1] = plot.mesh(ax[1,1], mesh, cell_numbers=True)
+        
+        # Plot cell numbers nested on
+        ax[1,2] = plot.mesh(ax[1,2], mesh, cell_numbers=True, nested=True)
+
+        # Plot dofs
         element = QuadFE(2,'Q1')
-        ax = plot.mesh(ax,mesh,element=element, cell_numbers=True, dofs=True)
-        #plt.show()
+        ax[2,0] = plot.mesh(ax[2,0], mesh, element=element, dofs=True)
         
-        """
-        element = QuadFE(2,'Q3')
-        _, ax = plt.subplots()
-        plot = Plot()
-        ax = plot.mesh(ax,mesh,element=element,dofs=True)
-        """
-        #plt.show()
+        # Assign dofs in a nested way
+        ax[2,1] = plot.mesh(ax[2,1], mesh, element=element, dofs=True, \
+                            nested=True)
+        
+        # Display only dofs of flagged nodes (FIXME: this doesn't work)
+        ax[2,2] = plot.mesh(ax[2,2], mesh, element=element, dofs=True, \
+                            node_flag=2, show_axis=True)
+
     
-    def test_plot_function(self):
-        #print("Matplotlib version: {0}".format(mpl.__version__))
-        mesh = Mesh.newmesh(grid_size=(2,2))
-        mesh.refine()
-        element = QuadFE(2,'Q3')
-        fig,ax = plt.subplots() 
-        plot1 = Plot()
+    def test_plot_contour(self):
+       
         f = lambda x,y: np.sin(3*np.pi*x*y)
-        dof_handler = DofHandler(mesh,element)
-        dof_handler.distribute_dofs()
-        x = dof_handler.dof_vertices()
-        f_vec = f(x[:,0],x[:,1])
-        ax = plot1.contour(ax,fig,f, mesh, element)
-        #plt.colorbar(fig)
-        plot1.contour(ax,fig, f_vec,mesh, element)
         
+        fig, ax = plt.subplots(3,3)
+        plot = Plot()
+        mesh = Mesh.newmesh(grid_size=(5,5))
+        mesh.refine()
+        
+        #
+        # Explicit function
+        # 
+        fig, ax[0,0] = plot.contour(ax[0,0], fig, f, mesh, colorbar=False)
+        ax[0,0].axis('off')
+        
+        #
+        # Nodal function
+        #
+        element = QuadFE(2,'Q1') 
+        system = System(mesh, element)
+        x = system.dof_vertices()
+        fn = f(x[:,0],x[:,1])
+        fig, ax[0,1] = plot.contour(ax[0,1], fig, fn, mesh, element, \
+                                    colorbar=False)
+        ax[0,1].axis('off')
+        #
+        # Mesh function
+        #
+        # Refine mesh 
         mesh = Mesh.newmesh(grid_size=(5,5))
         mesh.refine()
         for _ in range(4):
@@ -77,28 +114,98 @@ class TestPlot(unittest.TestCase):
             mesh.refine('refine')
             mesh.unmark(nodes='True')
         mesh.balance()
+        # Meshfunction
         fm = []
         for cell in mesh.iter_quadcells():
             xi,yi = cell.vertices['M'].coordinate()
             fm.append(f(xi,yi))
         fm = np.array(fm)
-        _,ax = plt.subplots()
-        plot2 = Plot()
-        ax = plot2.contour(ax,fig,fm,mesh)
-        #plt.title('Piecewise Constant Function.')
- 
+        # Plot
+        fig, ax[0,2] = plot.contour(ax[0,2], fig, fm, mesh, colorbar=False)
+        ax[0,2].axis('off')
+        
+        #
+        # Plot x-derivative, using piecewise linear, quadratic, cubic
+        #  
+        element_list = ['Q1','Q2','Q3']
+        for j in range(2):
+            for i in range(3):
+                etype = element_list[i]
+                element = QuadFE(2,etype)
+                system = System(mesh, element)
+                x = system.dof_vertices()
+                fn = f(x[:,0],x[:,1])
+                fig, ax[1+j,i] = plot.contour(ax[1+j,i], fig, fn, mesh, element,\
+                                            derivatives=(1,j), colorbar=False)
+                ax[1+j,i].axis('off')
+                
+                
     def test_plot_surface(self):
         """
         Surface plots
         """
         f = lambda x,y: np.exp(-x**2-y**2)
-        mesh = Mesh.newmesh(box=[-1,1,-1,1], grid_size=(10,10))
+        mesh = Mesh.newmesh(box=[-1,1,-1,1], grid_size=(2,2))
         mesh.refine()
-        element = QuadFE(2,'Q2')
+        for _ in range(4):
+            for leaf in mesh.root_node().find_leaves():
+                if np.random.rand() < 0.5:
+                    leaf.mark('s')
+            mesh.refine('s')
+            mesh.unmark(nodes=True)
+        mesh.balance()   
+        element = QuadFE(2,'Q1')
+        
         fig = plt.figure()
-        ax = fig.add_subplot(1,1,1, projection='3d')
         plot = Plot()
-        plot.surface(ax, fig, f, mesh, element)
+        
+        #
+        # Explicit function
+        # 
+        ax = fig.add_subplot(3,3,1, projection='3d')
+        ax = plot.surface(ax, f, mesh, element)
+        ax.set_title('explicit function')
+        
+        #
+        # Nodal function
+        #
+        ax = fig.add_subplot(3,3,2, projection='3d')
+        element = QuadFE(2,'Q1') 
+        system = System(mesh, element)
+        x = system.dof_vertices()
+        fn = f(x[:,0],x[:,1])
+        # Plot
+        ax = plot.surface(ax, fn, mesh, element)
+        ax.set_title('nodefunction')
+        #
+        # Mesh function
+        #
+        fm = []
+        for cell in mesh.iter_quadcells():
+            xi,yi = cell.vertices['M'].coordinate()
+            fm.append(f(xi,yi))
+        fm = np.array(fm)
+        # Plot
+        ax = fig.add_subplot(3,3,3, projection='3d')
+        ax = plot.surface(ax, fm, mesh, element)
+        ax.set_title('meshfunction')
+        #
+        # Plot x-derivative, using piecewise linear, quadratic, cubic
+        #  
+        element_list = ['Q1','Q2','Q3']
+        for j in range(2):
+            for i in range(3):
+                etype = element_list[i]
+                element = QuadFE(2,etype)
+                system = System(mesh, element)
+                x = system.dof_vertices()
+                fn = f(x[:,0],x[:,1])
+                ax = fig.add_subplot(3,3,3*(j+1)+(i+1), projection='3d')
+                ax = plot.surface(ax, fn, mesh, element,\
+                                  derivatives=(1,j))
+                ax.set_title('df_dx%d'%(j))
+        
+        
         plt.show()
         
 if __name__ == "__main__":

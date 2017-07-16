@@ -5,7 +5,8 @@ Created on Oct 23, 2016
 '''
 import unittest
 from mesh import Mesh, Node, QuadCell, TriCell, Edge, Vertex
-
+from plot import Plot
+import matplotlib.pyplot as plt
 import numpy as np
 
 class TestMesh(unittest.TestCase):
@@ -164,6 +165,25 @@ class TestMesh(unittest.TestCase):
     
         self.assertEqual(len(quadvertices),22,'There should be 22 vertices in total.')
         
+    
+    def test_mesh_balance(self):
+        # TODO: After balancing, randomly says its balanced and not.
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        # Refine mesh arbitrarily (most likely not balanced)
+        for _ in range(3):
+            for leaf in mesh.root_node().find_leaves():
+                if np.random.rand() < 0.5:
+                    leaf.mark(1)
+            mesh.refine(1)
+        #print('Before balancing', mesh.is_balanced())
+        mesh.balance()
+        #print('After balancing', mesh.is_balanced())
+    
+    
+    def test_mesh_is_balanced(self):
+        pass
+    
         
     def test_mesh_refine(self):
         pass
@@ -343,13 +363,26 @@ class TestNode(unittest.TestCase):
         self.assertEqual(len(leaves), 7, 'Node should have 7 leaves.')
         
         #
+        # Nested traversal
+        #
+        leaves = node.find_leaves(nested=True)
+        self.assertEqual(leaves[0].address,[1], \
+            'The first leaf in the nested enumeration should have address [1]')
+        
+        leaves = node.find_leaves()
+        self.assertEqual(leaves[0].address, [0,0], \
+                         'First leaf in un-nested enumeration should be [0,0].')
+        
+        #
         # Merge SW child - find leaves
         # 
         sw_child.merge()
         leaves = node.find_leaves()
         self.assertEqual(len(leaves), 4, 'Node should have 4 leaves.')
     
-    
+        
+        
+        
     def test_node_find_marked_leaves(self):
         node = Node()
         node.mark(1)
@@ -623,6 +656,41 @@ class TestNode(unittest.TestCase):
         
         node.balance()
         self.assertTrue(node.is_balanced(),'Tree is balanced.')
+        
+        #
+        # Test 2
+        # 
+        node = Node()
+        node.split()
+        # Split node arbitrarily (most likely not balanced)
+        for _ in range(3):
+            for leaf in node.find_leaves():
+                if np.random.rand() < 0.5:
+                    leaf.split()
+        node.balance()
+        self.assertTrue(node.is_balanced(),'Node should be balanced.')
+        """
+        Debugging: 
+        
+        if not node.is_balanced():
+            for leaf in node.find_leaves():
+                for direction in ['N','S','E','W']:
+                    nb = leaf.find_neighbor(direction)
+                    if nb is not None and nb.has_children():
+                        for child in nb.children.values():
+                            if child.type != 'LEAF':
+                                print('child is not leaf')
+                                print('Node:')
+                                leaf.info()
+                                print('\n\nNeighbor:')
+                                nb.info()
+                                print('\n\nChild:')
+                                child.info()
+                                for gchild in child.get_children():
+                                    print('\n Grandchild:')
+                                    gchild.info()
+        """
+        
         
     def test_node_balance(self):
         node = Node()

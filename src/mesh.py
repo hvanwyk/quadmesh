@@ -168,9 +168,16 @@ class Mesh(object):
         """
         Balance the tree associated with the mesh
         """            
-        self.__root_node.balance()
+        self.root_node().balance()
         
         
+    def is_balanced(self):
+        """
+        Returns true is the mesh's quadtree is balanced, false otherwise
+        """ 
+        return self.root_node().is_balanced()
+        
+    
     def root_quadcell(self):
         """
         Return the root_quadcell
@@ -198,7 +205,7 @@ class Mesh(object):
         self.__triangulated = True
     
     
-    def iter_quadcells(self):
+    def iter_quadcells(self, flag=None, nested=False):
         """
         Iterate over active quad cells
         
@@ -208,12 +215,12 @@ class Mesh(object):
         """ 
         quadcell_list = []
         node = self.root_node()
-        for leaf in node.find_leaves():
+        for leaf in node.find_leaves(flag=flag, nested=nested):
             quadcell_list.append(leaf.quadcell())
         return quadcell_list
     
     
-    def iter_quadedges(self):
+    def iter_quadedges(self, flag=None, nested=False):
         """
         Iterate over quadcell edges
         
@@ -227,7 +234,7 @@ class Mesh(object):
         # Unmark all edges
         # 
         self.unmark(quadedges=True)
-        for cell in self.iter_quadcells():
+        for cell in self.iter_quadcells(flag=flag, nested=nested):
             for edge_key in [('NW','SW'),('SE','NE'),('SW','SE'),('NE','NW')]:
                 edge = cell.edges[edge_key]
                 if not(edge.is_marked()):
@@ -243,13 +250,15 @@ class Mesh(object):
         return quadedge_list
         
                     
-    def quadvertices(self, coordinate_array=True):
+    def quadvertices(self, coordinate_array=True, flag=None, nested=False):
         """
         Iterate over quad cell vertices
         
         Inputs: 
         
             coordinate_array: bool, if true, return vertices as arrays 
+            
+            nested: bool, traverse tree depthwise
         
         Output: 
         
@@ -260,7 +269,7 @@ class Mesh(object):
         # Unmark all vertices
         # 
         self.unmark(quadvertices=True)
-        for cell in self.iter_quadcells():
+        for cell in self.iter_quadcells(flag=flag, nested=nested):
             for direction in ['SW','SE','NW','NE']:
                 vertex = cell.vertices[direction]
                 if not(vertex.is_marked()):
@@ -841,7 +850,7 @@ class Node(object):
             yield node
         
     
-    def find_leaves(self, flag=None):
+    def find_leaves(self, flag=None, nested=False):
         """
         Return all LEAF sub-nodes of current node
         
@@ -850,21 +859,28 @@ class Node(object):
             flag: If flag is specified, return all leaf nodes within labeled
                 submesh (or an empty list if there are none).
         """
-        leaves = []
-        if flag is None:
-            if not self.has_children():
-                leaves.append(self)
-            else:
-                for child in self.get_children():
-                    leaves.extend(child.find_leaves(flag=flag))
+        if nested:
+            leaves = [] 
+            for node in self.traverse_depthwise():
+                if node.type == 'LEAF':
+                    leaves.append(node)
+            return leaves
         else:
-            if not any([child.is_marked(flag) for child in self.get_children()]):
-                if self.is_marked(flag=flag):
+            leaves = []
+            if flag is None:
+                if not self.has_children():
                     leaves.append(self)
+                else:
+                    for child in self.get_children():
+                        leaves.extend(child.find_leaves(flag=flag))
             else:
-                for child in self.get_children():
-                    leaves.extend(child.find_leaves(flag=flag))
-        return leaves
+                if not any([child.is_marked(flag) for child in self.get_children()]):
+                    if self.is_marked(flag=flag):
+                        leaves.append(self)
+                else:
+                    for child in self.get_children():
+                        leaves.extend(child.find_leaves(flag=flag))
+            return leaves
         
     '''    
     def find_leaves(self, flag=None):
@@ -1202,11 +1218,14 @@ class Node(object):
         """
         Check whether the tree is balanced
         """
+        children_to_check = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
+                             'E': ['NW', 'SW'], 'W': ['NE', 'SE']}        
         for leaf in self.find_leaves():
             for direction in ['N','S','E','W']:
                 nb = leaf.find_neighbor(direction)
-                if nb != None and nb.has_children():
-                    for child in nb.children.values():
+                if nb is not None and nb.has_children():
+                    for pos in children_to_check[direction]:
+                        child = nb.children[pos]
                         if child.type != 'LEAF':
                             return False
         return True
@@ -1260,7 +1279,8 @@ class Node(object):
                             break
                 if flag:
                     break
-    
+        self.__balanced = True
+        
     
     def remove_supports(self):
         """
@@ -1616,6 +1636,9 @@ class QuadCell(object):
                 #
                 # Grid of sub-cells
                 #
+                # TODO: The root cell's edges (there are only 4) are not the 
+                #       ones listed in the 'edges' attribute. However, they
+                #       are inherited by the subcells.
                 nx, ny = grid_size                
                 x = np.linspace(x0,x1,nx+1)
                 y = np.linspace(y0,y1,ny+1)
@@ -1640,6 +1663,11 @@ class QuadCell(object):
                             # Vertical edges
                             edges[((i,j-1),(i,j))] = \
                                 Edge(vertices[i,j-1],vertices[i,j])
+                edges[('SW','SE')] = Edge(vertices[0,0],vertices[nx-1,0])
+                edges[('SE','NE')] = Edge(vertices[nx-1,0],vertices[nx-1,ny-1])
+                edges[('NE','NW')] = Edge(vertices[nx-1,ny-1],vertices[0,ny-1])
+                edges[('NW','SW')] = Edge(vertices[0,ny-1],vertices[0,0])
+                
         else: 
             #
             # LEAF Node
@@ -1656,7 +1684,7 @@ class QuadCell(object):
             #
             # Inherited Vertices and Edges
             # 
-            if parent.type == 'ROOT' and parent.grid_size != None:
+            if parent.type == 'ROOT' and parent.grid_size is not None:
                 #
                 # Cell lies in grid
                 #

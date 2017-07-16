@@ -652,6 +652,12 @@ class DofHandler(object):
         
         Note: When root's children are in a grid, then the root has no DOFs 
         """
+        #
+        # Ensure the mesh is balanced
+        # 
+        assert self.mesh.is_balanced(), \
+            'Mesh must be balanced before dofs can be distributed.'
+            
         if not nested:
             for node in self.mesh.root_node().find_leaves():
                 # 
@@ -2176,7 +2182,8 @@ class System(object):
             
         Output:
         
-            f_vec: double, (n,) vector of function values at the interpolation points.
+            f_vec: double, (n,) vector of function values at the interpolation
+                points.
         """
         dim = 1 if len(x.shape)==1 else x.shape[1]
         if callable(f):
@@ -2186,6 +2193,8 @@ class System(object):
             if dim==1:
                 f_vec = f(x)
             elif dim==2:
+                assert derivatives==(0,), \
+                    'Unable to take derivatives of function directly. Discretize'
                 f_vec = f(x[:,0],x[:,1])
             else:
                 raise Exception('Only 1D and 2D points supported.')
@@ -2280,8 +2289,8 @@ class System(object):
             elif len(x.shape) == 2:
                 # two dimensional input
                 return f(x[:,0],x[:,1])
-            elif len(x.shape) == 4:
-                pass
+            else: 
+                raise Exception('Only 1D and 2D supported.')
         elif isinstance(f,numbers.Real):
             #
             # f is a constant
@@ -2295,7 +2304,8 @@ class System(object):
             phi = self.shape_eval(derivatives=derivatives,cell=cell,\
                                   edge_loc=edge_loc,x_ref=x_ref) 
             return np.dot(phi,f)                    
-        
+        else:
+            raise Exception('Function type not recognized.')
                 
           
     def form_eval(self, form, node, edge_loc=None):
