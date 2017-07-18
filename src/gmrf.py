@@ -245,10 +245,11 @@ class Gmrf(object):
     """
     Gaussian Markov Random Field
     
-    Inputs may be: covariance/precision
-                   sparse/full
-                   full rank/degenerate
-                   finite difference / finite element
+    Inputs (or important information) may be: 
+        covariance/precision
+        sparse/full
+        full rank/degenerate
+        finite difference / finite element
                    
     Modes:  
         
@@ -262,7 +263,11 @@ class Gmrf(object):
             
         
                
-        
+    NOTES: 
+    
+    TODO: In what format should the sparse matrices be stored? consistency 
+    TODO: Check For sparse matrix A, Ax is computed by A.dot(x), not np.dot(A,x) 
+    
     """
  
     def __init__(self, mu=None, precision=None, covariance=None, 
@@ -353,11 +358,24 @@ class Gmrf(object):
         if covariance is not None:
             n = covariance.shape[0]
             if sp.isspmatrix(covariance):
-                self.__f_cov = cholesky(covariance.tocsc())
+                try:
+                    self.__f_cov = cholesky(covariance.tocsc())
+                except np.linalg.linalg.LinAlgError:
+                    print('It seems a linalg error occured') 
             else:
                 # Most likely
                 print(covariance)
-                self.__f_cov  = np.linalg.cholesky(covariance)    
+                try:
+                    self.__f_cov = np.linalg.cholesky(covariance)
+                except np.linalg.linalg.LinAlgError as ex:
+                    if ex.__str__() == 'Matrix is not positive definite':
+                        #
+                        # Rank deficient covariance
+                        # 
+                        # TODO: Pivoted Cholesky
+                        self.__svd = np.linalg.svd(covariance)  
+                    else:
+                        raise Exception('I give up.')
         #
         # Check compatibility
         # 
@@ -401,7 +419,8 @@ class Gmrf(object):
             self.element = element
         
     @classmethod
-    def from_covariance_kernel(cls, cov_name, cov_par, mesh, mu=None, element=None):
+    def from_covariance_kernel(cls, cov_name, cov_par, mesh, \
+                               mu=None, element=None):
         """
         Initialize Gmrf from covariance function
         
