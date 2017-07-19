@@ -6,7 +6,5 @@
 <path>/${PROJECT_DIR_NAME}/src</path>
 <path>/${PROJECT_DIR_NAME}/tests</path>
 </pydev_pathproperty>
-<pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
-<path>/usr/local/lib/python3.5/dist-packages/mpl_toolkits/mplot3d</path>
-</pydev_pathproperty>
+
 </pydev_project>

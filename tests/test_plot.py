@@ -8,9 +8,9 @@ import unittest
 from plot import Plot
 from mesh import Mesh
 from finite_element import System
-from finite_element import QuadFE, DofHandler
+from finite_element import QuadFE
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import *  # @UnresolvedImport
+#from mpl_toolkits.mplot3d import *  # @UnresolvedImport
 import numpy as np
 
 class TestPlot(unittest.TestCase):

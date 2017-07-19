@@ -27,7 +27,7 @@ V = QuadFE(2,'Q1')
 n_dofs = V.n_dofs()
 dh = DofHandler(mesh,V)
 dh.distribute_dofs()
-n_nodes = dh.n_nodes()
+n_nodes = dh.n_dofs()
 # 
 # Quadrature Rule
 # 
@@ -60,7 +60,7 @@ for node in mesh.root_node().find_leaves():
     #
     # Loop over mesh nodes
     # 
-    node_dofs = dh.get_node_dofs(node)
+    node_dofs = dh.get_global_dofs(node)
     quadcell = node.quadcell()
     #
     # Local system matrices
@@ -94,8 +94,11 @@ plt.show()
 Acheck_1 = 1/36.0*np.array([[4,2,2,1],[2,4,1,2],[2,1,4,2],[1,2,2,4]])
 Acheck_2 = 1/36.0*np.array([[4,2,2,1,0,0],[2,8,1,4,2,1],[2,1,4,2,0,0],
                            [1,4,2,8,1,2],[0,2,0,1,4,2],[0,1,0,2,2,4]])
-#print(Acheck_2)
-#print(A.toarray())
+print(Acheck_2)
+print(A.toarray())
+
+"""
 _,ax = plt.subplots()
 mesh.plot_quadmesh(ax, set_axis=True, vertex_numbers=True)
 plt.show()
+"""

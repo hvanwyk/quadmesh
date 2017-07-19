@@ -7,8 +7,9 @@ Created on Feb 8, 2017
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
-from mpl_toolkits.mplot3d import *
+#from mpl_toolkits.mplot3d import *
 from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
+#from mpl_toolkits.mplot3d import axes3d # @UnresolvedImport
 import numpy as np
 from finite_element import DofHandler, System
 
@@ -117,15 +118,16 @@ class Plot(object):
                     x_pos, y_pos = 0.5*(x0+x1),0.5*(y0+y1)
                     if x0 == x1:
                         # vertical
-                        ax.text(x_pos,y_pos,str(e_count),
+                        x_offset = 0.2*np.abs(x1-x0)
+                        ax.text(x_pos,y_pos-x_offset,str(e_count),
                                 rotation=-90, size='7',
                                 verticalalignment='center',
                                 backgroundcolor='w')
                     else:
                         # horizontal
-                        #y_offset = 0.05*np.abs((x1-x0))
-                        y_offset = 0
-                        ax.text(x_pos,y_pos+y_offset,str(e_count),
+                        y_offset = 0.2*np.abs(y1-y0)
+                        #y_offset = 0
+                        ax.text(x_pos,y_pos-y_offset,str(e_count),
                                 size='7',
                                 horizontalalignment='center',
                                 backgroundcolor='w')                 
@@ -246,7 +248,7 @@ class Plot(object):
         
         Inputs: 
         
-            ax, fig: axis and figure
+            ax: axis (don't forget to initialize it using projection='3d')
             
             f: function, 
         """
@@ -265,6 +267,7 @@ class Plot(object):
         
             # Evaluate function
             zz = system.f_eval(f, xy, derivatives)
+            z_min, z_max = zz.min(), zz.max()
             
             if grid:
                 alpha = 0.2
@@ -330,7 +333,7 @@ class Plot(object):
                     for i in range(ne-1):
                         lines.append([(xx[i],yy[i],zz[i]),(xx[i+1],yy[i+1],zz[i+1])])
                 node_count += 1   
-            ax.add_collection(Line3DCollection(lines, colors='k', linewidth=1))
+            ax.add_collection(Line3DCollection(lines, colors='k', linewidth=0.5))
         
         x0,x1,y0,y1 = mesh.box()
         hx = x1 - x0

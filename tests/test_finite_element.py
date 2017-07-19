@@ -8,12 +8,10 @@ Created 11/22/2016
 import unittest
 from finite_element import QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
-
 #import scipy.sparse as sp
 import numpy as np
 import numpy.linalg as la
-from plot import Plot
-import matplotlib.pyplot as plt
+
 
 class TestFiniteElement(unittest.TestCase):
     """
@@ -167,9 +165,21 @@ class TestQuadFE(unittest.TestCase):
                 
                 
     def test_dphi(self):
+        """
+        Define piecewise linear, quadratic, and cubic polynomials on the
+        reference triangle, compute their first partial derivatives and 
+        compare with that of the nodal interpolant. 
+        """
         pass
  
-        
+    
+    def test_d2phi(self):
+        """
+        Define piecewise linear, quadratic, and cubi polynomials on the
+        reference triangle, compute their first partial derivatives and 
+        compare with that of the nodal interpolant.
+        """
+        pass
     
     
 class TestTriFE(unittest.TestCase):
@@ -785,7 +795,7 @@ class TestSystem(unittest.TestCase):
         #for h in hn.keys():
         #    print(h)
         #print('======================')
-        A,b = system.incorporate_hanging_nodes(A,b,compress=False)
+        A,b = system.extract_hanging_nodes(A,b,compress=False)
         
         #print(A.shape)
         ua = la.solve(A.toarray(),b)
@@ -797,7 +807,7 @@ class TestSystem(unittest.TestCase):
         #plt.show()
         
         
-    def test_incorporate_hanging_nodes(self):
+    def test_extract_hanging_nodes(self):
         """
         A = np.array([[1,1,1,1],[0,-2,1,0],[1,3,1,0],[0,0,-1,3]])
         b = np.array([2,4,0,-2])
@@ -805,7 +815,7 @@ class TestSystem(unittest.TestCase):
         hanging_nodes = {2:([0,1],[1,-1])}
         
         A1 = sp.lil_matrix(A)
-        A1,b1 = self.incorporate_hanging_nodes(A1,b)
+        A1,b1 = self.extract_hanging_nodes(A1,b)
         
         A2 = sp.lil_matrix(A)
         A2,b2 = self.incporate_hanging_nodes(A2,b)

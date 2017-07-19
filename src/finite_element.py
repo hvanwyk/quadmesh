@@ -70,8 +70,8 @@ class QuadFE(FiniteElement):
             """
             
             p  = [lambda x: 1-x, lambda x: x]
-            px = [lambda x:-1.0, lambda x: 1.0]
-            
+            px = [lambda x:-1*np.ones(x.shape), lambda x: 1*np.ones(x.shape)]
+            pxx = [lambda x: 0*np.ones(x.shape), lambda x: 0*np.ones(x.shape)]
             if dim == 1:
                 #
                 # One Dimensional
@@ -113,6 +113,10 @@ class QuadFE(FiniteElement):
             px = [ lambda x: 4*x -3, 
                    lambda x: 4*x-1,
                    lambda x: 4.0-8*x ]
+            
+            pxx = [ lambda x: 4*np.ones(x.shape), \
+                    lambda x: 4*np.ones(x.shape), \
+                    lambda x: -8*np.ones(x.shape)]
             
             if dim == 1:
                 #
@@ -164,6 +168,11 @@ class QuadFE(FiniteElement):
                   lambda x: 40.5*x*x - 45*x + 9.0,
                   lambda x: -40.5*x*x + 36*x -4.5]
             
+            pxx = [lambda x: -27*x + 18, \
+                   lambda x: 27*x - 9, \
+                   lambda x: 81*x - 45, \
+                   lambda x: -81*x + 36]
+            
             if dim == 1:
                 #
                 # One Dimensional
@@ -198,6 +207,7 @@ class QuadFE(FiniteElement):
         self.__basis_index = basis_index
         self.__p = p
         self.__px = px
+        self.__pxx = pxx
         self.__element_type = element_type
         self.__ref_nodes = ref_nodes
         if dim == 2:
@@ -413,6 +423,56 @@ class QuadFE(FiniteElement):
                 return self.__p[i1](x[:,0])*self.__px[i2](x[:,1])
    
    
+    def d2phi(self, n, x, var):
+        """
+        Evaluate the second partial derivative of the nth basis function
+        
+        Inputs: 
+        
+            n: int, basis function number 
+            
+            x: double, (n_points, dim) array of points at which to evaluate
+                the basis function.
+                
+            var: int, dim-tuple of variables (0 or 1) wrt which we differentiate  
+                e.g. var=(0,1) computes phi_xy(x)
+                
+        Output:
+        
+            d2phi
+        
+        """
+        assert n < self.n_dofs(), 'Basis index exceeds n_dofs.'
+        assert all(var) < 2, 'Use tuple of 0s for x or 1s for y.'
+        #
+        # 1D 
+        #
+        if self.dim() == 1:
+            i = self.__basis_index[n]
+            return self.__pxx[i](x)
+        #
+        # 2D
+        #          
+        elif self.dim() == 2:
+            i1,i2 = self.__basis_index[n]
+            j1,j2 = var 
+            if j1==0 and j2==0:
+                # 
+                # p_xx
+                #
+                return self.__pxx[i1](x[:,0])*self.__p[i2](x[:,1])
+            elif (j1==0 and j2==1) or (j1==1 and j2==0):
+                #
+                # p_xy or p_yx
+                #
+                return self.__px[i1](x[:,0])*self.__px[i2](x[:,1])
+            elif j1==1 and j2==1:
+                #
+                # p_yy
+                #
+                return self.__p[i1](x[:,0])*self.__pxx[i2](x[:,1])
+         
+         
     def constraint_coefficients(self):
         """
         Returns the constraint coefficients of a typical bisected edge. 
@@ -1175,7 +1235,7 @@ class GaussRule(object):
                     
             order: int, order of quadrature rule
                 1D rule: order in {1,2,3,4,5,6}
-                2D rule: order in {1,4,16,25} for quadrilaterals
+                2D rule: order in {1,4,16,25,36} for quadrilaterals
                                   {1,3,7,13} for triangles 
             
             element: FiniteElement object
@@ -1215,7 +1275,7 @@ class GaussRule(object):
                 assert order in [1,2,3,4,5,6], 'Gauss rules in 1D: 1,2,3,4,5,6.'
                 order_1d = order
             elif dim == 2:
-                assert order in [1,4,9,16,25], 'Gauss rules over quads in 2D: 1,4,16,25'
+                assert order in [1,4,9,16,25,36], 'Gauss rules over quads in 2D: 1,4,16,25'
                 order_1d = int(np.sqrt(order))
                 
             r = [0]*order_1d  # initialize as list of zeros
@@ -1658,11 +1718,12 @@ class System(object):
         self.__dofhandler = DofHandler(mesh,element)
         self.__dofhandler.distribute_dofs(nested=nested)
         # Initialize reference shape functions
-        self.__phi = {'cell':       {(0,): None, (1,0): None, (1,1): None},
-                      ('edge','W'): {(0,): None, (1,0): None, (1,1): None},
-                      ('edge','E'): {(0,): None, (1,0): None, (1,1): None},
-                      ('edge','S'): {(0,): None, (1,0): None, (1,1): None},
-                      ('edge','N'): {(0,): None, (1,0): None, (1,1): None}}  
+        dlist = [(0,),(1,0),(1,1),(2,0,0),(2,0,1),(2,1,0),(2,1,1)]
+        self.__phi = {'cell':       dict.fromkeys(dlist, None),
+                      ('edge','W'): dict.fromkeys(dlist, None),
+                      ('edge','E'): dict.fromkeys(dlist, None),
+                      ('edge','S'): dict.fromkeys(dlist, None),
+                      ('edge','N'): dict.fromkeys(dlist, None)}  
     
     
     def dofhandler(self):
@@ -1694,7 +1755,7 @@ class System(object):
                 'dirichlet', 'neumann', 'robin', and 'periodic' (not implemented)
                 and whose values are lists of tuples (m_bnd, d_bnd), where
                 m_fun is used to identify a specific boundary (from either the
-                eddge [the case for neumann and robin conditions] or from nodal
+                edge [the case for neumann and robin conditions] or from nodal
                 values [the case for dirichlet conditions], and d_bnd is the 
                 data associated with the given boundary condition: 
                 For 'dirichlet': u(x,y) = d_bnd(x,y) on bnd
@@ -1869,7 +1930,7 @@ class System(object):
             return tuple(out)
     
     
-    def incorporate_hanging_nodes(self,A,b, compress=False):
+    def extract_hanging_nodes(self,A,b, compress=False):
         """
         Incorporate hanging nodes into linear system.
     
@@ -2056,8 +2117,8 @@ class System(object):
         return np.dot(test.T, weight*kernel)
     
     
-    def shape_eval(self,derivatives=(0,),cell=None,\
-                   edge_loc=None,x=None,x_ref=None):
+    def shape_eval(self, derivatives=(0,), cell=None,\
+                   edge_loc=None, x=None, x_ref=None):
         """
         Evaluate all shape functions at a set of reference points x. If x is 
         not specified, Gauss quadrature points are used. 
@@ -2066,15 +2127,15 @@ class System(object):
         
             derivatives: tuple specifying the order of the derivative and 
                 the variable 
-                [(0,)]: function evaluation, 
-                (1,0) : 1st derivative wrt first variable, or 
-                (1,1) : 1st derivative wrt second variable
-        
+                (0,)  : function evaluation, (default) 
+                (1,i) : 1st derivative wrt ith variable, or 
+                (2,i,j): 2nd derivative wrt ith and jth variables (i,j in 0,1).
+                
             cell: QuadCell, entity over which we evaluate the shape functions
             
             edge_loc: str, specifying edge location (W,E,S,N).
                                       
-            x: double, np.array of points in the cell
+            x: double, np.array of points in the physical cell
             
             x_ref: double, np.array of points in the reference cell
              
@@ -2088,17 +2149,20 @@ class System(object):
         #
         # Determine multiplier for derivatives (chain rule)
         # 
-        if len(derivatives)==2 and cell is not None:
+        c = 1
+        if derivatives[0] in {1,2} and cell is not None:
+            # 
+            # There's a map and we're taking derivatives
+            #
             x0,x1,y0,y1 = cell.box()
-            if derivatives[1] == 0:
-                # x-derivative
-                c = 1/(x1-x0)
-            elif derivatives[1] == 1:
-                # y-derivative
-                c = 1/(y1-y0)
-        else:
-            c = 1  
-        
+            for i in derivatives[1:]:
+                if i==0:
+                    c *= 1/(x1-x0)
+                elif i==1:
+                    c *= 1/(y1-y0)
+        #
+        # Determine entity
+        #
         if edge_loc is None:
             entity = 'cell'
         else:
@@ -2146,19 +2210,26 @@ class System(object):
         n_dofs = self.__element.n_dofs()               
         n_points = x_ref.shape[0] 
         phi = np.zeros((n_points,n_dofs))
-        if len(derivatives) == 1:
+        if derivatives[0] == 0:
             #
             # No derivatives
             #
             for i in range(n_dofs):
                 phi[:,i] = self.__element.phi(i,x_ref)  
-        elif len(derivatives) == 2:
+        elif derivatives[0] == 1:
             # 
             # First derivatives
             #
             i_var = derivatives[1]
             for i in range(n_dofs):
-                phi[:,i] = self.__element.dphi(i,x_ref,var=i_var)        
+                phi[:,i] = self.__element.dphi(i,x_ref,var=i_var)
+        elif derivatives[0]==2:
+            #
+            # Second derivatives
+            #         
+            for i in range(n_dofs):
+                phi[:,i] = self.__element.d2phi(i,x_ref,derivatives[1:])
+                    
         if for_quadrature and self.__phi[entity][derivatives] is None:
             #
             # Store shape function (at quadrature points) for future use
