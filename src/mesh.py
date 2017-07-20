@@ -100,6 +100,13 @@ class Mesh(object):
         """
         return self.__root_node
         
+    
+    def on_boundary(self, x):
+        """
+        Returns True if point
+        """
+        pass
+        
         
     def unmark(self, nodes=False, quadcells=False, quadedges=False, quadvertices=False,
                tricells=False, triedges=False, trivertices=False, all_entities=False):

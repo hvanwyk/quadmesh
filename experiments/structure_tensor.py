@@ -85,7 +85,17 @@ ayy = RectBivariateSpline(xi, yi, Ayy, kx=1, ky=1)
 tau = (axx.ev, axy.ev, ayy.ev)
 
 mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(120,160))
+#mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(30,40))
 mesh.refine()
+"""
+for node in mesh.root_node().find_leaves():
+    cell = node.quadcell()
+    x0,x1,y0,y1 = cell.box()
+    if (x0>80) and (x1<120) and (y0>100) and (y1<140):
+        node.mark(1)
+mesh.refine(1)   
+mesh.refine(1)
+"""    
 element = QuadFE(2,'Q2')
 alpha = 2
 kappa = 1
@@ -98,7 +108,7 @@ A = system.assemble(bilinear_forms=bf)
 bf = [(f,'u','v')]
 M = system.assemble(bilinear_forms=bf)
 n = system.get_n_nodes()
-Z = np.random.normal(loc=0.25, scale=0.1, size=(n,))
+Z = np.random.normal(loc=0.25, scale=0.01, size=(n,))
 
 X = spla.spsolve(A.tocsc(), M.dot(Z))
 
@@ -106,7 +116,7 @@ X = spla.spsolve(A.tocsc(), M.dot(Z))
 fig = plt.figure(1)
 ax = fig.add_subplot(111)
 plot = Plot()
-plot.function(ax,X,mesh,element=element)
+plot.contour(ax,fig, X,mesh,element=element)
 plt.show()
 """
 for ix in np.arange(0,nx,dx):
