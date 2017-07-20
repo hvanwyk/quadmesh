@@ -62,6 +62,24 @@ def example_1():
     x = system.dof_vertices()
     ue = u(x[:,0],x[:,1])
     
+    #
+    # Compute the residuals on each cell
+    # 
+    for node in mesh.root_node().find_leaves():
+        #
+        # Cell residual (f+uxx+uyy)
+        # 
+        cell = node.quadcell()
+        x_loc = system.x_loc(cell)
+        dofs = system.get_global_dofs(node)
+        uxx_gauss = system.f_eval_loc(ua[dofs], cell, derivatives=(2,0,0))
+        uyy_gauss = system.f_eval_loc(ua[dofs], cell, derivatives=(2,1,1))
+        res_cell = system.form_eval((f,'v'), node) + \
+                   system.form_eval(((uxx_gauss,),'v'), node) + \
+                   system.form_eval(((uyy_gauss,),'v'), node)
+        
+        for direction in ['W','E','S','N']:
+            
     rule2d = GaussRule(9,shape='quadrilateral')
     cell = QuadCell(box=[-1,1,-1,1])
     x_phys = rule2d.map(cell)

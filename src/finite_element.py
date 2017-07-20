@@ -2097,7 +2097,7 @@ class System(object):
      
     def x_loc(self,cell):
         """
-        Return the nodes corresponding to the local cell dofs 
+        Return the vertices corresponding to the local cell dofs 
         """   
         x_ref = self.__element.reference_nodes()
         return self.__rule_2d.map(cell,x=x_ref)
@@ -2318,8 +2318,8 @@ class System(object):
             derivatives: tuple specifying the order of the derivative and 
                 the variable 
                 [(0,)]: function evaluation, 
-                (1,0) : 1st derivative wrt first variable, or 
-                (1,1) : 1st derivative wrt second variable
+                (1,i) : 1st derivative wrt ith variable (i=0,1), or 
+                (2,i,j) : 2nd derivative wrt ith and jth variables (i,j=0,1)
                 
             x: Points (on physical entity) at which we evaluate f. By default,
                 x are the Gaussian quadrature points.
@@ -2418,21 +2418,17 @@ class System(object):
         # kernel
         # 
         f = form[0]
-        """
-        if len(f) == self.get_n_nodes():
+        if type(f) is tuple:
             #
-            # Nodal function defined on dof vertices
+            # Kernel already specified: f = (kernel,)
             # 
-            cell_dofs = self.get_global_dofs(node)
-            f = f[cell_dofs]
-        elif len(f) == self.__mesh.get_number_of_cells():
-            #
-            # Piecewise constant function, defined on cells
-            #
-            # TODO: Piecewise Constant functions 
-            pass
-        """
-        kernel = self.f_eval_loc(f,cell=cell, edge_loc=edge_loc)
+            kernel = f[0]
+            kernel_size = len(kernel)
+            assert kernel_size==self.__n_gauss_1d or\
+                kernel_size==self.__n_gauss_2d, \
+                'Kernel size not compatible with quadrature rule.'
+        else:
+            kernel = self.f_eval_loc(f,cell=cell, edge_loc=edge_loc)
         
         if len(form) > 1:
             #
@@ -2514,6 +2510,24 @@ class System(object):
                 return (1,1)
             else:
                 raise Exception('Only two variables allowed.')
+        elif len(s) == 3:
+            #
+            # Second derivative
+            # 
+            if s[1]=='x' and s[2]=='x':
+                # f_xx
+                return (2,0,0)
+            elif s[1]=='x' and s[2]=='y':
+                # f_xy
+                return (2,0,1)
+            elif s[1]=='y' and s[2]=='x':
+                # f_yx
+                return (2,1,0)
+            elif s[1]=='y' and s[2]=='y':
+                # f_yy
+                return (2,1,1)
+            else:
+                raise Exception('Use uxx,uxy,uyx, or uyy or v*.')
         else:
             raise Exception('Higher order derivatives not supported.')
         
