@@ -101,11 +101,43 @@ class Mesh(object):
         return self.__root_node
         
     
-    def on_boundary(self, x):
+    def boundary(self, entity, flag=None):
         """
-        Returns True if point
+        Returns a set of all boundary entities (vertices/edges)
+        
+        Input:
+        
+            entity: str, 'vertices', 'edges', or 'quadcells'
+            
+            flag: 
+            
+        TODO: Add support for tricells
         """
-        pass
+        boundary = set()
+        print(entity)
+        print(len(boundary))
+        for node in self.root_node().find_leaves(flag=flag):
+            cell = node.quadcell()
+            for direction in ['W','E','S','N']:
+                # 
+                # Look in 4 direction
+                # 
+                if node.find_neighbor(direction) is None:
+                    if entity=='quadcells':
+                        boundary.add(cell)
+                        break
+                    
+                    edge = cell.get_edges(direction)
+                    if entity=='edges':
+                        boundary.add(edge)
+                        
+                    if entity=='vertices':
+                        for v in edge.vertices():
+                            boundary.add(np.array(v.coordinate()))
+            print(len(boundary))
+        return boundary
+                        
+
         
         
     def unmark(self, nodes=False, quadcells=False, quadedges=False, quadvertices=False,

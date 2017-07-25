@@ -66,10 +66,10 @@ def sqr_exponential_cov(x,y,sgm=1,l=1,M=None):
     
     """
     d = distance(x,y,M)
-    return np.exp(-d**2/(2*l**2))
+    return sgm**2*np.exp(-d**2/(2*l**2))
 
     
-def exponential_cov(x,y,l,M=None):
+def exponential_cov(x,y,sgm=1, l=0.1, M=None):
     """
     Exponential covariance function
     
@@ -82,7 +82,7 @@ def exponential_cov(x,y,l,M=None):
         l: range parameter
     """
     d = distance(x,y,M)
-    return np.exp(-d/l)
+    return sgm**2*np.exp(-d/l)
 
     
 def matern_cov(x,y,sgm,nu,l,M=None):

@@ -66,7 +66,7 @@ class Plot(object):
         ax.set_ylim(y0-0.1*hy, y1+0.1*hy) 
         
         points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-        rect = plt.Polygon(points, fc='w', edgecolor='k')
+        rect = plt.Polygon(points, fc='darkgrey', edgecolor='k')
         ax.add_patch(rect)
         
         #

@@ -73,7 +73,7 @@ ax.imshow(shale.T, origin='lower', cmap=cm.Greys);
 #
 # Get structure tensor
 # 
-Axx, Axy, Ayy = feature.structure_tensor(shale, sigma=1)
+Axx, Axy, Ayy = feature.structure_tensor(shale, sigma=3)
 nx, ny = Axx.shape
 
 dx, dy = 2, 2
@@ -108,16 +108,25 @@ A = system.assemble(bilinear_forms=bf)
 bf = [(f,'u','v')]
 M = system.assemble(bilinear_forms=bf)
 n = system.get_n_nodes()
-Z = np.random.normal(loc=0.25, scale=0.01, size=(n,))
+Z = np.random.normal(loc=0.25, scale=0.02, size=(n,))
 
 X = spla.spsolve(A.tocsc(), M.dot(Z))
-
+#S = spla.spsolve(A.tocsc(), M.tocsc())
 #X = Gmrf.from_matern_pde(alpha,kappa,mesh,element,tau)
 fig = plt.figure(1)
 ax = fig.add_subplot(111)
 plot = Plot()
 plot.contour(ax,fig, X,mesh,element=element)
+
+"""
+variance = S.diagonal()
+fig = plt.figure()
+ax = fig.add_subplot(111)
+plot.contour(ax, fig, variance, mesh, element)
+ax.set_title('Variance')
+"""
 plt.show()
+
 """
 for ix in np.arange(0,nx,dx):
     for iy in np.arange(0,ny,dy):

@@ -8,7 +8,7 @@ from mesh import Mesh, QuadCell
 from finite_element import QuadFE, System, DofHandler, GaussRule
 from plot import Plot
 import matplotlib.pyplot as plt
-from pyatspi import tablecell
+#from pyatspi import tablecell
 
 def mollifier(x,y):
     """
@@ -45,7 +45,9 @@ def example_1():
     # 
     lf = [(f,'v')]
     bf = [(1,'ux','vx'),(1,'uy','vy')]
-    dir_bnd = lambda x,y: np.ones(x.shape, dtype=np.bool)
+    dir_bnd = lambda x,y: (np.abs(x)<1e-8) + (np.abs(x-1)<1e-8) + \
+                          (np.abs(y)<1e-8) + (np.abs(y-1)<1e-8)
+     
     bc = {'dirichlet': [(dir_bnd,u)], \
           'neumann': None, \
           'robin': None}
@@ -97,20 +99,21 @@ def example_1():
     #
     # Define functional kernel
     # 
-    eps = 1e-1
+    eps = 1e-2
     x_point, y_point = 0.5, 0.5
     J = lambda x,y: mollifier((x_point-x)/eps, (y_point-y)/eps)/eps**2/I
     
     z_linear = [(J,'v')]
     z_bilinear = [(1,'ux','vx')]
     zero = lambda x,y: np.zeros(x.shape)
-    bnd = lambda x,y: np.ones(x.shape, dtype=np.bool) # TODO: Boundary specified incorrectly
+    bnd = lambda x,y: (np.abs(x)<1e-8) + (np.abs(x-1)<1e-8) + \
+                      (np.abs(y)<1e-8) + (np.abs(y-1)<1e-8)
     z_bc = {'dirichlet': [(bnd,zero)] , 'neumann': None , 'robin': None} 
     Az, bz = system_z.assemble(bilinear_forms=z_bilinear, \
                                linear_forms=z_linear, \
                                boundary_conditions=z_bc)
     za = spla.spsolve(Az.tocsc(), bz)
-    print(bz)
+    
     # -------------------------------------------------------------------------
     # Error estimator
     # -------------------------------------------------------------------------
@@ -177,11 +180,11 @@ def example_1():
                 res_edge += system_z.form_eval(((jump*(z_gauss-zh_gauss),),),\
                                                 node, edge_loc=direction)
         
-        print(z_gauss-zh_gauss)        
+                
         cell_errors.append(res_cell-res_edge)
     
     cell_errors = np.array(cell_errors)
-    print(cell_errors)
+    
        
     x = np.linspace(0,1,1000)
     X,Y = np.meshgrid(x,x)
@@ -210,10 +213,13 @@ def example_1():
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     plot.surface(ax, J(x[:,0],x[:,1]), mesh, element_z, shading=False, grid=True) 
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    plot.surface(ax, np.array(cell_errors), mesh, element_z)
+    
     plt.show()
-    
-    
-    
+
 def example_2():
     """
     Oden et al

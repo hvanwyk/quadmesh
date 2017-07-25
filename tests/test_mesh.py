@@ -67,14 +67,45 @@ class TestMesh(unittest.TestCase):
         mesh.unmark(nodes=True)
         mesh.root_node().children[(1,0)].mark()
         mesh.coarsen()
+    
         
-        
+    def test_mesh_box(self):
+        pass
+    
+    
     def test_mesh_grid_size(self):
         pass 
     
     
-    def test_mesh_node(self):
+    def test_mesh_depth(self):
         pass
+    
+    
+    def test_mesh_get_number_of_cells(self):
+        pass
+    
+        
+    def test_mesh_root_node(self):
+        pass
+    
+    
+    def test_mesh_boundary(self):
+        # TODO: Finish
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        mesh.root_node().children['SW'].remove()
+        mesh.root_node().info()
+        for leaf in mesh.root_node().find_leaves():
+            leaf.info()
+        """
+        fig, ax = plt.subplots()
+        plot = Plot()
+        plot.mesh(ax,mesh)
+        plt.show()
+        """
+        print(len(mesh.boundary('vertices')))
+        print(len(mesh.boundary('edges')))
+        print(len(mesh.boundary('quadcells')))
     
 
     def test_mesh_tree_structure(self):
