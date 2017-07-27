@@ -8,7 +8,7 @@ from mesh import Mesh, QuadCell
 from finite_element import QuadFE, System, DofHandler, GaussRule
 from plot import Plot
 import matplotlib.pyplot as plt
-#from pyatspi import tablecell
+
 
 def mollifier(x,y):
     """
