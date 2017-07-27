@@ -318,7 +318,7 @@ class TestGmrf(unittest.TestCase):
         from plot import Plot
         fig, ax = plt.subplots()
         plot = Plot()
-        plot.contour(ax, Xsmpl, mesh, element)
+        plot.contour(ax, fig, Xsmpl, mesh, element)
         plt.show()
         #Q = X.matern_precision(mesh, element, alpha, kappa)
         #Q = Q.tocsc()

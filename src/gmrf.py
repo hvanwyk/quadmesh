@@ -126,7 +126,7 @@ def distance(x,y,M=None):
     
     Inputs: 
     
-        x,y: (1,n) colum vectors
+        x,y: (n,dim) column vectors
         
         M: double, (2,2) positive semidefinite matrix
         
@@ -827,6 +827,8 @@ class Gmrf(object):
         Output:
         
             X: Gmrf, conditioned random field. 
+            
+        TODO: Unfinished
         """
         if constraint_type == 'pointwise':
             i_b, x_b = constraint

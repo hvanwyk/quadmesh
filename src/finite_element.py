@@ -1830,9 +1830,9 @@ class System(object):
                         for bc_neu in bc_neumann:
                             m_neu,g_neu = bc_neu 
                             if m_neu(edge):
-                                # -------------------------------------------------
+                                # =============================================
                                 # Neumann edge
-                                # -------------------------------------------------
+                                # 
                                 neumann_edge = True
                                 #
                                 # Update local linear form
