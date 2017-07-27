@@ -73,15 +73,15 @@ ax.imshow(shale.T, origin='lower', cmap=cm.Greys);
 #
 # Get structure tensor
 # 
-Axx, Axy, Ayy = feature.structure_tensor(shale, sigma=3)
+Axx, Axy, Ayy = feature.structure_tensor(shale, sigma=1)
 nx, ny = Axx.shape
 
 dx, dy = 2, 2
 xi = np.arange(0, nx)
 yi = np.arange(0, ny)
-axx = RectBivariateSpline(xi, yi, Axx, kx=1, ky=1)
-axy = RectBivariateSpline(xi, yi, Axy, kx=1, ky=1)
-ayy = RectBivariateSpline(xi, yi, Ayy, kx=1, ky=1)
+axx = RectBivariateSpline(xi, yi, 20*Axx, kx=1, ky=1)
+axy = RectBivariateSpline(xi, yi, 20*Axy, kx=1, ky=1)
+ayy = RectBivariateSpline(xi, yi, 20*Ayy, kx=1, ky=1)
 tau = (axx.ev, axy.ev, ayy.ev)
 
 mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(120,160))

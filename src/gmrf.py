@@ -364,7 +364,6 @@ class Gmrf(object):
                     print('It seems a linalg error occured') 
             else:
                 # Most likely
-                print(covariance)
                 try:
                     self.__f_cov = np.linalg.cholesky(covariance)
                 except np.linalg.linalg.LinAlgError as ex:
@@ -714,14 +713,15 @@ class Gmrf(object):
             raise Exception('For mode, use "precision" or "covariance".')
     
     
-    def kl_expansion(self, k=None):
+    def kl_expansion(self, kernel, k=None):
         """
         Inputs:
         
         Outputs:
         
         """
-        pass
+        mesh = self.mesh()
+        
     
     
     def sample(self, n_samples=None, z=None, mode='precision'):
