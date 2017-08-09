@@ -9,7 +9,7 @@ from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
 #from mpl_toolkits.mplot3d import *
 from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
-#from mpl_toolkits.mplot3d import axes3d # @UnresolvedImport
+from mpl_toolkits.mplot3d import axes3d # @UnresolvedImport
 import numpy as np
 from finite_element import DofHandler, System
 
@@ -251,6 +251,8 @@ class Plot(object):
             ax: axis (don't forget to initialize it using projection='3d')
             
             f: function, 
+            
+            mesh
         """
         x0,x1,y0,y1 = mesh.box()        
         system = System(mesh,element)

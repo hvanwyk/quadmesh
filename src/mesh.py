@@ -1393,6 +1393,127 @@ class Node(object):
         pass
     
 
+class BiCell(object):
+    """
+    Binary tree of sub-intervals in a 1d mesh
+    
+    Attributes:
+    
+        type: str, specifies cell's position in the binary tree
+        
+            ROOT - cell on coarsest level
+            BRANCH - cell has a parent as well as children
+            LEAF - cell on finest refinement level
+            
+        parent: BiCell, of which current cell is a child
+        
+        children: dict, of sub-cells of current cell
+        
+        flags: set, of flags (numbers/strings) associated with cell
+        
+        position: str, position within parent 'L' (left) or 'R' (right)
+        
+        address: list, specifying address within tree
+        
+        vertices: double, dictionary of left and right vertices
+    
+    
+    Methods:
+    
+    
+    Notes: 
+    
+        There are many similarities between BiCells (1d) and Edges (2d) 
+        
+        Once we're done with this, we have to modify 'Node'
+    """
+    
+    
+    
+    
+    def __init__(self, parent=None, position=None, grid_size=None, box=None):
+        """
+        Constructor
+        
+        Inputs:
+        
+            parent: BiCell, parental cell
+            
+            position: str, position within parental cell
+            
+            grid_size: int, number of elements in grid
+            
+            box: double, [x_min, x_max] interval endpoints
+        """
+        # =====================================================================
+        # Tree Attributes
+        # =====================================================================
+        if parent == None:
+            #
+            # ROOT Node
+            # 
+            cell_type = 'ROOT'
+            cell_depth = 0
+            cell_address = []
+            
+            if grid_size == None:
+                children = {'L': None, 'R': None}
+            else:
+                n = grid_size
+                children = {}
+                for i in range(n):
+                    children[i] = None
+            self.grid_size = grid_size
+        else:
+            #
+            # LEAF Node
+            #  
+            position_missing = 'Position within parent cell must be specified.'
+            assert position != None, position_missing
+        
+            cell_type = 'LEAF'
+            # Change parent type (from LEAF)
+            if parent.type == 'LEAF':
+                parent.type = 'BRANCH'
+            
+            cell_depth = parent.depth + 1
+            cell_address = parent.address + [self.pos2id(position)]    
+            children = {'L': None, 'R': None}
+            
+        #
+        # Set attributes
+        # 
+        self.type = cell_type
+        self.parent = parent
+        self.children = children
+        self.depth = cell_depth
+        self.address = cell_address
+        self.position = position
+        self.__flags = set()  
+        
+        
+    def pos2id(self, position):
+        """
+        Convert 'L' and 'R' to 0 and 1 respectively
+        
+        Input:
+        
+            position: str, 'L', or 'R'
+            
+        Output:
+        
+            position: int, 0 (for 'L') or 1 (for 'R')
+        """
+        if position in [0,1]:
+            return position
+        else:
+            assert position in ['L','R'], 'Use "R" or "L" for position'
+            if position == 'L':
+                return 0
+            else:
+                return 1
+            
+        
 class QuadCell(object):
     """
     (Tree of) Rectangular cell(s) in mesh
@@ -2015,7 +2136,7 @@ class QuadCell(object):
         return not self.parent == None
     
     
-    def contains_point(self, points, interior=False):
+    def contains_point(self, points):
         """
         Determine whether the given cell contains a point
         

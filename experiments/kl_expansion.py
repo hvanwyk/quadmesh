@@ -13,15 +13,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.linalg as la
 
+# TODO: WHY DOES ONE SEE THE MESH? PIECEWISE CONTINUOUS??
+
 #
 # Generate mesh and finite elements
 # 
-mesh = Mesh.newmesh(grid_size=(10,10))
+mesh = Mesh.newmesh(grid_size=(30,30))
 mesh.refine()
 mesh.record(0)
 
 box = [0.25,0.5,0.25,0.5]
-for i in range(3):    
+
+for i in range(0):    
     for node in mesh.root_node().find_leaves():
         cell = node.quadcell()
         outside_box = False
@@ -40,45 +43,84 @@ mesh.record(1)
 #
 # Assemble the covariance Matrix
 # 
-element = QuadFE(2,'Q2')
+element = QuadFE(2,'Q1')
 system = System(mesh, element)
 
-C = lambda x,y: sqr_exponential_cov(x, y, sgm=25, l=0.1)
-M = np.array([[4,1],[1,2]])
-x = np.array([1,2]).reshape(-1,2)
-print(x)
-y = np.zeros(x.shape)
-distance(x,y,M)
-system.assemble(bilinear_forms=[(1,'u','v')])
+print('Assembling Mass matrix')
+Cfn = lambda x,y: sqr_exponential_cov(x, y, sgm=0.5, l=0.08)
+M = system.assemble(bilinear_forms=[(1,'u','v')])
 n_nodes = system.get_n_nodes() 
-CC = np.zeros((n_nodes, n_nodes))
-for node in mesh.root_node().find_leaves():
-    node_dofs = system.get_global_dofs(node)
-    n_dofs = len(node_dofs) 
-    cell = node.quadcell()
-    x_loc = system.x_loc(cell)
-    phi = system.shape_eval(cell=cell)
-    rule = system.cell_rule()
-    weights = rule.jacobian(cell)*rule.weights()
-    x_gauss = rule.map(cell, x=rule.nodes())
-    n_gauss = rule.n_nodes() 
-    i,j = np.meshgrid(np.arange(n_gauss), np.arange(n_gauss))
-    C_loc = C(x_gauss[i.ravel(),:],x_gauss[j.ravel(),:]).reshape(n_gauss,n_gauss)
-    W = np.diag(weights)
-    WPhi = W.dot(phi)
-    CC_loc = np.dot(WPhi.T,C_loc.dot(WPhi))
-    for i in range(n_dofs):
-        for j in range(n_dofs):
-            CC[node_dofs[i],node_dofs[j]] = CC_loc[i,j]
+C = np.zeros((n_nodes, n_nodes))
+rule = system.cell_rule()
+n_gauss = rule.n_nodes()
+print('Assembling Covariance Operator')
+for node_1 in mesh.root_node().find_leaves():
+    node_dofs_1 = system.get_global_dofs(node_1)
+    n_dofs_1 = len(node_dofs_1)
+    cell_1 = node_1.quadcell()
     
-U,S,VT = np.linalg.svd(CC)
+    
+    weights_1 = rule.jacobian(cell_1)*rule.weights()
+    x_gauss_1 = rule.map(cell_1, x=rule.nodes())
+    phi_1 = system.shape_eval(cell=cell_1)    
+    WPhi_1 = np.diag(weights_1).dot(phi_1)
+    for node_2 in mesh.root_node().find_leaves():
+        node_dofs_2 = system.get_global_dofs(node_2)
+        n_dofs_2 = len(node_dofs_2)
+        cell_2 = node_2.quadcell()
+        
+        x_gauss_2 = rule.map(cell_2, x=rule.nodes())
+        weights_2 = rule.jacobian(cell_2)*rule.weights()
+        phi_2 = system.shape_eval(cell=cell_2)
+        WPhi_2 = np.diag(weights_2).dot(phi_2)
+        
+        i,j = np.meshgrid(np.arange(n_gauss),np.arange(n_gauss))
+        x1, x2 = x_gauss_1[i.ravel(),:],x_gauss_2[j.ravel(),:]
+        C_loc = Cfn(x1,x2).reshape(n_gauss,n_gauss)
+    
+        CC_loc = np.dot(WPhi_2.T,C_loc.dot(WPhi_1))
+        for i in range(n_dofs_1):
+            for j in range(n_dofs_2):
+                C[node_dofs_1[i],node_dofs_2[j]] += CC_loc[i,j]
+
+
+print('Computing eigen-decomposition')
+lmd, V = la.eigh(C,M.toarray())
+lmd = np.real(lmd)
+lmd[lmd<0] = 0
+
+K = la.solve(M.toarray(),C)    
+#U,D,UT = la.svd(CCC)
 Z = np.random.normal(size=(n_nodes,))
-print(Z.shape)
-X = U.dot(np.diag(np.sqrt(S)).dot(Z))
+
+#plt.semilogy(lmd)
+#plt.show()
+
+
+X = V.dot(np.diag(np.sqrt(lmd)).dot(Z))
   
-fig, ax = plt.subplots(1,3)
+
+print('Plotting field')
+fig = plt.figure()
+
+
 plot = Plot()
-ax[0] = plot.mesh(ax[0], mesh, node_flag=0)
-ax[1] = plot.mesh(ax[1], mesh, node_flag=1)
-ax[2] = plot.contour(ax[2], fig, X, mesh, element)
+ax = fig.add_subplot(1,4,1)
+ax = plot.mesh(ax, mesh, node_flag=0)
+
+ax = fig.add_subplot(1,4,2)
+ax = plot.mesh(ax, mesh, node_flag=1)
+
+#ax = fig.add_subplot(1,4,3, projection='3d')
+#ax = plot.surface(ax, X, mesh, element)
+
+#ax = fig.add_subplot(1,4,4, projection='3d')
+#ax = plot.surface(ax, V[:,-3], mesh, element)
+
+ax = fig.add_subplot(1,4,3)
+ax = plot.contour(ax, fig, X, mesh, element)
+
+ax = fig.add_subplot(1,4,4)
+ax = plot.contour(ax, fig, V[:,-3], mesh, element)
+
 plt.show()
