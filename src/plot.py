@@ -232,7 +232,7 @@ class Plot(object):
                 xy = np.array([x.ravel(), y.ravel()]).transpose()
                 system = System(mesh,element)
                 z = system.f_eval(f, xy, derivatives=derivatives)
-                cm = ax.contourf(x,y,z.reshape(ny,nx),100, cmap='viridis_r')
+                cm = ax.contourf(x,y,z.reshape(ny,nx),100, cmap='viridis')
                 
         if colorbar:
             fig.colorbar(cm, ax=ax)

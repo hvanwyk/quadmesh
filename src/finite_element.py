@@ -1793,13 +1793,24 @@ class System(object):
             #
             # Unpack boundary data
             # 
-            bc_dirichlet = boundary_conditions['dirichlet']
-            bc_neumann = boundary_conditions['neumann']
-            bc_robin = boundary_conditions['robin']
+            if 'dirichlet' in boundary_conditions:
+                bc_dirichlet = boundary_conditions['dirichlet']
+            else:
+                bc_dirichlet = None
+            
+            if 'neumann' in boundary_conditions:
+                bc_neumann = boundary_conditions['neumann']
+            else:
+                bc_neumann = None
+                
+            if 'robin' in boundary_conditions:
+                bc_robin = boundary_conditions['robin']
+            else:
+                bc_robin = None
     
         rows = []
         cols = []
-        dir_nodes_encountered = []
+        dir_dofs_encountered = set()
         for node in self.__mesh.root_node().find_leaves():
             node_dofs = self.__dofhandler.get_global_dofs(node)
             cell = node.quadcell()            
@@ -1830,9 +1841,9 @@ class System(object):
                         for bc_neu in bc_neumann:
                             m_neu,g_neu = bc_neu 
                             if m_neu(edge):
-                                # =============================================
+                                # --------------------------------------------- 
                                 # Neumann edge
-                                # 
+                                # ---------------------------------------------
                                 neumann_edge = True
                                 #
                                 # Update local linear form
@@ -1873,23 +1884,24 @@ class System(object):
                 x_cell = self.__rule_2d.map(cell,x=x_ref) 
                 cell_dofs = np.arange(n_dofs)
                 if bc_dirichlet is not None:
+                    list_dir_dofs_loc = []
                     for bc_dir in bc_dirichlet:
                         m_dir,g_dir = bc_dir
                         is_dirichlet = m_dir(x_cell[:,0],x_cell[:,1])
                         if is_dirichlet.any():
                             dir_nodes_loc = x_cell[is_dirichlet,:]
-                            dir_dofs_loc = cell_dofs[is_dirichlet] 
+                            dir_dofs_loc = cell_dofs[is_dirichlet]
+                            list_dir_dofs_loc.extend(dir_dofs_loc)
                             for j,x_dir in zip(dir_dofs_loc,dir_nodes_loc):
                                 #
                                 # Modify jth row 
                                 #
                                 notj = np.arange(n_dofs)!=j
                                 uj = g_dir(x_dir[0],x_dir[1])
-                                if node_dofs[j] not in dir_nodes_encountered: 
+                                if node_dofs[j] not in dir_dofs_encountered: 
                                     bf_loc[j,j] = 1.0
                                     bf_loc[j,notj]=0.0
                                     lf_loc[j] = uj
-                                    dir_nodes_encountered.append(node_dofs[j])
                                 else:
                                     bf_loc[j,:] = 0.0  # make entire row 0
                                     lf_loc[j] = 0.0
@@ -1897,7 +1909,10 @@ class System(object):
                                 # Modify jth column and right hand side
                                 #
                                 lf_loc[notj] -= bf_loc[notj,j]*uj 
-                                bf_loc[notj,j] = 0.0            
+                                bf_loc[notj,j] = 0.0
+                    
+                    for dof in list_dir_dofs_loc:
+                        dir_dofs_encountered.add(dof)            
             #
             # Local to global mapping
             #
@@ -2030,7 +2045,7 @@ class System(object):
             b = np.delete(b,hn_list,0)
             A._shape = (A._shape[0]-n_hn, A._shape[1]-n_hn)
         
-        return A,b
+        return A.tocoo(),b
             
      
     def resolve_hanging_nodes(self,u):
