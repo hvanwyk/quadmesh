@@ -91,22 +91,22 @@ class TestMesh(unittest.TestCase):
     
     def test_mesh_boundary(self):
         # TODO: Finish
+        """
         mesh = Mesh.newmesh()
         mesh.refine()
         mesh.root_node().children['SW'].remove()
         mesh.root_node().info()
         for leaf in mesh.root_node().find_leaves():
             leaf.info()
-        """
+        
         fig, ax = plt.subplots()
         plot = Plot()
         plot.mesh(ax,mesh)
         plt.show()
-        """
         print(len(mesh.boundary('vertices')))
         print(len(mesh.boundary('edges')))
         print(len(mesh.boundary('quadcells')))
-    
+        """
 
     def test_mesh_tree_structure(self):
         pass
@@ -906,7 +906,20 @@ class TestQuadCell(unittest.TestCase):
                          'Unit normal should be [0,-1].')
         self.assertEqual(np.sum(np.array([0.,1.])-qc.normal(en)),0.0, 
                          'Unit normal should be [0,1].')
-  
+
+    def test_vertices(self):
+        """
+        Return vertices of quadcell
+        
+        TODO: Finish
+        """
+        '''
+        box = [0,1,0,1]
+        q = QuadCell()
+        
+        vertex_west = q.vertices('W', as_array=False)
+        self.assertTrue(vertex_west==q.vertices['W'], 'Incorrect vertex.')
+        '''
           
 class TestTriCell(unittest.TestCase):
     """

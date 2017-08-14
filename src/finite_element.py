@@ -1684,6 +1684,18 @@ class GaussRule(object):
                 jac = (x1-x0)*(y1-y0)
         return jac
         
+ 
+    def rule(self, entity):
+        """
+        Returns the Gauss nodes and weights on a physical entity - QuadCell, 
+        Edge, TriCell, or line segment -  
+        """
+        x_ref = self.map(entity)
+        w = self.weights()
+        jac = self.jacobian(entity)
+        
+        return x_ref, w*jac
+        
     
 class System(object):
     """
@@ -2391,7 +2403,8 @@ class System(object):
                                   edge_loc=edge_loc,x_ref=x_ref) 
             return np.dot(phi,f)                    
         else:
-            raise Exception('Function type not recognized.')
+            fn_type = str('Function type for {0} not recognized.'.format(f))
+            raise Exception(fn_type)
                 
           
     def form_eval(self, form, node, edge_loc=None):
@@ -2411,7 +2424,7 @@ class System(object):
                 
             node: Node, tree node linked to physical cell  
             
-            edge_loc: str, location of edge over        
+            edge_loc: str, location of edge        
         
         Outputs:
         
@@ -2472,14 +2485,15 @@ class System(object):
             
     def cell_rule(self):
         """
-        Return Gauss Rule for cell
-        """    
+        Return GaussRule for cell
+        """
+        
         return self.__rule_2d
     
     
     def edge_rule(self):
         """
-        Return Gauss rule for edge
+        Return GaussRule for edge
         """
         return self.__rule_1d
     

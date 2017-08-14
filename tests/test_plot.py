@@ -48,7 +48,7 @@ class TestPlot(unittest.TestCase):
         mesh.root_node().children[1,1].children['NE'].mark(3)
         
         # Color flagged cells
-        ax[0,1] = plot.mesh(ax[0,1], mesh, color_marked=[1,2,3])
+        ax[0,1] = plot.mesh(ax[0,1], mesh, color_marked=[1,2,3], nested=True)
         
         # Plot vertex numbers
         ax[0,2] = plot.mesh(ax[0,2], mesh, vertex_numbers=True)
@@ -203,7 +203,7 @@ class TestPlot(unittest.TestCase):
                 ax = fig.add_subplot(3,3,3*(j+1)+(i+1), projection='3d')
                 ax = plot.surface(ax, fn, mesh, element,\
                                   derivatives=(1,j))
-                ax.set_title('df_dx%d'%(j))
+                ax.set_title('%s: df_dx%d'%(etype,j))
         
         
         plt.show()

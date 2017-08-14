@@ -7,7 +7,6 @@ Created on Feb 8, 2017
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
-#from mpl_toolkits.mplot3d import *
 from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
 from mpl_toolkits.mplot3d import axes3d # @UnresolvedImport
 import numpy as np
@@ -66,7 +65,7 @@ class Plot(object):
         ax.set_ylim(y0-0.1*hy, y1+0.1*hy) 
         
         points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-        rect = plt.Polygon(points, fc='darkgrey', edgecolor='k')
+        rect = plt.Polygon(points, fc='darkgrey', edgecolor='k', alpha=0.1)
         ax.add_patch(rect)
         
         #
@@ -80,11 +79,16 @@ class Plot(object):
             points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
             if color_marked is not None:
                 count = 0
-                for flag in color_marked:
-                    if node.is_marked(flag):                        
-                        rect = plt.Polygon(points, fc=color_list[count],\
-                                           edgecolor='k')
-                    count += 1
+                if not any(node.is_marked(flag) for flag in color_marked):
+                    # Node contains none of the listed flags -> make it white
+                    rect = plt.Polygon(points, fc='w', ec='k')
+                else:
+                    for flag in color_marked:
+                        if node.is_marked(flag):  
+                            # Color cell                      
+                            rect = plt.Polygon(points, fc=color_list[count],\
+                                               edgecolor='k')    
+                        count += 1
             else:
                 rect = plt.Polygon(points, fc='w', edgecolor='k')
             ax.add_patch(rect)
@@ -118,18 +122,20 @@ class Plot(object):
                     x_pos, y_pos = 0.5*(x0+x1),0.5*(y0+y1)
                     if x0 == x1:
                         # vertical
-                        x_offset = 0.2*np.abs(x1-x0)
+                        x_offset = 0*np.abs(x1-x0)
                         ax.text(x_pos,y_pos-x_offset,str(e_count),
                                 rotation=-90, size='7',
                                 verticalalignment='center',
+                                horizontalalignment='center',
                                 backgroundcolor='w')
                     else:
                         # horizontal
-                        y_offset = 0.2*np.abs(y1-y0)
+                        y_offset = 0*np.abs(y1-y0)
                         #y_offset = 0
                         ax.text(x_pos,y_pos-y_offset,str(e_count),
                                 size='7',
                                 horizontalalignment='center',
+                                verticalalignment='center',
                                 backgroundcolor='w')                 
                     e_count += 1
                 e.mark()
@@ -235,13 +241,13 @@ class Plot(object):
                 cm = ax.contourf(x,y,z.reshape(ny,nx),100, cmap='viridis')
                 
         if colorbar:
-            fig.colorbar(cm, ax=ax)
+            fig.colorbar(cm, ax=ax, format='%.1e')
             
         return fig, ax
     
     
     def surface(self, ax, f, mesh, element, derivatives=(0,), 
-                shading=True, grid=True, resolution=(50,50),
+                shading=True, grid=True, resolution=(10,10),
                 edge_resolution=5):
         """
         Plot the surface of a function defined on the finite element mesh
@@ -272,7 +278,7 @@ class Plot(object):
             z_min, z_max = zz.min(), zz.max()
             
             if grid:
-                alpha = 0.2
+                alpha = 0.5
             else:
                 alpha = 1
             ax.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \

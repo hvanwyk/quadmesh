@@ -104,7 +104,7 @@ def example_1():
     J = lambda x,y: mollifier((x_point-x)/eps, (y_point-y)/eps)/eps**2/I
     
     z_linear = [(J,'v')]
-    z_bilinear = [(1,'ux','vx')]
+    z_bilinear = [(1,'ux','vx'),(1,'uy','vy')]
     zero = lambda x,y: np.zeros(x.shape)
     bnd = lambda x,y: (np.abs(x)<1e-8) + (np.abs(x-1)<1e-8) + \
                       (np.abs(y)<1e-8) + (np.abs(y-1)<1e-8)

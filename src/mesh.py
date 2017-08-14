@@ -391,7 +391,7 @@ class Mesh(object):
                 # Refine selectively according to flag
                 if leaf.is_marked(flag=flag):
                     leaf.split()
-                    leaf.unmark(flag=flag)
+                    #leaf.unmark(flag=flag)
     
     
     def coarsen(self):
@@ -1119,13 +1119,17 @@ class Node(object):
     def is_marked(self,flag=None):
         """
         Check whether a node is marked.
+        
+        Input: 
+        
+            flag: str, int, double
         """
         if flag is None:
             # No flag specified check whether there is any mark
             if self.__flags:
                 return True
             else:
-                return False
+                return False 
         else:
             # Check for the presence of given flag
             return flag in self.__flags           
@@ -1998,7 +2002,65 @@ class QuadCell(object):
         else:
             return self.edges[edge_dict[pos]] 
         
+    
+    def vertices(self, pos=None, as_array=True):
+        """
+        Returns the vertices of the current quadcell. 
         
+        Inputs:
+        
+            pos: str, position of vertex within the cell: 
+                SW, S, SE, E, NE, N, NW, or W. If pos is not specified, return
+                all vertices.
+                
+            as_array: bool, if True, return vertices as a numpy array.
+                Otherwise return a list of Vertex objects. 
+             
+                
+        Outputs: 
+        
+            vertices: 
+        """
+        
+        assert pos in [None, 'SW', 'S', 'SE', 'E', 'NE', 'N', 'NW', 'W'],\
+            'Valid inputs for pos are None, SW, S, SE, E, NE, N, NW, or W'
+        
+        
+        if pos is None: 
+            #
+            # Return all vertices
+            # 
+            vertices = [v for v in self.vertices.values()]
+            if as_array:
+                #
+                # Convert to array
+                #  
+                v = [vertex.coordinate() for vertex in vertices]
+                return np.array(v)
+            else:
+                #
+                # Return as list of Vertex objects
+                #
+                return vertices
+        else:
+            #
+            # Return specific vertex
+            # 
+            vertex = self.vertices[pos]
+            if as_array:
+                #
+                # Convert to array
+                # 
+                v = vertex.coordinate()
+                return np.array(v)
+            else:
+                #
+                # Return vertex object
+                # 
+                return vertex
+        
+    
+    
     def find_neighbor(self, direction):
         """
         Returns the deepest neighboring cell, whose depth is at most that of the
@@ -2857,8 +2919,7 @@ class Edge(object):
     
     '''
     
-    def __init__(self, v1, v2, 
-                 parent=None, on_boundary=None):
+    def __init__(self, v1, v2, parent=None):
         """
         Description: Constructor
         
