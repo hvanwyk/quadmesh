@@ -597,7 +597,7 @@ class TestSystem(unittest.TestCase):
             s = System(mesh,element)
             x = s.dof_vertices()
             ui = u(x[:,0],x[:,1])
-            n_dofs = s.get_n_nodes()
+            n_dofs = s.n_dofs()
             #
             # Assemble without boundary conditions
             # 
@@ -731,7 +731,7 @@ class TestSystem(unittest.TestCase):
             v = test_functions[etype]
             ui = u(x[:,0],x[:,1])
             vi = v(x[:,0],x[:,1])
-            n_nodes = s.get_n_nodes()
+            n_nodes = s.n_dofs()
             for i in range(3):
                 A = s.assemble(bilinear_forms=[bf_list[i]])
                 AA = np.zeros((n_nodes,n_nodes))

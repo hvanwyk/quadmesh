@@ -2094,7 +2094,7 @@ class System(object):
         return uu   
     
         
-    def get_n_nodes(self):
+    def n_dofs(self):
         """
         Return the number of dofs 
         """
@@ -2308,7 +2308,7 @@ class System(object):
                 in_cell = cell.contains_point(x)
                 f_vec[in_cell] = f[count]
                 count += 1 
-        elif len(f)==self.get_n_nodes():
+        elif len(f)==self.n_dofs():
             #
             # Nodal function
             # 

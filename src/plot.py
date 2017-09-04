@@ -305,7 +305,7 @@ class Plot(object):
                         'Discretize before plotting derivatives.'
                     f_loc = f
                     
-                elif len(f)==system.get_n_nodes():
+                elif len(f)==system.n_dofs():
                     #
                     # Nodal function
                     #
