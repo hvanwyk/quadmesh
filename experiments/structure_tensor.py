@@ -84,7 +84,7 @@ axy = RectBivariateSpline(xi, yi, 20*Axy, kx=1, ky=1)
 ayy = RectBivariateSpline(xi, yi, 20*Ayy, kx=1, ky=1)
 tau = (axx.ev, axy.ev, ayy.ev)
 
-mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(120,160))
+mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(240,320))
 #mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(30,40))
 mesh.refine()
 """
@@ -96,7 +96,7 @@ for node in mesh.root_node().find_leaves():
 mesh.refine(1)   
 mesh.refine(1)
 """    
-element = QuadFE(2,'Q2')
+element = QuadFE(2,'Q1')
 alpha = 2
 kappa = 1
 gmma = 4*np.pi
@@ -116,7 +116,7 @@ X = spla.spsolve(A.tocsc(), M.dot(Z))
 fig = plt.figure(1)
 ax = fig.add_subplot(111)
 plot = Plot()
-plot.contour(ax,fig, X,mesh,element=element)
+plot.contour(ax,fig, X, mesh, element=element)
 
 """
 variance = S.diagonal()

@@ -20,8 +20,7 @@ import numpy as np
 # Problem parameters
 # 
 k = 3.2  # diffusivity
-v = 3.1  # velocity
-
+v = 3
 # Boundary marker functions
 def bnd_inflow(x,y):
     return (np.abs(x-0)<1e-7)
