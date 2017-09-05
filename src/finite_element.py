@@ -1788,8 +1788,7 @@ class System(object):
         TODO: Include option to assemble multiple matrices     
         """        
         n_nodes = self.__dofhandler.n_dofs()
-        n_dofs = self.__element.n_dofs()   
-  
+        n_dofs = self.__element.n_dofs()     
         #
         # Determine the forms to assemble
         #
@@ -2481,7 +2480,16 @@ class System(object):
                 return self.linear_loc(weight,kernel,test)
         else:
             return np.sum(kernel*weight)   
+    
+    
+    def classify_function(self, f):
+        """
+        Determine  
+        """    
+        if f is tuple:
+            pass
         
+    
             
     def cell_rule(self):
         """
@@ -2503,6 +2511,8 @@ class System(object):
         Turn a specific entity (QuadCell or Edge) into a generic one
         e.g. Quadcell --> 'cell'
              (Edge, direction) --> ('edge',direction)
+             
+        TODO: Is this superfluous? 
         """ 
         if isinstance(entity, QuadCell):
             return 'cell'
@@ -2511,11 +2521,13 @@ class System(object):
         else:
             raise Exception('Entity not supported.')
         
+        
     def parse_derivative_info(self, dstring):
         """
         Input:
         
-            dstring: string of the form u,ux,uy,v,vx, or vy.
+            string: string of the form *,*x,*y,*xx, *xy, *yx, *yy, where * 
+                stands for any letter.
             
         Output: 
         
