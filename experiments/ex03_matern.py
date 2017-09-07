@@ -57,7 +57,7 @@ def test03():
     
     lf = [(Z,'v')]
                                                                         
-    #A, b = system.assemble(bilinear_forms=bf, linear_forms=lf)
+    A, b = system.assemble(bilinear_forms=bf, linear_forms=lf)
     
     
     fig, ax = plt.subplots()

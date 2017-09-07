@@ -1,7 +1,7 @@
 import numpy as np
 from scipy import sparse, linalg
 import numbers
-from mesh import QuadCell, Edge
+from mesh import QuadCell, Edge, Vertex
 from bisect import bisect_left       
 from _operator import index
 from itertools import count
@@ -681,6 +681,100 @@ class TriFE(FiniteElement):
                 return self.__phiy[n](*x)
             else:
                 raise Exception('Can only differentiate wrt variable 0 or 1.')
+
+
+class Function(object):
+    """
+    Function class for finite element objects.
+    """
+    def __init__(self, f, mesh=None, element=None):
+        """
+        Constructor: 
+        """
+        self.mesh = mesh
+        self.element = element 
+        self.dofhandler = DofHandler(mesh, element)
+        
+        #
+        # Determine function type
+        # 
+        if callable(f):       
+            # Explicit function
+            fn_type = 'function'
+        elif len(f)==mesh.n_cells():
+            # Mesh function
+            # TODO: Use piecewise constant elements! 
+            fn_type = 'mesh' 
+        elif len(f)==self.dofhandler.n_dofs():
+            # Nodal function
+            fn_type = 'nodal'
+        else:
+            raise Exception('Function must be explicit, nodal, or cellwise.')
+        
+        self.__f = f
+        self.__type = fn_type
+          
+        
+           
+    def eval(self, x, node=None, derivative=None):
+        """
+        Evaluate function at a point x
+        
+        Inputs:
+        
+            x: double, function input in the form of an (n_points, dim) array,
+                or a list of vertices or a list of tuples.
+            
+            node: Node, on which f is evaluated. If included, all points in x
+                should be contained in the cell associated with the node. 
+                
+            derivative: int, tuple specifying derivatives 
+            
+        
+        Output:
+        
+            f(x), function output
+            
+            
+        NOTE: Only 2D supported
+        """
+    
+        # Convert input to array
+        if type(x) is list:
+            # Points in list
+            if all(isinstance(xi, Vertex) for xi in x):
+                # All points are of type vertex
+                x = [xi.coordinate() for xi in x]
+                x = np.array(x)
+            elif all(type(xi) is tuple for xi in x):
+                # All points are tuples
+                x = np.array(x)
+            else:
+                raise Exception(['For x, use arrays or lists'+\
+                                 'of tuples or vertices.'])
+        
+        elif type(x) is np.ndarray:
+            # Make sure dimensions are compatible
+            assert x.shape[1] == 2 
+        
+        
+        # Parse function type
+        if self.__type == 'function':
+            # Explicit function 
+            assert derivative==(0,), \
+                    'Unable to take derivatives of function directly.'
+            return self.__f(x[:,0], x[:,1])
+        elif self.__type == 'mesh':
+            # Mesh function defined on each cell
+            pass
+        elif self.__type == 'nodal':
+            # Nodal function defined at dof vertices
+            pass
+    
+     
+        
+     
+        
 
 
 class DofHandler(object):
@@ -2295,7 +2389,7 @@ class System(object):
                 f_vec = f(x[:,0],x[:,1])
             else:
                 raise Exception('Only 1D and 2D points supported.')
-        elif len(f)==self.__mesh.get_number_of_cells():
+        elif len(f)==self.__mesh.n_cells():
             #
             # Mesh function
             # 

@@ -83,7 +83,7 @@ class Mesh(object):
         return self.__root_node.max_depth()
     
         
-    def get_number_of_cells(self):
+    def n_cells(self):
         """
         Return the number of cells
         """
@@ -243,6 +243,25 @@ class Mesh(object):
             
         self.__triangulated = True
     
+    
+    def nodes(self, flag=None, nested=False):
+        """
+        Iterate over mesh nodes
+        
+        Inputs:
+        
+            flag: int/str, marker for the nodes to return
+            
+            nested: bool, nested traversal of tree (TRUE) 
+                or only LEAF nodes (FALSE) 
+                
+                
+        Outputs: 
+            
+            nodes: list, of (marked/unmarked) tree nodes.
+        """
+        return self.root_node().find_leaves(flag=flag, nested=nested)
+         
     
     def iter_quadcells(self, flag=None, nested=False):
         """

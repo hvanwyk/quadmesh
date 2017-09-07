@@ -47,7 +47,7 @@ element = QuadFE(2,'Q1')
 system = System(mesh, element)
 
 print('Assembling Mass matrix')
-Cfn = lambda x,y: sqr_exponential_cov(x, y, sgm=0.5, l=0.08)
+Cfn = lambda x,y: sqr_exponential_cov(x, y, sgm=0.5, l=0.01)
 M = system.assemble(bilinear_forms=[(1,'u','v')])
 n_nodes = system.n_dofs() 
 C = np.zeros((n_nodes, n_nodes))

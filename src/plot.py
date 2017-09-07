@@ -214,7 +214,7 @@ class Plot(object):
             #
             # A vector
             #
-            if len(f)==mesh.get_number_of_cells():
+            if len(f)==mesh.n_cells():
                 #
                 # Mesh function 
                 #
@@ -311,7 +311,7 @@ class Plot(object):
                     #
                     f_loc = f[system.get_global_dofs(node)]
             
-                elif len(f)==mesh.get_number_of_cells():
+                elif len(f)==mesh.n_cells():
                     #
                     # Mesh function
                     #
