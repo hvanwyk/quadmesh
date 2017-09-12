@@ -30,8 +30,18 @@ class TestQuadFE(unittest.TestCase):
     """
     Test QuadFE class
     """   
+    def test_local_dof_matrix(self):
+        element_types = ['Q0', 'Q1', 'Q2', 'Q3']
+        for dim in [2]:
+            for etype in element_types:
+                element = QuadFE(dim, etype)
+                
+                
     def test_element_type(self):
-        pass
+        for etype in ['Q0', 'Q1', 'Q2', 'Q3']:
+            element = QuadFE(2, etype)
+            self.assertEqual(element.element_type(),etype,\
+                             'Element type not correct.')
     
     
     def test_polynomial_degree(self):
@@ -51,6 +61,7 @@ class TestQuadFE(unittest.TestCase):
      
      
     def test_loc_dofs_on_edge(self):
+        # Done
         edge_dofs_exact = {'Q1': {'W':[0,2],'E':[1,3],'S':[0,1],'N':[2,3]},
                            'Q2': {'W':[0,2,4],'E':[1,3,5],\
                                   'S':[0,1,6],'N':[2,3,7]},
@@ -150,11 +161,10 @@ class TestQuadFE(unittest.TestCase):
             self.assertTrue(np.allclose(f_vals,f_interp),\
                             'Coarse cell interpolation incorrect.')
             
-            #print(cc)        
                       
                         
     def test_phi(self):
-        for etype in ['Q1','Q2','Q3']:
+        for etype in ['Q0','Q1','Q2','Q3']:
             element = QuadFE(2,etype)
             n_dofs = element.n_dofs()
             I = np.eye(n_dofs)
@@ -181,6 +191,57 @@ class TestQuadFE(unittest.TestCase):
         """
         pass
     
+    
+    def test_shape(self):
+        """
+        Test shape functions
+        """
+        test_functions = {'Q1': (lambda x,y: (x+1)*(y-1), lambda x,y: y-1, \
+                                 lambda x,y: x+1), 
+                          'Q2': (lambda x,y: x**2 -1, lambda x,y: 2*x, \
+                                 lambda x,y: 0*x),
+                          'Q3': (lambda x,y: x**3 - y**3, lambda x,y: 3*x**2, \
+                                 lambda x,y: -3*y**2)}
+        #
+        # Over reference cell
+        # 
+        cell_integrals = {'Q1': [-0.75,-0.5,1.5], 
+                          'Q2': [-2/3.,1.0,0.0],
+                          'Q3': [0.,1.0,-1.0]}
+        
+        derivatives = [(0,),(1,0),(1,1)] 
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2,etype)
+            n_dofs = element.n_dofs()
+            x_ref = element.reference_nodes()
+            #
+            # Sanity check
+            # 
+            I = np.eye(n_dofs)
+            self.assertTrue(np.allclose(element.shape(x_ref),I),\
+                            'Shape functions incorrect at reference nodes.')
+            y = np.random.rand(5,2)
+            rule2d = GaussRule(9, element=element)
+            weights = rule2d.weights()
+            x_gauss = rule2d.nodes()
+            f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1])
+            for i in range(3):
+                phi = element.shape(y, derivatives=derivatives[i])
+                f = test_functions[etype][i]
+                #
+                # Interpolation
+                #
+                fvals = f(y[:,0],y[:,1])            
+                self.assertTrue(np.allclose(np.dot(phi,f_nodes),fvals),\
+                                'Shape function interpolation failed.')
+                #
+                # Integration
+                #
+                phi = element.shape(x_gauss, derivatives=derivatives[i])  
+                self.assertAlmostEqual(np.dot(weights,np.dot(phi,f_nodes)),\
+                                 cell_integrals[etype][i],places=8,\
+                                 msg='Incorrect integral.')
+        
     
 class TestTriFE(unittest.TestCase):
     """
@@ -590,7 +651,7 @@ class TestSystem(unittest.TestCase):
         f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))+u(x,y)  # forcing term
         bf = [(1,'ux','vx'),(1,'uy','vy'),(1,'u','v')]  # bilinear forms
         lf = [(f,'v')]  # linear forms
-        cell = mesh.root_quadcell()
+        cell = mesh.root_node().quadcell()
         node = mesh.root_node()
         for etype in ['Q2','Q3']:
             element = QuadFE(2,etype)
@@ -871,7 +932,7 @@ class TestSystem(unittest.TestCase):
                                'Q3': [-0.25,0.0,-1.0]} 
         derivatives = [(0,),(1,0),(1,1)]
         mesh = Mesh.newmesh()
-        cell = mesh.root_quadcell() 
+        cell = mesh.root_node().quadcell() 
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
             system = System(mesh,element)
@@ -943,7 +1004,7 @@ class TestSystem(unittest.TestCase):
         # Over arbitrary cell
         #
         mesh = Mesh.newmesh(box=[1,4,1,3])
-        cell = mesh.root_quadcell()
+        cell = mesh.root_node().quadcell()
         y = np.random.rand(5,2)
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
@@ -961,7 +1022,7 @@ class TestSystem(unittest.TestCase):
                 self.assertTrue(np.allclose(np.dot(phi,f_nodes),f_vals),\
                                 'Shape function interpolation failed.')
         mesh = Mesh.newmesh(box=[0,0.5,0,0.5])
-        cell = mesh.root_quadcell()
+        cell = mesh.root_node().quadcell()
         node = mesh.root_node()
         u = lambda x,y: x*y**2
         v = lambda x,y: x**2*y
@@ -1016,7 +1077,7 @@ class TestSystem(unittest.TestCase):
             
     def test_f_eval_loc(self):
         mesh = Mesh.newmesh()
-        cell = mesh.root_quadcell()
+        cell = mesh.root_node().quadcell()
         node = mesh.root_node()
         test_functions = {'Q1': lambda x,y: (2+x)*(y-3),
                           'Q2': lambda x,y: (2+x**2+x)*(y-2)**2,
@@ -1085,7 +1146,7 @@ class TestSystem(unittest.TestCase):
         edge_integrals = {'Q1': [3,3/2], 
                           'Q2': [30,30], 
                           'Q3': [240,360]}
-        cell = mesh.root_quadcell() 
+        cell = mesh.root_node().quadcell() 
         node = mesh.root_node()
         f = lambda x,y: (x-1)*(y-1)**2
         for etype in ['Q1','Q2','Q3']:
@@ -1162,7 +1223,7 @@ class TestSystem(unittest.TestCase):
         mesh = Mesh.newmesh(box=[1,4,1,3])
         element = QuadFE(2,'Q1')
         system = System(mesh,element)
-        cell = mesh.root_quadcell()
+        cell = mesh.root_node().quadcell()
         node = mesh.root_node()
         A = system.form_eval((1,'ux','vx'),node)
         #
@@ -1188,7 +1249,7 @@ class TestSystem(unittest.TestCase):
         mesh = Mesh.newmesh()
         element = QuadFE(2,'Q1')
         system = System(mesh, element)
-        cell = mesh.root_quadcell()
+        cell = mesh.root_node().quadcell()
         self.assertEqual(system.make_generic(cell), 'cell', \
                          'Cannot convert cell to "cell"')
         for direction in ['W','E','S','N']:

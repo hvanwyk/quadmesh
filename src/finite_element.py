@@ -52,12 +52,22 @@ class QuadFE(FiniteElement):
             
             TODO: Finish
             """
-            p = lambda x: np.ones(shape=x.shape)
-            px = lambda x: np.zeros(shape=x.shape)
+            p = [lambda x: np.ones(shape=x.shape)]
+            px = [lambda x: np.zeros(shape=x.shape)]
+            pxx = [lambda x: np.zeros(shape=x.shape)]
             dofs_per_vertex = 0
             dofs_per_edge = 0
             dofs_per_cell = 1
-         
+            if dim == 1: 
+                basis_index = [0]
+                ref_nodes = 0.5
+            elif dim == 2: 
+                basis_index = [(0,0)]
+                ref_nodes = np.array([[0.5, 0.5]])
+                pattern = ['I']
+            else:
+                raise Exception('Only 1D and 2D supported.')
+                
         elif element_type == 'Q1':
             """
             -------------------------------------------------------------------
@@ -231,8 +241,10 @@ class QuadFE(FiniteElement):
             #
             # Vertices upside down Z
             #
-            local_dof_matrix[[0,0,-1,-1],[0,-1,0,-1]] = np.arange(4)
-            count += 4
+            dpv = self.n_dofs('vertex')
+            if dpv > 0:
+                local_dof_matrix[[0,0,-1,-1],[0,-1,0,-1]] = np.arange(0,4*dpv)
+                count += 4*dpv
             
             #
             # Edges
@@ -275,7 +287,7 @@ class QuadFE(FiniteElement):
     
     def element_type(self):
         """
-        Return the finite element type (Q1, Q2, or Q3)
+        Return the finite element type (Q0, Q1, Q2, or Q3)
         """ 
         return self.__element_type
     
@@ -472,11 +484,115 @@ class QuadFE(FiniteElement):
                 #
                 return self.__p[i1](x[:,0])*self.__pxx[i2](x[:,1])
          
-         
+    
+    def shape(self, x, derivatives=(0,), local_dofs='all'):
+        """
+        Evaluate all shape functions at a given 
+        
+        Inputs: 
+        
+            x: double, points at which shape functions are to be evaluated. 
+                forms
+                    - (n_points, n_dim) array, or
+                    - list of n_points n_dim-tuples,
+                    - list of n_points vertices
+                        
+            local_dofs: int, list of local dof indices whose entries in
+                range(self.n_dofs).
+                
+                
+        Output: 
+        
+        phi: double, (n_points, len(local_dofs)) array of shape functions,
+            evaluated at the given points.
+        """
+        #
+        # Convert x to array
+        #
+        if type(x) is np.ndarray:
+            x_ref = x
+            n_points, n_dim = x_ref.shape 
+        elif type(x) is list:
+            n_points = len(list)
+            if type(x[0]) is tuple:
+                #
+                # Convert tuples to array
+                # 
+                assert all(type(xi) is tuple for xi in x), \
+                    'List entries should all be tuples.'
+                x_ref = np.array(x)
+            elif isinstance(x[0], Vertex):
+                #
+                # Convert Vertex objects to array
+                #
+                assert all(isinstance(xi,Vertex) for xi in x),\
+                    'List entries should all be Vertex class' 
+                n_dim = len(x[0].coordinate())
+                x_ref = np.empty((n_points,n_dim))
+                for i in range(n_points):
+                    x_ref[i,:] = x[i].coordinate()
+            else:        
+                raise Exception('Only lists of tuples or ' + \
+                                'Vertex objects allowed')
+        else:
+            raise Exception('Only arrays, or lists of tuples'+ \
+                            'or Vertex objects allowed.')
+        
+        
+        #
+        # Check whether points lie in reference domain. 
+        #
+        assert all(x_ref.ravel() >= 0), 'All entries should be nonnegative.'
+        assert all(x_ref.ravel() <= 1), 'All entries should be at most 1.'
+        
+        #
+        # Check local_dof numbers
+        # 
+        n_dofs = self.n_dofs()
+        if local_dofs=='all':
+            #
+            # No local dofs given: use them all
+            # 
+            local_dofs = range(n_dofs)
+        else:
+            #
+            # Local dofs given: check if they're ok.
+            # 
+            all(type(i) is np.int for i in local_dofs),
+            'Local dofs must be of type int.'
+            
+            all((i>=0) and (i<=n_dofs) for i in local_dofs),
+            'Local dofs not in range.'
+            
+        phi = np.zeros((n_points,n_dofs))
+        if derivatives[0] == 0:
+            #
+            # No derivatives
+            #
+            for i in range(n_dofs):
+                phi[:,i] = self.phi(i,x_ref)  
+        elif derivatives[0] == 1:
+            # 
+            # First derivatives
+            #
+            i_var = derivatives[1]
+            for i in range(n_dofs):
+                phi[:,i] = self.dphi(i,x_ref,var=i_var)
+        elif derivatives[0]==2:
+            #
+            # Second derivatives
+            #         
+            for i in range(n_dofs):
+                phi[:,i] = self.d2phi(i,x_ref,derivatives[1:])
+        
+        return phi
+            
+            
     def constraint_coefficients(self):
         """
         Returns the constraint coefficients of a typical bisected edge. 
-        Vertices on the coarse edge are numbered in increasing order, e.g. 0,1,2,3 for Q2,
+        Vertices on the coarse edge are numbered in increasing order, 
+        e.g. 0,1,2,3 for Q2,
         
         Output:
         
@@ -689,18 +805,19 @@ class Function(object):
     """
     def __init__(self, f, mesh=None, element=None):
         """
-        Constructor: 
+        Constructor:        
+        
         """
         self.mesh = mesh
         self.element = element 
         self.dofhandler = DofHandler(mesh, element)
-        
+        self.dofhandler.distribute_dofs()
         #
         # Determine function type
         # 
         if callable(f):       
             # Explicit function
-            fn_type = 'function'
+            fn_type = 'explicit'
         elif len(f)==mesh.n_cells():
             # Mesh function
             # TODO: Use piecewise constant elements! 
@@ -709,6 +826,8 @@ class Function(object):
             # Nodal function
             fn_type = 'nodal'
         else:
+            print('Number of entries in f {0}'.format(len(f)))
+            print('Number of dofs {0}'.format(self.dofhandler.n_dofs()))
             raise Exception('Function must be explicit, nodal, or cellwise.')
         
         self.__f = f
@@ -733,10 +852,8 @@ class Function(object):
         
         Output:
         
-            f(x), function output
+            f(x): (n_points, ) array of outputs
             
-            
-        NOTE: Only 2D supported
         """
     
         # Convert input to array
@@ -757,21 +874,64 @@ class Function(object):
             # Make sure dimensions are compatible
             assert x.shape[1] == 2 
         
-        
+        if node is not None:
+            assert all(node.quadcell().contains_point(x)), \
+            'Node specified, but not all points contained in node.'
+            
+            
         # Parse function type
         if self.__type == 'function':
-            # Explicit function 
+            #
+            # Explicit function
+            # 
             assert derivative==(0,), \
                     'Unable to take derivatives of function directly.'
-            return self.__f(x[:,0], x[:,1])
+            f_vec = self.__f(x[:,0], x[:,1])
         elif self.__type == 'mesh':
+            #
             # Mesh function defined on each cell
-            pass
+            # 
+            f_vec = np.empty(x.shape[0])
+            f_vec[:] = np.nan
+            count = 0
+            for node in self.mesh.nodes():
+                cell = node.quadcell()
+                in_cell = cell.contains_point(x)
+                x_loc = x[in_cell,:]
+                f_vec[in_cell] = self.__f[count]
+                count += 1 
+            
         elif self.__type == 'nodal':
+            #
             # Nodal function defined at dof vertices
-            pass
-    
-     
+            #
+            f_vec = np.empty(x.shape[0])
+            f_vec[:] = np.nan
+            for node in self.mesh.nodes():
+                cell = node.quadcell()
+                f_loc = self.__f[self.dofhandler.get_global_dofs(node)]
+                in_cell = cell.contains_point(x)
+                x_loc = x[in_cell,:]
+                x_ref = cell.map_to_reference(x_loc)
+                phi = self.element.shape(x_ref, derivatives=derivative) 
+                f_vec[in_cell] = np.dot(phi, f_loc)   
+                
+                #
+                # Determine multiplier for derivatives (chain rule)
+                # 
+                c = 1
+                if derivative[0] in {1,2} and cell is not None:
+                    # 
+                    # There's a map and we're taking derivatives
+                    #
+                    x0,x1,y0,y1 = cell.box()
+                    for i in derivative[1:]:
+                        if i==0:
+                            c *= 1/(x1-x0)
+                        elif i==1:
+                            c *= 1/(y1-y0)
+
+        return f_vec
         
      
         
@@ -1091,7 +1251,7 @@ class DofHandler(object):
             positions = self.pos_to_int(positions)
         
         for pos,dof in zip(positions,dofs):
-            if cell_dofs[pos] != None:
+            if cell_dofs[pos] is not None:
                 incompatible_dofs = 'Incompatible dofs. Something fishy.'
                 assert cell_dofs[pos] == dof, incompatible_dofs
             else:
@@ -1329,7 +1489,7 @@ class GaussRule(object):
                     
             order: int, order of quadrature rule
                 1D rule: order in {1,2,3,4,5,6}
-                2D rule: order in {1,4,16,25,36} for quadrilaterals
+                2D rule: order in {1,4,9,16,25,36} for quadrilaterals
                                   {1,3,7,13} for triangles 
             
             element: FiniteElement object
@@ -2268,7 +2428,7 @@ class System(object):
         """
         #
         # Determine multiplier for derivatives (chain rule)
-        # 
+        #
         c = 1
         if derivatives[0] in {1,2} and cell is not None:
             # 
@@ -2313,7 +2473,7 @@ class System(object):
                     x_ref = self.edge_rule().nodes(direction=edge_loc)
         elif x_ref is None and x is not None:
             #
-            # Points specified on physical cell, mapp them to reference
+            # Points specified on physical cell, map them to reference
             # 
             x_ref = self.cell_rule().inverse_map(cell,x)
         else:
@@ -2573,16 +2733,7 @@ class System(object):
             else:
                 return self.linear_loc(weight,kernel,test)
         else:
-            return np.sum(kernel*weight)   
-    
-    
-    def classify_function(self, f):
-        """
-        Determine  
-        """    
-        if f is tuple:
-            pass
-        
+            return np.sum(kernel*weight)           
     
             
     def cell_rule(self):

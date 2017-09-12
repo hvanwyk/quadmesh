@@ -14,10 +14,11 @@ implementation and effect of
 
 # Import 
 from mesh import Mesh
-from finite_element import QuadFE, System, DofHandler, GaussRule
+from finite_element import QuadFE, System, DofHandler, Function, GaussRule
 from plot import Plot
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.sparse import linalg as spla
 
  
 def test01():
@@ -38,9 +39,9 @@ def test03():
     Constant Anisotropy
     """
     # Mesh
-    mesh = Mesh.newmesh([0,20,0,20], grid_size=(50,50))
+    mesh = Mesh.newmesh([0,20,0,20], grid_size=(200,200))
     mesh.refine()
-    element = QuadFE(2, 'Q1')
+    element = QuadFE(2, 'Q2')
     system = System(mesh, element)
     
     gma = 1 
@@ -49,20 +50,21 @@ def test03():
     v = np.array([np.cos(tht), np.sin(tht)])
     H = gma*np.eye(2,2) + bta*np.outer(v,v)
     Z = np.random.normal(size=system.n_dofs())
+    dW = Function(Z,mesh,element)
     
     # Bilinear forms
-    bf = [(1,'u','v'), 
-          (H[0,0],'ux','vx'), (H[0,1],'uy','vx'), 
-          (H[1,0],'ux','vy'),(H[1,1],'uy','vy')]
-    
-    lf = [(Z,'v')]
-                                                                        
-    A, b = system.assemble(bilinear_forms=bf, linear_forms=lf)
-    
+    bf = [(1,'u','v'), \
+          (H[0,0],'ux','vx'), (H[0,1],'uy','vx'),\
+          (H[1,0],'ux','vy'), (H[1,1],'uy','vy')]
+                                
+    A = system.assemble(bilinear_forms=bf, linear_forms=None)
+    M = system.assemble(bilinear_forms=[(1,'u','v')])
+    m_lumped = np.array(M.sum(axis=1)).squeeze()
+    X = spla.spsolve(A.tocsc(), np.sqrt(m_lumped)*Z)
     
     fig, ax = plt.subplots()
     plot = Plot()
-    ax = plot.mesh(ax, mesh)
+    ax = plot.contour(ax, fig, X, mesh, element)
     plt.show()
 
 def test04():

@@ -66,7 +66,7 @@ class Mesh(object):
         """
         Return the dimensions of the rectangular domain
         """
-        return self.root_quadcell().box()
+        return self.root_node().quadcell().box()
     
         
     def grid_size(self):
@@ -99,8 +99,8 @@ class Mesh(object):
         Return tree node used for mesh
         """
         return self.__root_node
+     
         
-    
     def boundary(self, entity, flag=None):
         """
         Returns a set of all boundary entities (vertices/edges)
@@ -138,6 +138,23 @@ class Mesh(object):
         return boundary
                         
 
+    def node_containing_points(self, x, flag=None):
+        """
+        Locate the node corresponding to the smallest cell that contains point
+        x. If x has multiple points, return a list of nodes.
+        
+        Inputs:
+        
+            x: double, array of points
+            
+            flag: str, marker specifying subclass of nodes.
+            
+        Outputs: 
+        
+            nodes: Node, list of of Nodes
+        """
+        pass
+    
         
         
     def unmark(self, nodes=False, quadcells=False, quadedges=False, quadvertices=False,
@@ -216,13 +233,6 @@ class Mesh(object):
         """ 
         return self.root_node().is_balanced()
         
-    
-    def root_quadcell(self):
-        """
-        Return the root_quadcell
-        """    
-        return self.__quadcell
-     
     
     def is_triangulated(self):
         """
@@ -916,6 +926,9 @@ class Node(object):
         
             flag: If flag is specified, return all leaf nodes within labeled
                 submesh (or an empty list if there are none).
+                
+            nested: bool, indicates whether leaves should be searched for 
+                in a nested way (one level at a time).
         """
         if nested:
             leaves = [] 
@@ -2229,9 +2242,11 @@ class QuadCell(object):
         
             contains_point: boolean array, True if cell contains point, 
             False otherwise
-              
-        """
-        # TODO: What about points on the boundary? They will be counted double.          
+        
+        
+        Note: Points on the boundary between cells belong to both adjoining
+            cells.
+        """          
         xy = np.array(points)
         x_min, x_max, y_min, y_max = self.box()
         
@@ -2321,7 +2336,45 @@ class QuadCell(object):
             # Horizontal
             # 
             return np.sign(y0-ym)*np.array([0.,1.])
+    
+    
+    def map_to_reference(self, x):
+        """
+        Map point to reference cell [0,1]^2
+        
+        Input:
+        
+            x: double, (n_points, dim) array of points in the physical cell
+            
+        Output:
+        
+            x_ref: double, (n_points, dim) array of points in the reference 
+                cell.
+        """            
+        x0,x1,y0,y1 = self.box()
+        x_ref = np.array([(x[:,0]-x0)/(x1-x0),
+                          (x[:,1]-y0)/(y1-y0)]).T
+        return x_ref
+    
+    
+    def map_from_reference(self, x_ref):
+        """
+        Map point from reference cell [0,1]^2 to physical cell
+        
+        Inputs: 
+        
+            x_ref: double, (n_points, dim) array of points in the reference
+                cell. 
                 
+        Output:
+        
+            x: double, (n_points, dim) array of points in the physical cell
+        """
+        x0,x1,y0,y1 = self.box()
+        x = np.array([x0 + (x1-x0)*x_ref[:,0], 
+                      y0 + (y1-y0)*x_ref[:,1]]).T
+        return x
+    
      
     def mark(self, flag=None):
         """

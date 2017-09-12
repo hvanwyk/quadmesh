@@ -26,11 +26,10 @@ Current Wishlist:
 
 	a. initialize function
 	b. evaluate function and its derivatives
-		i. move shape_eval from 'System' to 'Elements' class 
-		ii. change notation for derivatives from (degree, ix, iy) to 
-			tuples of length dim and derivative (ix, iy, iz), e.g.
-			default is (0,0) function evaluation.  
-	
+		i. move shape_eval from 'System' to 'Elements' class [done] 
+		ii. allow for samples of functions (i.e. multiple columns).
+		iii. introduce piecewise constant elements.
+					
 	
 3. 1D Mesh: 
 
