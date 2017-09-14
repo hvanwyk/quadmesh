@@ -83,14 +83,14 @@ class Mesh(object):
         return self.__root_node.max_depth()
     
         
-    def n_cells(self):
+    def n_cells(self, flag=None):
         """
         Return the number of cells
         """
         if hasattr(self, '__n_quadcells'):
             return self.__n_quadcells
         else:
-            self.__n_quadcells = len(self.__root_node.find_leaves())
+            self.__n_quadcells = len(self.__root_node.find_leaves(flag=flag))
             return self.__n_quadcells
     
             
@@ -929,14 +929,24 @@ class Node(object):
                 
             nested: bool, indicates whether leaves should be searched for 
                 in a nested way (one level at a time).
+                
+        Outputs:
+        
+            leaves: list, of LEAF nodes.
         """
         if nested:
+            #
+            # Nested traversal
+            # 
             leaves = [] 
             for node in self.traverse_depthwise():
                 if node.type == 'LEAF':
                     leaves.append(node)
             return leaves
         else:
+            #
+            # Non-nested traversal
+            # 
             leaves = []
             if flag is None:
                 if not self.has_children():

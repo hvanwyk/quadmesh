@@ -31,6 +31,9 @@ class TestGmrf(unittest.TestCase):
 
 
     def test_constructor(self):
+        #
+        # TODO: This test doesn't test any values as yet. 
+        # 
         Q = np.array([[6,-1,0,-1],[-1,6,-1,0],[0,-1,6,-1],[-1,0,-1,6]])
         S = np.linalg.inv(Q)
         mu = np.zeros(4)
@@ -46,14 +49,12 @@ class TestGmrf(unittest.TestCase):
         mesh.refine()
         element = QuadFE(2,'Q1')
         for M in anisotropy:
-            print('Anisotropy: {0}'.format(M))
             cov_pars = {'linear': {'sgm': 1, 'M': M}, 
                         'sqr_exponential': {'sgm': 1, 'l': 0.1 ,'M': M}, 
                         'exponential': {'l': 0.1, 'M': M}, 
                         'matern': {'sgm': 1, 'nu': 2, 'l': 0.5, 'M': M}, 
                         'rational': {'a': 3, 'M': M}}
             for cov_name in cov_names:
-                print(cov_name)
                 cov_par = cov_pars[cov_name]
                 #
                 # Finite Difference
@@ -65,9 +66,7 @@ class TestGmrf(unittest.TestCase):
                 # 
                 X_fe = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh, \
                                                    element=element)
-        
-        x = mesh.quadvertices(coordinate_array=True)
-        
+                        
         
         
     def test_Q(self):
@@ -296,8 +295,34 @@ class TestGmrf(unittest.TestCase):
         
     
     def test_condition(self):
-        pass
-
+        """
+        Condition using (a) precision, (b) covariance, and (c) svd
+        Condition on (i) pointwise data, (ii) hard constraints, 
+        (iii) soft constraints. (1) finite elements, (2) finite
+        differences.
+        """
+        mesh = Mesh.newmesh(grid_size=(10,10))
+        mesh.refine()
+        mesh.record(0)
+        mesh.refine()
+        mesh.record(1)
+        element = QuadFE(2,'Q1')
+        
+        cov_names = ['linear', 'sqr_exponential', 'exponential', 
+                     'matern', 'rational']
+        
+        M = None
+        cov_pars = {'linear': {'sgm': 1, 'M': M}, 
+                    'sqr_exponential': {'sgm': 1, 'l': 0.1 ,'M': M}, 
+                    'exponential': {'l': 0.1, 'M': M}, 
+                    'matern': {'sgm': 1, 'nu': 2, 'l': 0.5, 'M': M}, 
+                    'rational': {'a': 3, 'M': M}}
+        for cov_name in cov_names:
+            cov_par = cov_pars[cov_name]
+            X = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh,\
+                                            element=element)
+            
+            Y = X.condition(constraint=())
 
     def test_matern_precision(self):
         
@@ -314,11 +339,12 @@ class TestGmrf(unittest.TestCase):
         alpha =3
         system = System(mesh,element)
         X = Gmrf.from_matern_pde(alpha, kappa, mesh, element)
+        """
         Xsmpl = X.sample(n_samples=1)
         from plot import Plot
         fig, ax = plt.subplots()
         plot = Plot()
-        plot.contour(ax, fig, Xsmpl, mesh, element)
+        plot.contour(ax, fig, Xsmpl.ravel(), mesh, element)
         plt.show()
         #Q = X.matern_precision(mesh, element, alpha, kappa)
         #Q = Q.tocsc()
@@ -330,7 +356,7 @@ class TestGmrf(unittest.TestCase):
         #print(Q.nnz)
         #print('Number of rows: {0}'.format(Q.shape[0]))
         #print('Number of dofs: {0}'.format(dofhandler.n_dofs()))
-        
+        """
         
         
 if __name__ == "__main__":

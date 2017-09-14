@@ -3,7 +3,7 @@ Created on Feb 8, 2017
 
 @author: hans-werner
 '''
-from finite_element import System, QuadFE
+from finite_element import System, QuadFE, DofHandler, GaussRule
 from mesh import Mesh
 from numbers import Number
 import scipy.sparse as sp
@@ -467,17 +467,57 @@ class Gmrf(object):
             # Finite element discretization of the kernel
             # 
             discretization = 'finite_elements'
-            system = System(mesh, element)
-            Sigma = system.assemble([(cov_fn,'u','v')])
+            #
+            # Assemble double integral
+            #
+
+            system = System(mesh, element) 
+            n_dofs = system.n_dofs()
+            Sigma = np.zeros((n_dofs,n_dofs))
+            
+            # Gauss points
+            rule = system.cell_rule()
+            n_gauss = rule.n_nodes()                  
+            for node_1 in mesh.root_node().find_leaves():
+                node_dofs_1 = system.get_global_dofs(node_1)
+                n_dofs_1 = len(node_dofs_1)
+                cell_1 = node_1.quadcell()
+                
+                
+                weights_1 = rule.jacobian(cell_1)*rule.weights()
+                x_gauss_1 = rule.map(cell_1, x=rule.nodes())
+                phi_1 = system.shape_eval(cell=cell_1)    
+                WPhi_1 = np.diag(weights_1).dot(phi_1)
+                for node_2 in mesh.root_node().find_leaves():
+                    node_dofs_2 = system.get_global_dofs(node_2)
+                    n_dofs_2 = len(node_dofs_2)
+                    cell_2 = node_2.quadcell()
+                    
+                    x_gauss_2 = rule.map(cell_2, x=rule.nodes())
+                    weights_2 = rule.jacobian(cell_2)*rule.weights()
+                    phi_2 = system.shape_eval(cell=cell_2)
+                    WPhi_2 = np.diag(weights_2).dot(phi_2)
+                    
+                    i,j = np.meshgrid(np.arange(n_gauss),np.arange(n_gauss))
+                    x1, x2 = x_gauss_1[i.ravel(),:],x_gauss_2[j.ravel(),:]
+                    C_loc = cov_fn(x1,x2,**cov_par).reshape(n_gauss,n_gauss)
+                
+                    CC_loc = np.dot(WPhi_2.T,C_loc.dot(WPhi_1))
+                    for i in range(n_dofs_1):
+                        for j in range(n_dofs_2):
+                            Sigma[node_dofs_1[i],node_dofs_2[j]] += CC_loc[i,j]
+                        
+                        
+            
             #
             # Lumped mass matrix
-            # 
+            #
             M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
             m_lumped = np.array(M.sum(axis=1)).squeeze()
             #
             # Adjust covariance
             #
-            Sigma = sp.spdiags(1/m_lumped)*Sigma
+            Sigma = sp.diags(1/m_lumped)*Sigma
             
         return cls(mu=mu, covariance=Sigma, mesh=mesh, element=element, \
                    discretization=discretization)
@@ -509,7 +549,7 @@ class Gmrf(object):
         return cls(precision=Q, mesh=mesh, element=element)
     
     
-    def Q(self, i=None, j=None):
+    def Q(self):
         """
         Return the precision matrix
         """
@@ -821,7 +861,7 @@ class Gmrf(object):
         
             constraint_type: str, 'pointwise' (default), 'hard', 'soft'.
             
-            mode: str, 'precision' (default), or 'covariance'.
+            mode: str, 'precision' (default), or 'covariance', or 'svd'.
             
             
         Output:
@@ -834,12 +874,14 @@ class Gmrf(object):
             i_b, x_b = constraint
             i_a = [i not in i_b for i in range(self.n())]
             mu_a, mu_b = self.mu()[i_a], self.mu()[i_b]
-            #Q_aa = self.Q(i_a,i_a), Q_ab = self.Q(i_a,i_b)
+            Q_aa = self.Q().tocsc()[np.ix_(i_a,i_a)]
+            Q_ab = self.Q().tocsc()[np.ix_(i_a,i_b)]
+            
             #
             # Conditional random field
             # 
-            #mu_agb = mu_a - spla.spsolve(Q_aa, Q_ab.dot(x_b-mu_b))
-            #return Gmrf(mu=mu_agb, precision=Q_aa)
+            mu_agb = mu_a - spla.spsolve(Q_aa, Q_ab.dot(x_b-mu_b))
+            return Gmrf(mu=mu_agb, precision=Q_aa)
             
         elif constraint_type == 'hard':
             pass

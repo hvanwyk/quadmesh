@@ -803,26 +803,27 @@ class Function(object):
     """
     Function class for finite element objects.
     """
-    def __init__(self, f, mesh=None, element=None):
+    def __init__(self, f, mesh=None, element=None, flag=None):
         """
         Constructor:        
         
         """
         self.mesh = mesh
-        self.element = element 
-        self.dofhandler = DofHandler(mesh, element)
-        self.dofhandler.distribute_dofs()
+        self.element = element
+        self.dofhandler = DofHandler(mesh, element) 
+        nested = False if flag is None else True
+        self.dofhandler.distribute_dofs(nested=nested)
         #
         # Determine function type
         # 
         if callable(f):       
             # Explicit function
             fn_type = 'explicit'
-        elif len(f)==mesh.n_cells():
+        elif len(f)==mesh.n_cells(flag=flag):
             # Mesh function
             # TODO: Use piecewise constant elements! 
             fn_type = 'mesh' 
-        elif len(f)==self.dofhandler.n_dofs():
+        elif len(f)==self.dofhandler.n_dofs(flag=flag):
             # Nodal function
             fn_type = 'nodal'
         else:
@@ -832,10 +833,10 @@ class Function(object):
         
         self.__f = f
         self.__type = fn_type
-          
+        self.__flag = flag 
         
            
-    def eval(self, x, node=None, derivative=None):
+    def eval(self, x, node=None, derivative=(0,)):
         """
         Evaluate function at a point x
         
@@ -855,7 +856,8 @@ class Function(object):
             f(x): (n_points, ) array of outputs
             
         """
-    
+        flag = self.__flag
+        
         # Convert input to array
         if type(x) is list:
             # Points in list
@@ -877,8 +879,8 @@ class Function(object):
         if node is not None:
             assert all(node.quadcell().contains_point(x)), \
             'Node specified, but not all points contained in node.'
-            
-            
+   
+        
         # Parse function type
         if self.__type == 'function':
             #
@@ -894,7 +896,7 @@ class Function(object):
             f_vec = np.empty(x.shape[0])
             f_vec[:] = np.nan
             count = 0
-            for node in self.mesh.nodes():
+            for node in self.mesh.nodes(flag=flag):
                 cell = node.quadcell()
                 in_cell = cell.contains_point(x)
                 x_loc = x[in_cell,:]
@@ -907,7 +909,7 @@ class Function(object):
             #
             f_vec = np.empty(x.shape[0])
             f_vec[:] = np.nan
-            for node in self.mesh.nodes():
+            for node in self.mesh.nodes(flag=flag):
                 cell = node.quadcell()
                 f_loc = self.__f[self.dofhandler.get_global_dofs(node)]
                 in_cell = cell.contains_point(x)

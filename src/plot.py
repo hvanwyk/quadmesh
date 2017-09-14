@@ -10,7 +10,7 @@ from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
 from mpl_toolkits.mplot3d import axes3d # @UnresolvedImport
 import numpy as np
-from finite_element import DofHandler, System
+from finite_element import DofHandler, System, Function
 
 
 class Plot(object):
@@ -187,7 +187,7 @@ class Plot(object):
 
 
     def contour(self,ax, fig, f, mesh, element=None, derivatives=(0,), \
-                colorbar=True, resolution=(100,100)):
+                colorbar=True, resolution=(100,100), flag=None):
         """
         Plot a contour defined at the element nodes
         
@@ -210,6 +210,10 @@ class Plot(object):
             # 
             z = f(x,y)  
             cm = ax.contourf(x,y,z.reshape(ny,nx),100)
+        elif isinstance(f, Function):
+            xy = [(xi,yi) for xi,yi in zip(x.ravel(),y.ravel())]
+            z = f.eval(xy)
+            cm = ax.contourf(x,y,z.reshape(ny,nx),100)
         else:
             #
             # A vector
@@ -219,7 +223,7 @@ class Plot(object):
                 # Mesh function 
                 #
                 patches = []
-                for node in mesh.root_node().find_leaves():
+                for node in mesh.root_node().find_leaves(flag=flag):
                     cell = node.quadcell()
                     x0,x1,y0,y1 = cell.box()
                     rectangle = Rectangle((x0,y0), x1-x0, y1-y0)
@@ -238,10 +242,10 @@ class Plot(object):
                 xy = np.array([x.ravel(), y.ravel()]).transpose()
                 system = System(mesh,element)
                 z = system.f_eval(f, xy, derivatives=derivatives)
-                cm = ax.contourf(x,y,z.reshape(ny,nx),100, cmap='viridis')
+                cm = ax.contourf(x,y,z.reshape(ny,nx),200, cmap='viridis')
                 
         if colorbar:
-            fig.colorbar(cm, ax=ax, format='%.1e')
+            fig.colorbar(cm, ax=ax, format='%g')
             
         return fig, ax
     
