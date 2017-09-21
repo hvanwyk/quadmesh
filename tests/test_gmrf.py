@@ -14,6 +14,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from sksparse.cholmod import cholesky  # @UnresolvedImport
 import matplotlib.pyplot as plt
+from plot import Plot
 
 def laplacian_precision(n, sparse=True):
     """
@@ -308,6 +309,12 @@ class TestGmrf(unittest.TestCase):
         mesh.record(1)
         element = QuadFE(2,'Q1')
         
+        fig, ax = plt.subplots(1,2)
+        plot = Plot()
+        ax[0] = plot.mesh(ax[0], mesh, element=element, node_flag=0, nested=True, dofs=True)
+        ax[1] = plot.mesh(ax[1], mesh, element=element, node_flag=1, nested=True, dofs=True)
+        plt.show()
+        
         cov_names = ['linear', 'sqr_exponential', 'exponential', 
                      'matern', 'rational']
         
@@ -319,10 +326,9 @@ class TestGmrf(unittest.TestCase):
                     'rational': {'a': 3, 'M': M}}
         for cov_name in cov_names:
             cov_par = cov_pars[cov_name]
-            X = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh,\
-                                            element=element)
+            #X = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh,\
+            #                               element=element)
             
-            Y = X.condition(constraint=())
 
     def test_matern_precision(self):
         

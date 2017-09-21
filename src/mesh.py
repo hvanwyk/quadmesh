@@ -868,16 +868,37 @@ class Node(object):
         return depth
              
     
-    def traverse_tree(self):
+    def traverse_tree(self, flag=None):
         """
-        Return list of current node and ALL of its sub-nodes        
-        """
+        Return list of current node and ALL of its sub-nodes  
         
+        
+        Inputs: 
+        
+            flag [None]: node flag
+        
+            
+        Output:
+        
+            all_nodes: list, of all nodes in tree (marked with flag).
+            
+        
+        Note:
+        
+            Each node's progeny is visited before proceeding to next node 
+            (compare traverse depthwise). 
+            
+        """
         all_nodes = []
         #
         # Add self to list
         #
-        all_nodes.append(self)
+        if flag is not None:
+            if self.is_marked(flag):
+                all_nodes.append(self)
+        else:
+            all_nodes.append(self)
+            
         if self.has_children():
             #
             # Iterate over children
@@ -891,7 +912,7 @@ class Node(object):
                     for i in range(nx):
                         child = self.children[(i,j)]
                         if child is not None:
-                            all_nodes.extend(child.traverse_tree())
+                            all_nodes.extend(child.traverse_tree(flag=flag))
             else:
                 #
                 # Usual quadcell division: traverse in bottom-to-top mirror Z order
@@ -899,12 +920,11 @@ class Node(object):
                 for key in ['SW','SE','NW','NE']:
                     child = self.children[key]
                     if child != None:
-                        all_nodes.extend(child.traverse_tree())
-            
+                        all_nodes.extend(child.traverse_tree(flag=flag)) 
         return all_nodes
     
     
-    def traverse_depthwise(self):
+    def traverse_depthwise(self, flag=None):
         """
         Iterate node and all sub-nodes, ordered by depth
         """
@@ -914,13 +934,17 @@ class Node(object):
             if node.has_children():
                 for child in node.get_children():
                     if child is not None:
-                        queue.append(child)             
-            yield node
+                        queue.append(child)
+            if flag is not None:
+                if node.is_marked(flag):
+                    yield node
+            else:
+                yield node
         
     
     def find_leaves(self, flag=None, nested=False):
         """
-        Return all LEAF sub-nodes of current node
+        Return all LEAF sub-nodes (nodes with no children) of current node
         
         Inputs:
         
@@ -933,16 +957,52 @@ class Node(object):
         Outputs:
         
             leaves: list, of LEAF nodes.
+            
+            
+        Note: 
+        
+            It is possible 
         """
         if nested:
             #
             # Nested traversal
             # 
-            leaves = [] 
-            for node in self.traverse_depthwise():
-                if node.type == 'LEAF':
-                    leaves.append(node)
-            return leaves
+            leaves = []
+            if flag is None: 
+                #
+                # No flag specified
+                # 
+                for node in self.traverse_depthwise():
+                    # Brute force traversal
+                    if node.type == 'LEAF':
+                        leaves.append(node)
+                return leaves
+            else:
+                #
+                # Flag specified
+                # 
+                if not self.has_children():
+                    if self.is_marked(flag=flag):
+                        #
+                        # No children and flagged -> you're a leaf
+                        #
+                        leaves.append(self)
+                else:
+                    #
+                    # Children
+                    #
+                    flagged_child_leaves = []
+                    for child in self.get_children():
+                        flagged_child_leaves.extend(\
+                            child.find_leaves(nested=nested, flag=flag))
+                    if len(flagged_child_leaves)==0:
+                        # 
+                        # No flagged progeny
+                        #     
+                        if self.is_marked(flag=flag):
+                            leaves.append(self)
+                    else:
+                        leaves.extend(flagged_child_leaves)    
         else:
             #
             # Non-nested traversal

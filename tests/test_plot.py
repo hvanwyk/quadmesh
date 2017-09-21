@@ -72,8 +72,11 @@ class TestPlot(unittest.TestCase):
                             nested=True)
         
         # Display only dofs of flagged nodes (FIXME: this doesn't work)
+        print('========================')
+        print('Problem!!')
+        print('========================')
         ax[2,2] = plot.mesh(ax[2,2], mesh, element=element, dofs=True, \
-                            node_flag=2, show_axis=True)
+                            node_flag=2, nested=True, show_axis=True)
 
     
     def test_plot_contour(self):

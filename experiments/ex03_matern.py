@@ -30,8 +30,9 @@ def test01():
     mesh = Mesh.newmesh([0,20,0,20], grid_size=(10,10))
     mesh.refine()
     mesh.record(flag=0)
-    mesh.refine()
-    mesh.refine()
+    for _ in range(4):
+        mesh.refine()
+    
     mesh.record(flag=1)
     
     element = QuadFE(2,'Q1')
@@ -86,8 +87,8 @@ def test02():
     # Symmetric tensor gma T + bta* vv^T
     gma = 0.1
     bta = 25
-    v2 = lambda x,y:  0.75*np.cos(np.pi*x/10)
-    v1 = lambda x,y: -0.25*np.cos(np.pi*y/10)
+    v2 = lambda x,y: -0.75*np.cos(np.pi*x/10)
+    v1 = lambda x,y: 0.25*np.sin(np.pi*y/10)
     
     h11 = lambda x,y: gma + v1(x,y)*v1(x,y)
     h12 = lambda x,y: v1(x,y)*v2(x,y)
@@ -144,5 +145,5 @@ def test04():
 
 
 if __name__ == '__main__':
-    test01()
+    test03()
     

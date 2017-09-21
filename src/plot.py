@@ -168,11 +168,13 @@ class Plot(object):
             dofhandler.distribute_dofs(nested=nested)
             for node in mesh.root_node().find_leaves(nested=nested,\
                                                      flag=node_flag):
+                node.info()
                 cell = node.quadcell()
                 x0,x1,y0,y1 = cell.box()
                 x_pos = x0 + x_ref[:,0]*(x1-x0)
                 y_pos = y0 + x_ref[:,1]*(y1-y0)
                 cell_dofs = dofhandler.get_global_dofs(node)
+                print(cell_dofs)
                 for i in range(n_dofs):
                     ax.text(x_pos[i],y_pos[i],\
                             str(cell_dofs[i]), size = '7',\
