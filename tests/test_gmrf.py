@@ -305,14 +305,24 @@ class TestGmrf(unittest.TestCase):
         mesh = Mesh.newmesh(grid_size=(10,10))
         mesh.refine()
         mesh.record(0)
-        mesh.refine()
+        for _ in range(2):
+            for leaf in mesh.root_node().find_leaves():
+                x = leaf.quadcell().get_vertices()
+                if all(x[:,0]>=0.25) and all(x[:,0]<=0.75) and \
+                   all(x[:,1]>=0.25) and all(x[:,1]<=0.75):
+                    leaf.mark('refine')
+            mesh.refine(flag='refine')
+            mesh.root_node().balance()
+            
+            #mesh.root_node().unmark(flag='refine',recursive=True)
+            
         mesh.record(1)
         element = QuadFE(2,'Q1')
         
         fig, ax = plt.subplots(1,2)
         plot = Plot()
-        ax[0] = plot.mesh(ax[0], mesh, element=element, node_flag=0, nested=True, dofs=True)
-        ax[1] = plot.mesh(ax[1], mesh, element=element, node_flag=1, nested=True, dofs=True)
+        ax[0] = plot.mesh(ax[0], mesh, element=element, color_marked=[0,1], nested=True)
+        ax[1] = plot.mesh(ax[1], mesh, element=element, node_flag=1, nested=True)
         plt.show()
         
         cov_names = ['linear', 'sqr_exponential', 'exponential', 

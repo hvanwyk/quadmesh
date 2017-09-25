@@ -433,6 +433,26 @@ class TestNode(unittest.TestCase):
         self.assertEqual(node.find_leaves(flag=1), \
                          [node], 'node should be only marked leaf')
         
+        #
+        # Nested traversal
+        # 
+        node = Node()
+        node.split()
+        for child in node.get_children():
+            child.split()
+            
+        node.children['SE'].mark(1, recursive=True)
+        node.children['NE'].mark(1)
+        
+        leaves = node.find_leaves(nested=True, flag=1)
+        self.assertEqual(len(leaves), 5, 
+                         'This tree has 5 flagged LEAF nodes.')
+        self.assertEqual(leaves[0], node.children['NE'], 
+                         'The first leaf should be the NE child.')
+        self.assertEqual(leaves[3], node.children['SE'].children['NW'],
+                         '4th flagged leaf should be SE-NW grandchild.')
+        
+        
     def test_node_find_root(self):
         node = Node()
         self.assertEqual(node.find_root(), node, 'Node is its own root.')
@@ -470,7 +490,21 @@ class TestNode(unittest.TestCase):
         
         
     def test_node_has_children(self):
-        pass
+        node = Node()
+        node.split()
+        node.children['NW'].remove()
+        node.children['SE'].mark(1)
+        node.children['NE'].mark('hihihi')
+        
+        self.assertFalse(node.has_children(position='NW'), \
+                         'Node should not have a NW child.')
+        self.assertTrue(node.has_children(flag=1), \
+                        'Node should have a child marked "1".')
+        self.assertTrue(node.has_children(position='SE',flag=1),
+                        'SE child is marked 1.')
+        self.assertFalse(node.has_children(position='NE', flag=1),
+                         'NE child is not marked 1.')
+        self.assertTrue(node.has_children(),'Node has children')
     
     
     def test_get_children(self):

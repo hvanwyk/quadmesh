@@ -162,6 +162,8 @@ class Mesh(object):
         """
         Unmark all nodes and/or quadcells, -edges, and -vertices 
         and/or tricells, -edges, and -vertices(recursively)
+        
+        TODO: This doesn't unmark specific flags
         """
         if all_entities:
             # 
@@ -870,18 +872,15 @@ class Node(object):
     
     def traverse_tree(self, flag=None):
         """
-        Return list of current node and ALL of its sub-nodes  
-        
+        Return list of current node and ALL of its sub-nodes         
         
         Inputs: 
         
             flag [None]: node flag
         
-            
         Output:
         
             all_nodes: list, of all nodes in tree (marked with flag).
-            
         
         Note:
         
@@ -899,28 +898,13 @@ class Node(object):
         else:
             all_nodes.append(self)
             
+        #
+        # Add (flagged) children to list
+        # 
         if self.has_children():
-            #
-            # Iterate over children
-            #
-            if self.type == 'ROOT' and self.grid_size() is not None:
-                #
-                # Gridded root node: iterate from left to right, bottom to top
-                # 
-                nx, ny = self.grid_size()
-                for j in range(ny):
-                    for i in range(nx):
-                        child = self.children[(i,j)]
-                        if child is not None:
-                            all_nodes.extend(child.traverse_tree(flag=flag))
-            else:
-                #
-                # Usual quadcell division: traverse in bottom-to-top mirror Z order
-                # 
-                for key in ['SW','SE','NW','NE']:
-                    child = self.children[key]
-                    if child != None:
-                        all_nodes.extend(child.traverse_tree(flag=flag)) 
+            for child in self.get_children():
+                all_nodes.extend(child.traverse_tree(flag=flag))
+                 
         return all_nodes
     
     
@@ -961,60 +945,54 @@ class Node(object):
             
         Note: 
         
-            It is possible 
+            For nested traversal of a node with flags, there is no simple way
+            of determining whether any of the progeny are flagged. We therefore
+            restrict ourselves to subtrees. If your children are not flagged, 
+            then theirs will also not be. 
         """
         if nested:
             #
             # Nested traversal
             # 
             leaves = []
-            if flag is None: 
-                #
-                # No flag specified
-                # 
-                for node in self.traverse_depthwise():
-                    # Brute force traversal
-                    if node.type == 'LEAF':
-                        leaves.append(node)
-                return leaves
-            else:
-                #
-                # Flag specified
-                # 
-                if not self.has_children():
-                    if self.is_marked(flag=flag):
-                        #
-                        # No children and flagged -> you're a leaf
-                        #
-                        leaves.append(self)
-                else:
-                    #
-                    # Children
-                    #
-                    flagged_child_leaves = []
-                    for child in self.get_children():
-                        flagged_child_leaves.extend(\
-                            child.find_leaves(nested=nested, flag=flag))
-                    if len(flagged_child_leaves)==0:
-                        # 
-                        # No flagged progeny
-                        #     
-                        if self.is_marked(flag=flag):
-                            leaves.append(self)
-                    else:
-                        leaves.extend(flagged_child_leaves)    
+            for node in self.traverse_depthwise(flag=flag):
+                if not node.has_children(flag=flag):
+                    leaves.append(node)
+            return leaves
         else:
             #
-            # Non-nested traversal
+            # Non-nested (recursive algorithm)
             # 
             leaves = []
             if flag is None:
+                if self.has_children():
+                    for child in self.get_children():
+                        leaves.extend(child.find_leaves(flag=flag))
+                else:
+                    leaves.append(self)
+            else:
+                if self.has_children(flag=flag):
+                    for child in self.get_children(flag=flag):
+                        leaves.extend(child.find_leaves(flag=flag))
+                elif self.is_marked(flag):
+                    leaves.append(self)
+            return leaves
+                              
+            
+            """
+            if flag is None:
+                #
+                # No flag specified
+                #
                 if not self.has_children():
                     leaves.append(self)
                 else:
                     for child in self.get_children():
                         leaves.extend(child.find_leaves(flag=flag))
             else:
+                #
+                # Flag specified
+                # 
                 if not any([child.is_marked(flag) for child in self.get_children()]):
                     if self.is_marked(flag=flag):
                         leaves.append(self)
@@ -1022,6 +1000,7 @@ class Node(object):
                     for child in self.get_children():
                         leaves.extend(child.find_leaves(flag=flag))
             return leaves
+            """
         
     '''    
     def find_leaves(self, flag=None):
@@ -1097,25 +1076,50 @@ class Node(object):
         return node
         
                 
-    def has_children(self, position=None):
+    def has_children(self, position=None, flag=None):
         """
         Determine whether node has children
         """
-        if position == None:
-            return any(child != None for child in self.children.values())
+        if position is None:
+            # Check for any children
+            if flag is None:
+                return any(child is not None for child in self.children.values())
+            else:
+                # Check for flagged children
+                for child in self.children.values():
+                    if child is not None and child.is_marked(flag):
+                        return True
+                return False
         else:
+            #
+            # Check for child in specific position
+            # 
+            # Ensure position is valid
             pos_error = 'Position should be one of: "SW", "SE", "NW", or "NE"'
             assert position in ['SW','SE','NW','NE'], pos_error
-            return self.children[position] != None 
-
+            if flag is None:
+                #
+                # No flag specified
+                #  
+                return self.children[position] is not None
+            else:
+                #
+                # With flag
+                # 
+                return (self.children[position] is not None) and \
+                        self.children[position].is_marked(flag) 
     
-    def get_children(self):
+    def get_children(self, flag=None):
         """
-        Returns a list of children, ordered 
+        Returns a list of (flagged) children, ordered 
         
-        Note: Only returns children that are None 
+        Inputs: 
+        
+            flag: [None], optional marker
+        
+        Note: Only returns children that are not None 
         """
-        if self.has_children():
+        if self.has_children(flag=flag):
             if self.type=='ROOT' and self.grid_size() is not None:
                 #
                 # Gridded root node - traverse from bottom to top, left to right
@@ -1125,7 +1129,10 @@ class Node(object):
                     for i in range(nx):
                         child = self.children[(i,j)]
                         if child is not None:
-                            yield child
+                            if flag is None:
+                                yield child
+                            elif child.is_marked(flag):
+                                yield child
             #
             # Usual quadcell division: traverse in bottom-to-top mirror Z order
             #  
@@ -1133,7 +1140,10 @@ class Node(object):
                 for pos in ['SW','SE','NW','NE']:
                     child = self.children[pos]
                     if child is not None:
-                        yield child
+                        if flag is None:
+                            yield child
+                        elif child.is_marked(flag):
+                            yield child
         
 
         
@@ -1178,7 +1188,7 @@ class Node(object):
         return type(self.position) is tuple
     
     
-    def mark(self, flag=None):
+    def mark(self, flag=None, recursive=False):
         """
         Mark node with keyword. 
         
@@ -1195,6 +1205,13 @@ class Node(object):
         else:
             self.__flags.add(flag)
         
+        #
+        # Mark children as well
+        # 
+        if recursive and self.has_children():
+            for child in self.get_children():
+                child.mark(flag, recursive=recursive)
+                
     
     def unmark(self, flag=None, recursive=False):
         """
@@ -2105,7 +2122,7 @@ class QuadCell(object):
             return self.edges[edge_dict[pos]] 
         
     
-    def vertices(self, pos=None, as_array=True):
+    def get_vertices(self, pos=None, as_array=True):
         """
         Returns the vertices of the current quadcell. 
         

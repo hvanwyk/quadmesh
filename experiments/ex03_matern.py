@@ -30,7 +30,7 @@ def test01():
     mesh = Mesh.newmesh([0,20,0,20], grid_size=(10,10))
     mesh.refine()
     mesh.record(flag=0)
-    for _ in range(4):
+    for _ in range(3):
         mesh.refine()
     
     mesh.record(flag=1)
@@ -50,15 +50,19 @@ def test01():
     bf = [(1,'u','v'), \
           (H[0,0],'ux','vx'), (H[0,1],'uy','vx'),\
           (H[1,0],'ux','vy'), (H[1,1],'uy','vy')]
-                                
+    
+    print('assembly')
     A = system.assemble(bilinear_forms=bf, linear_forms=None)
     M = system.assemble(bilinear_forms=[(1,'u','v')])
     m_lumped = np.array(M.sum(axis=1)).squeeze()
+    
+    print('generating realizations')
     X = spla.spsolve(A.tocsc(), np.sqrt(m_lumped)*Z)
     fX = Function(X,mesh, element, flag=1)
     R01 = system.restrict(0,1)
     Xr = Function(R01.dot(X),mesh, element, flag=0)
     
+    print('plotting')
     plot = Plot()
     fig, ax = plt.subplots(2,2)
     ax[0][0] = plot.mesh(ax[0][0], mesh, element,node_flag=0)
@@ -145,5 +149,5 @@ def test04():
 
 
 if __name__ == '__main__':
-    test03()
+    test01()
     
