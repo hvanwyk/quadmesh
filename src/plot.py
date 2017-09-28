@@ -251,7 +251,7 @@ class Plot(object):
     
     
     def surface(self, ax, f, mesh, element, derivatives=(0,), 
-                shading=True, grid=True, resolution=(10,10),
+                shading=True, grid=False, resolution=(10,10),
                 edge_resolution=5):
         """
         Plot the surface of a function defined on the finite element mesh
@@ -308,7 +308,11 @@ class Plot(object):
                     assert derivatives==(0,),\
                         'Discretize before plotting derivatives.'
                     f_loc = f
-                    
+                elif isinstance(f, Function):
+                    #
+                    # Function object
+                    #
+                    f_loc = f    
                 elif len(f)==system.n_dofs():
                     #
                     # Nodal function

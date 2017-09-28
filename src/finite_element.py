@@ -2551,6 +2551,9 @@ class System(object):
                 f_vec = f(x[:,0],x[:,1])
             else:
                 raise Exception('Only 1D and 2D points supported.')
+        elif isinstance(f, Function):
+            f_vec = f.eval(x)
+            
         elif len(f)==self.__mesh.n_cells():
             #
             # Mesh function
@@ -2644,6 +2647,11 @@ class System(object):
                 return f(x[:,0],x[:,1])
             else: 
                 raise Exception('Only 1D and 2D supported.')
+        elif isinstance(f, Function):
+            #
+            # f is a Function object
+            # 
+            return f.eval(x)
         elif isinstance(f,numbers.Real):
             #
             # f is a constant
