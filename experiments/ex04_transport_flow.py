@@ -13,7 +13,7 @@ Flow-Transport Equation with Random Permeability
 # permeability field
 phi = 1  # porosity
 D = 0.0252  # dispersivity
-
+K = 1  # permeability
 
 # =============================================================================
 # Boundary Conditions
