@@ -14,7 +14,7 @@ Velocity
 
 Transport Equation: Seek concentration c = c(x,y,t)
 
-    dc/dt + c*div(u) - div(D*grad(c)) = 0
+    dc/dt + u*grad(c) - div(D*grad(c)) = 0
     c(x,y,0) = 1            initial data
     c(0,y,t) = 0            homogenous dirichlet conditions
     D grad(c(x,y,t)*n=0     (x,y) in {(x,y) in dD: x != 0}
@@ -108,6 +108,8 @@ A, b = p_system.assemble(bilinear_forms = bf_flow,
 print('solve')
 p = spla.spsolve(A.tocsc(),b)
 p_fn = Function(p, mesh, p_element)
+# TODO: Construct new function by (i) taking derivatives or (ii) multiplying by a constant or another function ...
+
 
 print('plot')
 fig = plt.figure() 
@@ -120,7 +122,9 @@ plt.show()
 #
 # Transport
 # 
-bf_trans = [(1,'u','v'), ()]
+bf_trans = [(1,'u','v'), (dt*vx_fn, 'ux','v'), (dt*vy_fn, 'uy','v'), 
+            (dt*D,'ux','vx'), (dt*D,'uy','vy')]
+lf_trans = []
 
 # ============================================================================
 # 
