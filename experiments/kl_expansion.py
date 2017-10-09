@@ -18,13 +18,13 @@ import scipy.linalg as la
 #
 # Generate mesh and finite elements
 # 
-mesh = Mesh.newmesh(grid_size=(30,30))
+mesh = Mesh.newmesh(grid_size=(10,10))
 mesh.refine()
 mesh.record(0)
 
 box = [0.25,0.5,0.25,0.5]
 
-for i in range(0):    
+for i in range(2):    
     for node in mesh.root_node().find_leaves():
         cell = node.quadcell()
         outside_box = False

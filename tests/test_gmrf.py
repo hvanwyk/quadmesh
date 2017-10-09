@@ -32,8 +32,11 @@ class TestGmrf(unittest.TestCase):
 
 
     def test_constructor(self):
+        """
+        TODO: This test doesn't test any values as yet. 
+        """
         #
-        # TODO: This test doesn't test any values as yet. 
+        # Precision specified
         # 
         Q = np.array([[6,-1,0,-1],[-1,6,-1,0],[0,-1,6,-1],[-1,0,-1,6]])
         S = np.linalg.inv(Q)
@@ -319,11 +322,13 @@ class TestGmrf(unittest.TestCase):
         mesh.record(1)
         element = QuadFE(2,'Q1')
         
+        """
         fig, ax = plt.subplots(1,2)
         plot = Plot()
         ax[0] = plot.mesh(ax[0], mesh, element=element, color_marked=[0,1], nested=True)
         ax[1] = plot.mesh(ax[1], mesh, element=element, node_flag=1, nested=True)
         plt.show()
+        """
         
         cov_names = ['linear', 'sqr_exponential', 'exponential', 
                      'matern', 'rational']

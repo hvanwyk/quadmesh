@@ -98,6 +98,8 @@ def matern_cov(x,y,sgm,nu,l,M=None):
         nu: shape parameter (k times differentiable if nu > k)
         
         l: range parameter 
+        
+    Source: 
     """
     d = distance(x,y,M)
     K = sgm**2*2**(1-nu)/gamma(nu)*(np.sqrt(2*nu)*d/l)**nu*\
@@ -261,6 +263,10 @@ class Gmrf(object):
             Computationally expensive
             Conditioning is easy
             
+    Wishlist: 
+    
+        - Estimate the precision matrix from the covariance (Quic)
+        - Log likelihood evaluation
         
                
     NOTES: 
@@ -510,7 +516,7 @@ class Gmrf(object):
                         
             
             #
-            # Lumped mass matrix
+            # Lumped mass matrix (not necessary!)
             #
             M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
             m_lumped = np.array(M.sum(axis=1)).squeeze()
@@ -669,6 +675,15 @@ class Gmrf(object):
         Return the dimension of the random vector 
         """
         return self.__n
+    
+    
+    def rank(self):
+        """
+        Return the rank of the covariance/precision matrix
+        
+        TODO: Finish
+        """
+        pass
     
     
     def Q_solve(self, b):

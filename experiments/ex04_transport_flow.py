@@ -1,7 +1,34 @@
 """
 Flow-Transport Equation with Random Permeability
 
+Flow Equation: Seek pressure p = p(x,y)
 
+    -div(K grad(p(x,y))) = 0,    (x,y) in [0,1]^2
+    p(0,y) = 1,                  outflow
+    p(1,y) = 0,                  inflow
+    K*grad(p(x,y))*n = 0,        y = 0, or y = 1  (no flow)
+
+Velocity
+    
+    u = grad(p)
+
+Transport Equation: Seek concentration c = c(x,y,t)
+
+    dc/dt + c*div(u) - div(D*grad(c)) = 0
+    c(x,y,0) = 1            initial data
+    c(0,y,t) = 0            homogenous dirichlet conditions
+    D grad(c(x,y,t)*n=0     (x,y) in {(x,y) in dD: x != 0}
+
+
+Quantity of Interest: Average Breakthrough Curve
+
+    Q = \int_{dD_out} c(x,y,t)[u*n]ds
+
+Source: 
+
+Ossiander et. al. 2014, Conditional Stochastic Simulations of Flow and
+Transport with Karhunen-Loève Expansions, Stochastic Collocation, and 
+Sequential Gaussian Simulation
 """
 # Imports 
 from finite_element import Function, QuadFE, System
