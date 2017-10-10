@@ -107,7 +107,7 @@ bf = [(1,'u','v'),(axx.ev,'ux','vx'),(axy.ev,'uy','vx'),
 A = system.assemble(bilinear_forms=bf)
 bf = [(f,'u','v')]
 M = system.assemble(bilinear_forms=bf)
-n = system.get_n_nodes()
+n = system.n_dofs()
 Z = np.random.normal(loc=0.25, scale=0.02, size=(n,))
 
 X = spla.spsolve(A.tocsc(), M.dot(Z))

@@ -805,32 +805,45 @@ class Function(object):
     """
     def __init__(self, f, mesh=None, element=None, flag=None):
         """
-        Constructor:        
-        
+        Constructor:
         """
         self.mesh = mesh
         self.element = element
-        self.dofhandler = DofHandler(mesh, element) 
-        nested = False if flag is None else True
-        self.dofhandler.distribute_dofs(nested=nested)
+        if mesh is not None and element is not None:
+            #
+            # Mesh and Element given -> Construct DofHandler
+            #
+            self.dofhandler = DofHandler(mesh, element)
+            nested = False if flag is None else True
+            self.dofhandler.distribute_dofs(nested=nested)  
+        else:
+            self.dofhandler = None  
+        
         #
         # Determine function type
         # 
         if callable(f):       
+            #
             # Explicit function
+            # 
             fn_type = 'explicit'
-        elif len(f)==mesh.n_cells(flag=flag):
-            # Mesh function
-            # TODO: Use piecewise constant elements! 
-            fn_type = 'mesh' 
-        elif len(f)==self.dofhandler.n_dofs(flag=flag):
-            # Nodal function
-            fn_type = 'nodal'
         else:
-            print('Number of entries in f {0}'.format(len(f)))
-            print('Number of dofs {0}'.format(self.dofhandler.n_dofs()))
-            raise Exception('Function must be explicit, nodal, or cellwise.')
-        
+            assert mesh is not None, \
+            'If input is not a function, the mesh must be specified.'
+            
+            if len(f)==mesh.n_cells(flag=flag):
+                #
+                # Mesh function
+                # TODO: Use piecewise constant elements! 
+                fn_type = 'mesh'
+            elif len(f)==self.dofhandler.n_dofs(flag=flag):
+                # Nodal function
+                fn_type = 'nodal'
+            else:
+                print('Number of entries in f {0}'.format(len(f)))
+                print('Number of dofs {0}'.format(self.dofhandler.n_dofs()))
+                raise Exception('Function must be explicit, nodal, or cellwise.')
+            
         self.__f = f
         self.__type = fn_type
         self.__flag = flag 
@@ -932,8 +945,20 @@ class Function(object):
                             c *= 1/(x1-x0)
                         elif i==1:
                             c *= 1/(y1-y0)
-
         return f_vec
+        
+        
+    def interpolate(self, mesh=None, element=None):
+        pass
+    
+    
+    def grad(self):
+        """
+        Compute the gradient [fx, fy] of the function f
+        """
+        pass
+    
+    
         
      
         
