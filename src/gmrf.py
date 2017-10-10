@@ -3,7 +3,7 @@ Created on Feb 8, 2017
 
 @author: hans-werner
 '''
-from finite_element import System, QuadFE, DofHandler, GaussRule
+from fem import System, QuadFE, DofHandler, GaussRule
 from mesh import Mesh
 from numbers import Number
 import scipy.sparse as sp
@@ -178,7 +178,7 @@ def matern_precision(mesh, element, alpha, kappa, tau=None,
         tau: (Axx,Axy,Ayy) symmetric tensor or diffusion coefficient function.
         
         boundary_conditions: tuple of boundary locator function and boundary value
-            function (viz. finite_element.System)
+            function (viz. fem.System)
         
         
     Outputs:

@@ -6,7 +6,7 @@ Created 11/22/2016
 # Imports
 # =============================================================================
 import unittest
-from finite_element import QuadFE, DofHandler, GaussRule, System
+from fem import QuadFE, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
 #import scipy.sparse as sp
 import numpy as np

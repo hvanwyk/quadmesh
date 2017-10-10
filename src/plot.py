@@ -10,7 +10,7 @@ from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
 from mpl_toolkits.mplot3d import axes3d # @UnresolvedImport
 import numpy as np
-from finite_element import DofHandler, System, Function
+from fem import DofHandler, System, Function
 
 
 class Plot(object):

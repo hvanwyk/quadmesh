@@ -7,8 +7,7 @@ Created on Feb 24, 2017
 import unittest
 from plot import Plot
 from mesh import Mesh
-from finite_element import System
-from finite_element import QuadFE
+from fem import System, QuadFE
 import matplotlib.pyplot as plt
 #from mpl_toolkits.mplot3d import *  # @UnresolvedImport
 import numpy as np

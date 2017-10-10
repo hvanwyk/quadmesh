@@ -8,7 +8,7 @@ import unittest
 
 from gmrf import Gmrf
 from mesh import Mesh
-from finite_element import QuadFE, DofHandler, System
+from fem import QuadFE, DofHandler, System
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla

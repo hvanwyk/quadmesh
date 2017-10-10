@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import matplotlib.cm as cm
 from scipy.interpolate import interp2d
-from finite_element import System, QuadFE
+from fem import System, QuadFE
 from mesh import Mesh
 from gmrf import Gmrf
 from scipy.interpolate.fitpack2 import RectBivariateSpline

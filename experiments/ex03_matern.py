@@ -14,7 +14,7 @@ implementation and effect of
 
 # Import 
 from mesh import Mesh
-from finite_element import QuadFE, System, DofHandler, Function, GaussRule
+from fem import QuadFE, System, DofHandler, Function, GaussRule
 from gmrf import Gmrf, matern_precision
 from plot import Plot
 import matplotlib.pyplot as plt

@@ -4,7 +4,7 @@ using the KL expansion.
 """
 # Local imports
 from mesh import Mesh
-from finite_element import System, QuadFE
+from fem import System, QuadFE
 from plot import Plot
 from gmrf import sqr_exponential_cov, distance
 

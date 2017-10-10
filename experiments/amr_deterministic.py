@@ -5,7 +5,7 @@ import numpy as np
 from numpy import exp as e
 import scipy.sparse.linalg as spla
 from mesh import Mesh, QuadCell
-from finite_element import QuadFE, System, DofHandler, GaussRule
+from fem import QuadFE, System, DofHandler, GaussRule
 from plot import Plot
 import matplotlib.pyplot as plt
 

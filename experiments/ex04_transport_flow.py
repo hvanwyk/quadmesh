@@ -31,7 +31,7 @@ Transport with Karhunen-Loève Expansions, Stochastic Collocation, and
 Sequential Gaussian Simulation
 """
 # Imports 
-from finite_element import Function, QuadFE, System
+from fem import Function, QuadFE, System
 from mesh import Mesh
 from plot import Plot
 import numpy as np
