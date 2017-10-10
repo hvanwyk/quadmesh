@@ -6,11 +6,14 @@ Created 11/22/2016
 # Imports
 # =============================================================================
 import unittest
-from fem import QuadFE, DofHandler, GaussRule, System
+from fem import QuadFE, Function, DofHandler, GaussRule, System
 from mesh import Mesh, Edge, Vertex
 #import scipy.sparse as sp
 import numpy as np
 import numpy.linalg as la
+
+import matplotlib.pyplot as plt
+from plot import Plot
 
 
 class TestFiniteElement(unittest.TestCase):
@@ -31,14 +34,14 @@ class TestQuadFE(unittest.TestCase):
     Test QuadFE class
     """   
     def test_local_dof_matrix(self):
-        element_types = ['Q0', 'Q1', 'Q2', 'Q3']
+        element_types = ['DQ0', 'Q1', 'Q2', 'Q3']
         for dim in [2]:
             for etype in element_types:
                 element = QuadFE(dim, etype)
                 
                 
     def test_element_type(self):
-        for etype in ['Q0', 'Q1', 'Q2', 'Q3']:
+        for etype in ['DQ0', 'Q1', 'Q2', 'Q3']:
             element = QuadFE(2, etype)
             self.assertEqual(element.element_type(),etype,\
                              'Element type not correct.')
@@ -164,7 +167,7 @@ class TestQuadFE(unittest.TestCase):
                       
                         
     def test_phi(self):
-        for etype in ['Q0','Q1','Q2','Q3']:
+        for etype in ['DQ0','Q1','Q2','Q3']:
             element = QuadFE(2,etype)
             n_dofs = element.n_dofs()
             I = np.eye(n_dofs)
@@ -245,9 +248,65 @@ class TestQuadFE(unittest.TestCase):
     
 class TestTriFE(unittest.TestCase):
     """
-    Test TriFE classe
+    Test TriFE class
     
     """
+
+class TestFunction(unittest.TestCase):
+    """
+    Test Function class
+    """
+    def test_constructor_and_eval(self):
+        """
+        Test Constructor
+        """ 
+        mesh = Mesh.newmesh()
+        mesh.record(0)
+        mesh.refine()
+        mesh.record(1)
+        mesh.refine()
+        mesh.record(2)
+
+        etype_list = ['Q1','Q2','Q3']        
+        fig, ax = plt.subplots(3,3)
+        plot = Plot()
+        
+        n_flags = 3
+        n_element_types = 3
+        for j in range(n_flags):
+            for i in range(n_element_types):
+                ax[i,j] = plot.mesh(ax[i,j], mesh, cell_numbers=True, node_flag=j)
+                etype = etype_list[i]
+                element = QuadFE(2,etype)
+                dh = DofHandler(mesh, element)
+                dh.distribute_dofs(nested=True)
+                x = dh.dof_vertices(flag=j)
+                ax[i,j].plot(x[:,0],x[:,1],'.b')
+        plt.show()
+        
+                
+        # Explicit function
+        f = lambda x,y: np.sin(np.pi*x) + np.cos(np.pi*y)
+        fn = Function(f, flag=0)
+        
+        element = QuadFE(2,'DQ0')
+        print(element.local_dof_matrix())
+        # Mesh function
+        f0_mesh = np.array([f(0.5,0.5)])
+        F0_mesh = Function(f0_mesh, mesh=mesh, element=QuadFE(2,'DQ0'), flag=0)  
+        
+        # Nodal continuous function
+        
+        
+        # Nodal discontinuous function
+        
+    
+    def test_interpolate(self):
+        pass
+    
+    def test_grad(self):
+        pass
+        
 
     
 class TestDofHandler(unittest.TestCase):

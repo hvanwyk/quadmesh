@@ -40,7 +40,7 @@ class QuadFE(FiniteElement):
     def __init__(self, dim, element_type):
         FiniteElement.__init__(self, dim, element_type)
         
-        if element_type == 'Q0':
+        if element_type == 'DQ0':
             """
             -------------------------------------------------------------------
             Constant Elements
@@ -296,7 +296,7 @@ class QuadFE(FiniteElement):
         """
         Return the finite element's polynomial degree 
         """
-        return int(list(self.__element_type)[1])
+        return int(list(self.__element_type)[-1])
     
         
     def n_dofs(self,key=None):
@@ -815,7 +815,8 @@ class Function(object):
             #
             self.dofhandler = DofHandler(mesh, element)
             nested = False if flag is None else True
-            self.dofhandler.distribute_dofs(nested=nested)  
+            self.dofhandler.distribute_dofs(nested=nested)
+              
         else:
             self.dofhandler = None  
         
@@ -826,29 +827,116 @@ class Function(object):
             #
             # Explicit function
             # 
-            fn_type = 'explicit'
+            fn_type = 'function' 
+            dim = f.__code__.co_argcount
+            n_samples = 1  
+            fn = f
         else:
+            #
+            # Need a mesh and an element
+            #  
             assert mesh is not None, \
             'If input is not a function, the mesh must be specified.'
+            dim = mesh.dim()
             
-            if len(f)==mesh.n_cells(flag=flag):
+            assert element is not None,\
+            'If input is not a function, the element must be specified.'
+            
+            if type(f) is dict:
+                # -------------------------------------------------------------
+                # Function passed as dictionary
+                # -------------------------------------------------------------
+                fn_type = 'nodal_discontinuous'
+                
+                assert len(f)==mesh.n_cells(flag=flag), \
+                'Length of dictionary must equal number of leaf nodes.'
+                
+                # Generate leaf nodes
+                leaves = mesh.root_node().find_leaves(flag=flag)
+                
                 #
-                # Mesh function
-                # TODO: Use piecewise constant elements! 
-                fn_type = 'mesh'
-            elif len(f)==self.dofhandler.n_dofs(flag=flag):
-                # Nodal function
-                fn_type = 'nodal'
-            else:
-                print('Number of entries in f {0}'.format(len(f)))
-                print('Number of dofs {0}'.format(self.dofhandler.n_dofs()))
-                raise Exception('Function must be explicit, nodal, or cellwise.')
-            
-        self.__f = f
-        self.__type = fn_type
-        self.__flag = flag 
+                # Get some information from the first entry
+                # 
+                assert leaves[0] in f, 'Mesh leaf nodes inconsistent with dict'
+                f0 = f[leaves[0]]
+    
+                if element.element_type()=='DQ0':
+                    if isinstance(f0, numbers.Real):
+                        n_samples = 1  
+                    elif type(f0) is np.ndarray:
+                        n_samples = len(f0)
+                else:    
+                    if len(f0.shape)==1:
+                        n_samples = 1 
+                        assert len(f0)==element.n_dofs(), \
+                        'Number of entries of f0 inconsistent with element n_dofs.' 
+                    elif len(f0.shape)==2:
+                        n_samples = f0.shape[1]
+                        assert f0.shape[0]==element.n_dofs(),\
+                        'Number of entries of f0 inconsistent with element n_dofs.'
+                        
+                for leaf in leaves:
+                    # Leaf nodes must be contained in dictionary
+                    assert leaf in f, \
+                    'Mesh leaf nodes inconsistent with dictionary'
+                    
+                    # Check number of entries per leaf
+                    assert f[leaf].shape[0]==element.n_dofs(), 'Number of'+\
+                    ' function values at node inconsistent with element n_dofs'
+                fn = f
+                    
+                     
+            elif type(f) is np.ndarray:
+                # ---------------------------
+                # Function passed as an array
+                # ---------------------------
+                # Determine number of samples
+                if len(f.shape)==1:
+                    n_samples = 1
+                    nf = f.shape[0]
+                else:
+                    nf, n_samples = f.shape
+                    
+                n_dofs_loc = element.n_dofs()
+                if nf==n_dofs_loc*mesh.n_cells(flag=flag):
+                    #
+                    # Discontinuous nodal function -> convert to dictionary
+                    #    
+                    fn_type = 'nodal_discontinuous'
+                    leaves = mesh.root_node().find_leaves(flag=flag)
+                    fn = dict.from_keys(leaves)
+                    count = 0
+                    for leaf in leaves:
+                        if len(f.shape)==1:
+                            #
+                            # Only one sample
+                            # 
+                            fn[leaf] = np.array(f[count:count+n_dofs_loc])
+                        else:
+                            #
+                            # Multiple samples
+                            # 
+                            fn[leaf] = np.array(f[count:count+n_dofs_loc,:])
+                        count += n_dofs_loc
+                        
+                elif nf==self.dofhandler.n_dofs(flag=flag):
+                    #
+                    # Continuous nodal function
+                    #
+                    fn_type = 'nodal_continuous'
+                    fn = f     
+                else:
+                    print('Number of entries in f {0}'.format(len(f)))
+                    print('Number of dofs {0}'.format(self.dofhandler.n_dofs()))
+                    raise Exception('Function must be explicit, nodal, or cellwise.')
         
-           
+        self.__dim = dim       
+        self.__f = fn
+        self.__flag = flag
+        self.__n_samples = n_samples
+        self.__type = fn_type
+         
+        
     def eval(self, x, node=None, derivative=(0,)):
         """
         Evaluate function at a point x
@@ -870,6 +958,15 @@ class Function(object):
             
         """
         flag = self.__flag
+    
+        # Deal with singletons 
+        if type(x) is tuple \
+        or isinstance(x, Vertex) \
+        or isinstance(x, numbers.Real):
+            is_singleton = True
+            x = [x]
+        else:
+            is_singleton = False
         
         # Convert input to array
         if type(x) is list:
@@ -916,7 +1013,7 @@ class Function(object):
                 f_vec[in_cell] = self.__f[count]
                 count += 1 
             
-        elif self.__type == 'nodal':
+        elif self.__type == 'nodal_continuous':
             #
             # Nodal function defined at dof vertices
             #
@@ -945,7 +1042,11 @@ class Function(object):
                             c *= 1/(x1-x0)
                         elif i==1:
                             c *= 1/(y1-y0)
-        return f_vec
+                            
+        if is_singleton:
+            return f_vec[0]
+        else:
+            return f_vec
         
         
     def interpolate(self, mesh=None, element=None):
@@ -1007,8 +1108,10 @@ class DofHandler(object):
                 self.fill_dofs(node)
                 # 
                 # Share dofs with neighbors
-                # 
-                self.share_dofs_with_neighbors(node)
+                #
+                if self.element.element_type()[:2] !='DQ':
+                    self.share_dofs_with_neighbors(node)
+                    
         else:
             for node in self.mesh.root_node().traverse_depthwise():
                 if node.type == 'ROOT' and node.grid_size() is not None:
@@ -1022,7 +1125,8 @@ class DofHandler(object):
                     #
                     # Share dofs with neighbors
                     # 
-                    self.share_dofs_with_neighbors(node, nested=True)
+                    if self.element.element_type()[:2] !='DQ':
+                        self.share_dofs_with_neighbors(node, nested=True)
                     
                     #
                     # Share dofs with children
@@ -2408,8 +2512,8 @@ class System(object):
         """   
         x_ref = self.__element.reference_nodes()
         return self.__rule_2d.map(cell,x=x_ref)
-        
-        
+         
+    
     def bilinear_loc(self,weight,kernel,trial,test):
         """
         Compute the local bilinear form over an element

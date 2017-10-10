@@ -30,7 +30,7 @@ class Mesh(object):
         self.__root_node = root_node
         self.__triangulated = False 
         self.__mesh_count = 0
-        
+        self.__dim = 2  # TODO: Change this in the case of 1D
         
     @classmethod 
     def copymesh(cls, mesh):
@@ -68,7 +68,14 @@ class Mesh(object):
         """
         return self.root_node().quadcell().box()
     
-        
+    
+    def dim(self):
+        """
+        Return the spatial dimension of the region
+        """
+        return self.__dim
+    
+            
     def grid_size(self):
         """
         Return grid size on coarsest level
