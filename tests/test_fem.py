@@ -268,6 +268,8 @@ class TestFunction(unittest.TestCase):
         mesh.record(2)
 
         etype_list = ['Q1','Q2','Q3']        
+        
+        """
         fig, ax = plt.subplots(3,3)
         plot = Plot()
         
@@ -283,14 +285,14 @@ class TestFunction(unittest.TestCase):
                 x = dh.dof_vertices(flag=j)
                 ax[i,j].plot(x[:,0],x[:,1],'.b')
         plt.show()
-        
+        """
                 
         # Explicit function
         f = lambda x,y: np.sin(np.pi*x) + np.cos(np.pi*y)
         fn = Function(f, flag=0)
         
         element = QuadFE(2,'DQ0')
-        print(element.local_dof_matrix())
+       #print(element.local_dof_matrix())
         # Mesh function
         f0_mesh = np.array([f(0.5,0.5)])
         F0_mesh = Function(f0_mesh, mesh=mesh, element=QuadFE(2,'DQ0'), flag=0)  
@@ -382,6 +384,42 @@ class TestDofHandler(unittest.TestCase):
             child_dofs = dofhandler.get_global_dofs(child)
             dof_err = 'Dof inheritance incorrect for space %s'%(etype)
             self.assertEqual(child_dofs, sw_child_dofs[etype], dof_err)
+            
+        # Discontinuous elements
+        sw_child_dofs = {'DQ0': None,\
+                         'DQ1': [0,None,None,None],\
+                         'DQ2': [0,6,4,8]+[None]*5,\
+                         'DQ3': [0,None,None,None,\
+                                 None,4,None,None,None,8,None,None,\
+                                 None,None,None,12] }
+        se_child_dofs = {'DQ0': None,\
+                         'DQ1': [None,1,None,None],\
+                         'DQ2': [None,1,None,5]+[None]*5,\
+                         'DQ3': [None,1,None,None,\
+                                 None,None,None,6,9,None,None,None,\
+                                 None,None,13,None] }
+        for etype in ['DQ'+str(i) for i in range(4)]:
+            element = QuadFE(2,etype)
+            dofhandler = DofHandler(mesh,element)
+            #
+            # Fill in Dofs for parental node
+            # 
+            dofhandler.fill_dofs(node)
+            #
+            # Share dofs with children 
+            #
+            dofhandler.share_dofs_with_children(node)
+            child = node.children['SW']
+            child_dofs = dofhandler.get_global_dofs(child)
+            dof_err = 'Dof inheritance of SW child incorrect'+\
+                      ' for space %s'%(etype)
+            self.assertEqual(child_dofs, sw_child_dofs[etype], dof_err)
+            
+            child = node.children['SE']
+            child_dofs = dofhandler.get_global_dofs(child)
+            dof_err = 'Dof inheritance of SE child incorrect'+\
+                      ' for space %s'%(etype)
+            self.assertEqual(child_dofs, se_child_dofs[etype], dof_err)
             
             
     def test_share_dofs_with_neighbors(self):
