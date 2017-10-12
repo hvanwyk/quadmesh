@@ -68,7 +68,7 @@ class QuadFE(FiniteElement):
             else:
                 raise Exception('Only 1D and 2D supported.')
                 
-        elif element_type == 'Q1':
+        elif element_type in ['Q1','DQ1']:
             """
             -------------------------------------------------------------------
             Linear Elements
@@ -102,7 +102,7 @@ class QuadFE(FiniteElement):
                 ref_nodes = np.array([[0,0],[1,0],[0,1],[1,1]])
                 pattern = ['SW','SE','NW','NE']
         
-        elif element_type == 'Q2':
+        elif element_type in ['Q2','DQ2']:
             """
             -------------------------------------------------------------------
             Quadratic Elements 
@@ -153,7 +153,7 @@ class QuadFE(FiniteElement):
             else:
                 raise Exception('Only 1D and 2D currently supported.')
              
-        elif element_type == 'Q3':
+        elif element_type in ['Q3','DQ3']:
             """
             -------------------------------------------------------------------
             Cubic Elements
@@ -220,6 +220,7 @@ class QuadFE(FiniteElement):
         self.__pxx = pxx
         self.__element_type = element_type
         self.__ref_nodes = ref_nodes
+        self.__torn_element = True if element_type[:2]=='DQ' else False
         if dim == 2:
             self.pattern = pattern
     
@@ -290,6 +291,13 @@ class QuadFE(FiniteElement):
         Return the finite element type (Q0, Q1, Q2, or Q3)
         """ 
         return self.__element_type
+    
+    
+    def torn_element(self):
+        """
+        Return whether the element is torn (discontinuous)
+        """
+        return self.__torn_element
     
         
     def polynomial_degree(self):
@@ -904,7 +912,7 @@ class Function(object):
                     #    
                     fn_type = 'nodal_discontinuous'
                     leaves = mesh.root_node().find_leaves(flag=flag)
-                    fn = dict.from_keys(leaves)
+                    fn = dict.fromkeys(leaves)
                     count = 0
                     for leaf in leaves:
                         if len(f.shape)==1:
@@ -1106,10 +1114,14 @@ class DofHandler(object):
                 # Fill in own nodes
                 # 
                 self.fill_dofs(node)
-                # 
-                # Share dofs with neighbors
+                
                 #
-                if self.element.element_type()[:2] !='DQ':
+                # Non-DG elements
+                # 
+                if not self.element.torn_element(): 
+                    # 
+                    # Share dofs with neighbors
+                    #
                     self.share_dofs_with_neighbors(node)
                     
         else:
@@ -1125,7 +1137,10 @@ class DofHandler(object):
                     #
                     # Share dofs with neighbors
                     # 
-                    if self.element.element_type()[:2] !='DQ':
+                    if not self.element.torn_element(): 
+                        #
+                        # Share nodes with neighbors
+                        # 
                         self.share_dofs_with_neighbors(node, nested=True)
                     
                     #
@@ -1144,11 +1159,17 @@ class DofHandler(object):
          
         Note: Cannot share dofs with children when children are in a grid
         """
-        if node.has_children():
+        if self.element.element_type() == 'DQ0':
+                # Piecewise constant elements can't share nodes with children
+                return
             
+        if node.has_children(): 
             cell_dofs = self.__global_dofs[node][:]
             cell_dofs = [-1 if c is None else c for c in cell_dofs]
-
+            
+            # Keep track of dofs assigned (for torn elements)
+            cell_dofs_assigned = [False for i in range(len(cell_dofs))]
+            
             #
             # Construct useful array to store dofs of parent cell
             # 
@@ -1161,35 +1182,56 @@ class DofHandler(object):
             #
             # Extract child dofs as sub-matrices
             # 
-            for pos in node.children.keys():
-                child = node.children[pos]
-                if child is not None:
+            for child in node.get_children():
+                pos = child.position 
+                #
+                # Determine sub-indices
+                #
+                i_pos,j_pos = pos
+                if i_pos == 'S':
+                    y_rng = np.arange(dps)
+                else:
+                    y_rng = np.arange(dps-1,2*dps-1)
+                if j_pos == 'W':
+                    x_rng = np.arange(dps)
+                else:
+                    x_rng = np.arange(dps-1,2*dps-1)
+                #
+                # Select sub-array corresponding to child position 
+                #
+                child_dofs = fine_dofs[np.ix_(y_rng,x_rng)]
+                dofs = child_dofs[child_dofs!=-1]
+                position = self.element.local_dof_matrix()[child_dofs!=-1]
+                
+                #
+                # Assign global dofs to cell 
+                #
+                position = [int(p) for p in position] 
+                dofs = [int(d) for d in dofs]
+                
+                 
+                if self.element.torn_element():
                     #
-                    # Determine sub-indices
+                    # If torn element, only assign previously unassigned dofs
                     #
-                    i_pos,j_pos = pos
-                    if i_pos == 'S':
-                        y_rng = np.arange(dps)
-                    else:
-                        y_rng = np.arange(dps-1,2*dps-1)
-                    if j_pos == 'W':
-                        x_rng = np.arange(dps)
-                    else:
-                        x_rng = np.arange(dps-1,2*dps-1)
+                    for i in range(len(dofs)):
+                        i_dof = cell_dofs.index(dofs[i])
+                        if not cell_dofs_assigned[i_dof]:
+                            #
+                            # Dof hasn't been assigned -> assign it 
+                            #
+                            self.assign_dofs(child, position[i], dofs[i])
+                            #
+                            # Mark dof as assigned
+                            # 
+                            cell_dofs_assigned[i_dof] = True
+                else:
                     #
-                    # Select sub-array corresponding to child position 
-                    #
-                    child_dofs = fine_dofs[np.ix_(y_rng,x_rng)]
-                    dofs = child_dofs[child_dofs!=-1]
-                    position = self.element.local_dof_matrix()[child_dofs!=-1]
-                    
-                    #
-                    # Assign global dofs to cell 
-                    #
-                    position = [int(p) for p in position] 
-                    dofs = [int(d) for d in dofs]
+                    # Dofs can be shared by neighbors
+                    #  
                     self.assign_dofs(child, position, dofs) 
-                                     
+                
+                         
                     
     def share_dofs_with_neighbors(self, node, nested=False):
         """
