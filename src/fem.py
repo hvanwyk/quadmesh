@@ -1314,6 +1314,40 @@ class Function(object):
         return Function(fv, mesh, element, flag=flag) 
     
     
+    
+    def times(self, g, mesh=None, element=None, flag=None):
+        """
+        Returns a Function obtained from the product of
+        
+        Inputs:
+        
+            g: Function, double, or function, second factor in the product.
+            
+            mesh [None]: Mesh, object associated with the new Function
+            
+            element [None]: Element object associated with the new Function
+            
+            flag [None]: 
+        """
+        #
+        # Determine data type for g
+        # 
+        if isinstance(g, numbers.Real):
+            # g is a number 
+            g_type = 'number'
+        elif isinstance(g, Function):
+            # g is a function object
+            g_type = 'Function'
+        elif callable(g):
+            # g is an explicit function
+            g_type = 'function'
+            
+        if mesh is not None and element is not None:
+            dofhandler = DofHandler(mesh, element, flag=flag) 
+            x = dofhandler.dof_vertices()
+            
+            
+        p = Function()
 
 class DofHandler(object):
     """
@@ -2439,13 +2473,13 @@ class System(object):
         
         Inputs: 
         
-            bilinear_forms: 3-tuples (function,string,string), where
+            bilinear_forms: list of 3-tuples (function,string,string), where
                 function is the kernel function, the first string 
                 ('u','ux',or 'uy) is the form of the trial function, and
                 the second string ('v','vx','vy') is the form of the test
                 functions. 
             
-            linear_forms: 2-tuples (function, string), where the function
+            linear_forms: list of tuples (function, string), where the function
                 is the kernel function, and the string ('v','vx','vy')
                 is the form of the test function.
             

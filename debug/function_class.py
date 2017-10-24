@@ -23,7 +23,7 @@ for node in mesh.root_node().find_leaves():
     xx, yy = np.meshgrid(np.linspace(x0,x1,5),np.linspace(y0,y1,5))
     xy = np.array([xx.ravel(),yy.ravel()]).T
     zz = fn.eval(xy, node).reshape(xx.shape)
-    ax.plot_surface(xx,yy,zz, cmap='viridis', vmin=-1, vmax=1, linewidth=0, alpha=0.9)
+    ax.plot_surface(xx,yy,zz, cmap='viridis', vmin=-1, vmax=1, alpha=0.9)
 plt.show()
 '''
 dofhandler = DofHandler(mesh,element)
