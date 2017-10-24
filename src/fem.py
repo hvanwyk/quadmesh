@@ -50,7 +50,7 @@ class QuadFE(FiniteElement):
             | 0 |
             -----
             
-            TODO: Finish
+            TODO: Test
             """
             p = [lambda x: np.ones(shape=x.shape)]
             px = [lambda x: np.zeros(shape=x.shape)]
@@ -504,6 +504,14 @@ class QuadFE(FiniteElement):
                     - (n_points, n_dim) array, or
                     - list of n_points n_dim-tuples,
                     - list of n_points vertices
+            
+            
+            derivatives: tuple, (order,i,j) where 
+                - order specifies the order of the derivative,
+                - i,j specify the variable wrt which we differentiate
+                e.g. (2,0,0) computes d^2p/dx^2 = p_xx,
+                     (2,1,0) computes d^2p/dxdy = p_yx
+ 
                         
             local_dofs: int, list of local dof indices whose entries in
                 range(self.n_dofs).
@@ -810,23 +818,82 @@ class TriFE(FiniteElement):
 class Function(object):
     """
     Function class for finite element objects.
+    
+    Attributes:
+    
+        mesh [None]: Mesh, computational mesh
+        
+        element [None]: FiniteElement, element
+        
+        dofhandler [None]: DofHandler object, defined via mesh and element 
+        
+        __dim: int, number of spatial dimensions 
+        
+        __flag: str/int, marker for submesh on which function is defined
+        
+        __f: function/vector, used to compute function values 
+        
+        __n_samples: int, number of samples stored 
+        
+        __type: str, 'explicit' for explicit function, 'nodal' for nodal 
+            finite element function.
+    
+    Methods:
+    
+        global_dofs: Returns list of of global dofs associated with fn nodes
+        
+        eval: Evaluate the function at given set of points
+        
+        interpolate: Interpolate a Function on a (different) mesh, element
+        
+        project: Project a Function onto a finite element space defined by
+            a mesh, element pair.
+        
+        derivative: Returns the derivative of given Function as a Function.
+        
+        times: Returns the product of given function with another
     """
-    def __init__(self, f, mesh=None, element=None, flag=None):
+    
+    
+    def __init__(self, f, mesh=None, element=None, dofhandler=None, flag=None):
         """
         Constructor:
+        
+        
+        Inputs:
+    
+            f: function or vector whose length is consistent with the dofs 
+                required by the mesh/element/flag or dofhandler/flag 
+            
+            mesh [None]: Mesh, on which the function will be defined
+            
+            element [None]: FiniteElement, on whch the function will be defined
+            
+            dofhandler [None]: DofHandler, specifying the mesh and element on
+                which the function is defined.
+            
+            flag [None]: str/int, marker specifying submesh
+    
         """
-        self.mesh = mesh
-        self.element = element
-        if mesh is not None and element is not None:
-            #
-            # Mesh and Element given -> Construct DofHandler
-            #
-            self.dofhandler = DofHandler(mesh, element)
-            nested = False if flag is None else True
-            self.dofhandler.distribute_dofs(nested=nested)
-              
+        if dofhandler is not None:
+            assert isinstance(dofhandler, DofHandler), 'Input dofhandler ' +\
+                'should be of type DofHandler.'
+                
+            self.mesh = dofhandler.mesh
+            self.element = dofhandler.element
         else:
-            self.dofhandler = None  
+            self.mesh = mesh
+            self.element = element
+            if mesh is not None and element is not None:
+                #
+                # Mesh and Element given -> Construct DofHandler
+                #
+                self.dofhandler = DofHandler(mesh, element)
+                nested = False if flag is None else True
+                self.dofhandler.distribute_dofs(nested=nested)
+                  
+            else:
+                self.dofhandler = None  
         
         #
         # Determine function type
@@ -835,21 +902,34 @@ class Function(object):
             #
             # Explicit function
             # 
-            fn_type = 'function' 
+            fn_type = 'explicit' 
             dim = f.__code__.co_argcount
             n_samples = 1  
             fn = f
+        elif isinstance(f, numbers.Real):
+            #
+            # Constant function
+            # 
+            fn_type = 'constant'
+            dim = 2  # TODO: Constant functions are independent of dimension
+            n_samples = 1
+            fn = f
         else:
             #
-            # Need a mesh and an element
+            # Need a mesh and an element or a dofhandler
             #  
-            assert mesh is not None, \
-            'If input is not a function, the mesh must be specified.'
-            dim = mesh.dim()
+            if dofhandler is None:
+                
+                assert mesh is not None, \
+                'If input is not a function, the mesh must be specified.'
+                dim = mesh.dim()
+                
+                assert element is not None,\
+                'If input is not a function, the element must be specified.'
             
-            assert element is not None,\
-            'If input is not a function, the element must be specified.'
-            
+            fn_type = 'nodal'
+            self.__global_dofs = self.dofhandler.get_global_dofs(flag=flag)
+            """
             if type(f) is dict:
                 # -------------------------------------------------------------
                 # Function passed as dictionary
@@ -892,9 +972,9 @@ class Function(object):
                     assert f[leaf].shape[0]==element.n_dofs(), 'Number of'+\
                     ' function values at node inconsistent with element n_dofs'
                 fn = f
-                    
+                """    
                      
-            elif type(f) is np.ndarray:
+            if type(f) is np.ndarray:
                 # ---------------------------
                 # Function passed as an array
                 # ---------------------------
@@ -904,7 +984,19 @@ class Function(object):
                     nf = f.shape[0]
                 else:
                     nf, n_samples = f.shape
-                    
+                
+                if nf != 1:    
+                    assert nf == self.dofhandler.n_dofs(flag=flag),\
+                        'The number of entries of f does not equal'+\
+                        ' the number of dofs.' 
+                fn = f
+                
+            else:
+                print('Number of entries in f {0}'.format(len(f)))
+                print('Number of dofs {0}'.format(self.dofhandler.n_dofs()))
+                raise Exception('Function must be explicit, or nodal')
+            
+                """
                 n_dofs_loc = element.n_dofs()
                 if nf==n_dofs_loc*mesh.n_cells(flag=flag):
                     #
@@ -932,20 +1024,27 @@ class Function(object):
                     # Continuous nodal function
                     #
                     fn_type = 'nodal_continuous'
-                    fn = f     
-                else:
-                    print('Number of entries in f {0}'.format(len(f)))
-                    print('Number of dofs {0}'.format(self.dofhandler.n_dofs()))
-                    raise Exception('Function must be explicit, nodal, or cellwise.')
-        
+                    fn = f
+                """
         self.__dim = dim       
         self.__f = fn
-        self.__flag = flag
+        self.__flag = flag 
         self.__n_samples = n_samples
         self.__type = fn_type
-         
         
-    def eval(self, x, node=None, derivative=(0,)):
+         
+    def global_dofs(self):
+        """
+        Returns the global dofs associated with the function values. 
+        (Only appropriate for nodal type functions).
+        """    
+        if self.__fn_type == 'nodal':
+            return self.__global_dofs
+        else:
+            raise Exception('Function must be of type "nodal".')
+    
+    
+    def eval(self, x, node=None, derivative=(0,), samples=None):
         """
         Evaluate function at a point x
         
@@ -957,8 +1056,12 @@ class Function(object):
             node: Node, on which f is evaluated. If included, all points in x
                 should be contained in the cell associated with the node. 
                 
-            derivative: int, tuple specifying derivatives 
+            derivative: int, tuple, (order,i,j) where order specifies the order
+                of the derivative, and i,j specify the variable wrt which we 
+                differentiate, e.g. (2,0,0) computes d^2p/dx^2 = p_xx,
+                (2,1,0) computes d^2p/dxdy = p_yx
             
+            samples: int, (r, ) integer array specifying the samples to evaluate
         
         Output:
         
@@ -966,7 +1069,11 @@ class Function(object):
             
         """
         flag = self.__flag
-    
+        dim = self.__dim
+        
+        # ---------------------------------------------------------------------
+        # Parse Input
+        # ---------------------------------------------------------------------
         # Deal with singletons 
         if type(x) is tuple \
         or isinstance(x, Vertex) \
@@ -976,102 +1083,237 @@ class Function(object):
         else:
             is_singleton = False
         
+        #
         # Convert input to array
+        # 
         if type(x) is list:
             # Points in list
             if all(isinstance(xi, Vertex) for xi in x):
+                #
                 # All points are of type vertex
+                #
+                assert all(xi.dim==dim for xi in x), \
+                'Dimension of Vertex incompatible with that of Function.'
+                
                 x = [xi.coordinate() for xi in x]
                 x = np.array(x)
+                
             elif all(type(xi) is tuple for xi in x):
+                #
                 # All points are tuples
+                #
+                assert all(len(xi)==dim for xi in x), \
+                'Dimensions of tuples incompatible with that of Function.'
+                
                 x = np.array(x)
+                
             else:
                 raise Exception(['For x, use arrays or lists'+\
                                  'of tuples or vertices.'])
         
         elif type(x) is np.ndarray:
-            # Make sure dimensions are compatible
-            assert x.shape[1] == 2 
+            #
+            # Points in numpy array
+            # 
+            if len(x.shape)==1:
+                assert dim==1, 'Input 1D but Function is not.'
+            elif len(x.shape)==2:
+                assert x.shape[1]==dim,\
+                'Dimension of array incompatible with that of Function.'
+            else:
+                raise Exception('Only 1- or 2 dimensional arrays allowed.')  
+            
+        # ---------------------------------------------------------------------
+        # Parse sample size
+        # ---------------------------------------------------------------------
+        if samples is None:
+            sample_size = 1
+        elif samples == 'all':
+            samples = np.array(range(self.__n_samples), dtype=np.int)
+        else:
+            assert self.__n_samples > samples.max(), \
+            'Sample paths not stored in function.'
+            sample_size = len(samples)  
         
-        if node is not None:
-            assert all(node.quadcell().contains_point(x)), \
-            'Node specified, but not all points contained in node.'
-   
-        
+        # ---------------------------------------------------------------------
         # Parse function type
-        if self.__type == 'function':
+        # ---------------------------------------------------------------------
+        if self.__type == 'explicit':
             #
             # Explicit function
             # 
             assert derivative==(0,), \
-                    'Unable to take derivatives of function directly.'
-            f_vec = self.__f(x[:,0], x[:,1])
-        elif self.__type == 'mesh':
-            #
-            # Mesh function defined on each cell
-            # 
-            f_vec = np.empty(x.shape[0])
-            f_vec[:] = np.nan
-            count = 0
-            for node in self.mesh.nodes(flag=flag):
-                cell = node.quadcell()
-                in_cell = cell.contains_point(x)
-                x_loc = x[in_cell,:]
-                f_vec[in_cell] = self.__f[count]
-                count += 1 
+                'Unable to take derivatives of function directly.'+\
+                'Interpolate/Project onto finite element space first.'  
+                      
+            assert sample_size==1, \
+                'Unable to sample from function directly.'
             
-        elif self.__type == 'nodal_continuous':
+            if dim == 1:
+                f_vec = self.__f(x)
+            elif dim == 2:
+                f_vec = self.__f(x[:,0], x[:,1])
+            else:
+                raise Exception('Only 1D and 2D inputs supported.')
+    
+        elif self.__type == 'nodal':
             #
-            # Nodal function defined at dof vertices
+            # Initialize output array
             #
-            f_vec = np.empty(x.shape[0])
-            f_vec[:] = np.nan
-            for node in self.mesh.nodes(flag=flag):
-                cell = node.quadcell()
-                f_loc = self.__f[self.dofhandler.get_global_dofs(node)]
+            f_vec = np.empty((x.shape[0],sample_size))    
+            f_vec.fill(np.nan)
+                
+            #
+            # Determine tree nodes to traverse
+            # 
+            if node is None:
+                node_list = self.mesh.root_node().find_leaves(flag=flag)
+            else:
+                assert all(node.quadcell().contains_point(x)), \
+                'Node specified, but not all points contained in node.'
+                node_list = [node]
+            #
+            # Evaluate function on each node
+            #
+            for node in node_list:
+                #
+                # Evaluate function at local dofs 
+                # 
+                idx_node = [self.__global_dofs.index(i) for i in \
+                            self.dofhandler.get_global_dofs(node)]  
+                f_loc = self.__f[idx_node]
+                if sample_size == 1 and len(f_loc.shape)==1:
+                    f_loc = f_loc[:,np.newaxis]
+                #
+                # Evaluate shape function at x-values
+                #   
+                cell = node.quadcell()  # TODO: Only works in 2d
                 in_cell = cell.contains_point(x)
                 x_loc = x[in_cell,:]
                 x_ref = cell.map_to_reference(x_loc)
-                phi = self.element.shape(x_ref, derivatives=derivative) 
-                f_vec[in_cell] = np.dot(phi, f_loc)   
-                
+                phi = self.element.shape(x_ref, derivatives=derivative)
                 #
-                # Determine multiplier for derivatives (chain rule)
+                # Update output vector
                 # 
-                c = 1
-                if derivative[0] in {1,2} and cell is not None:
-                    # 
-                    # There's a map and we're taking derivatives
-                    #
-                    x0,x1,y0,y1 = cell.box()
-                    for i in derivative[1:]:
-                        if i==0:
-                            c *= 1/(x1-x0)
-                        elif i==1:
-                            c *= 1/(y1-y0)
-                            
+                f_vec[in_cell,:] = np.dot(phi, f_loc)
+                                                                     
+            #
+            # Determine multiplier for derivatives (chain rule)
+            # 
+            c = 1
+            if derivative[0] in {1,2} and cell is not None:
+                # 
+                # There's a map and we're taking derivatives
+                #
+                x0,x1,y0,y1 = cell.box()
+                for i in derivative[1:]:
+                    if i==0:
+                        c *= 1/(x1-x0)
+                    elif i==1:
+                        c *= 1/(y1-y0)
+                        
+        else:
+            raise Exception('Function type must be "explicit" or "nodal".')
+                                
         if is_singleton:
             return f_vec[0]
         else:
             return f_vec
         
         
-    def interpolate(self, mesh=None, element=None):
-        pass
-    
-    
-    def grad(self):
+    def interpolate(self, mesh, element, derivative=(0,), flag=None):
         """
-        Compute the gradient [fx, fy] of the function f
+        Return the interpolant of the function  
+        
+        Inputs:
+            
+            mesh: Mesh, Physical mesh on which to interpolate
+            
+            element: QuadFE, element that determines the interpolant
+            
+            flag [None]: str/int, optional mesh marker
+            
+        Output:
+        
+            Function, of nodal type that interpolates the given function at
+                the dof vertices defined by the pair (mesh, element).
         """
-        pass
+        #
+        # Determine dof vertices
+        # 
+        dofhandler = DofHandler(mesh, element)
+        nested = False if flag is None else True
+        dofhandler.distribute_dofs(nested=nested)
+        x = dofhandler.dof_vertices(flag=flag)       
+        #
+        # Evaluate function at dof vertices
+        #
+        fv = self.eval(x)
+        #
+        # Define new function
+        #
+        return Function(fv, mesh, element, flag=flag) 
     
     
+    def project(self):
+        """
+        Return the projection 
+        """
+    
+    def derivative(self, derivative):
+        """
+        Returns the derivative of the function f (stored as a Function). 
         
-     
+        Input
         
-
+            derivative: int, tuple, (order,i,j) where order specifies the order
+                of the derivative, and i,j specify the variable wrt which we 
+                differentiate, e.g. (2,0,0) computes d^2f/dx^2 = f_xx,
+                (2,1,0) computes d^2f/dxdy = f_yx
+                
+                
+        Output
+        
+            df^p/dx^qdy^{p-q}: Function, derivative of current function on the
+                same mesh/element.
+        """
+        flag = self.__flag
+        dim = self.__dim  
+        mesh, element = self.mesh, self.element
+        
+        #
+        # Tear element and reduce degree by (at most) one  
+        # 
+        etype = element.element_type()
+        degree = np.int(etype[-1])
+        #if degree in [1,2,3]:
+        #    degree -= 1
+            
+        if etype[0] == 'Q':
+            etype = 'D' + etype.replace(etype[-1],str(degree))
+        print(etype)
+        element = QuadFE(dim, etype)
+        
+        #
+        # Define new dofhandler
+        # 
+        dofhandler = DofHandler(mesh, element)
+        nested = False if flag is None else True
+        dofhandler.distribute_dofs(nested=nested)
+        #
+        # Determine dof vertices
+        #
+        x = dofhandler.dof_vertices(flag=flag)       
+        #
+        # Evaluate function at dof vertices
+        #
+        fv = self.eval(x, derivative=derivative)
+        #
+        # Define new function
+        #
+        return Function(fv, mesh, element, flag=flag) 
+    
+    
 
 class DofHandler(object):
     """
@@ -1514,39 +1756,55 @@ class DofHandler(object):
         return dofs    
     
     
-    def get_global_dofs(self, node, edge_dir=None):
+    def get_global_dofs(self, node=None, edge_dir=None, flag=None):
         """
         Return all global dofs corresponding to a given cell, or one of its 
         edges.
         
         Inputs:
         
-            node: Node, quadtree node associated with cell
+            node: Node, quadtree node associated with cell. If None, return 
+                a list of all dofs in (sub)mesh.
             
             edge_dir: str, edge direction (WESN)
+            
+            flag: str/int, node marker restricting mesh
             
             
         Outputs:
         
              global_dofs: list of cell dofs or edge dofs. 
         """
-        if node in self.__global_dofs:
-            cell_dofs = self.__global_dofs[node]
-            if edge_dir is None:
-                return cell_dofs
-            else: 
-                assert edge_dir in ['W','E','S','N'], \
-                'Edge should be one of W, E, S, or N.'    
-                edge_dofs = []
-                for i in range(self.element.n_dofs()):
-                    if edge_dir in self.element.pattern[i]:
-                        #
-                        # If edge appears in an entry, record the dof
-                        # 
-                        edge_dofs.append(cell_dofs[i])
-                return edge_dofs
+        if node is not None:
+            #
+            # Node given
+            # 
+            if node in self.__global_dofs:
+                cell_dofs = self.__global_dofs[node]
+                if edge_dir is None:
+                    return cell_dofs
+                else: 
+                    assert edge_dir in ['W','E','S','N'], \
+                    'Edge should be one of W, E, S, or N.'    
+                    edge_dofs = []
+                    for i in range(self.element.n_dofs()):
+                        if edge_dir in self.element.pattern[i]:
+                            #
+                            # If edge appears in an entry, record the dof
+                            # 
+                            edge_dofs.append(cell_dofs[i])
+                    return edge_dofs
+            else:
+                return None
         else:
-            return None
+            #
+            # No node specified, return all dofs of (sub)mesh
+            # 
+            mesh_dofs = set()
+            for leaf in self.mesh.root_node().find_leaves(flag=flag):
+                mesh_dofs = mesh_dofs.union(self.__global_dofs[leaf])
+            return list(mesh_dofs)
+            
         
          
     
@@ -1584,11 +1842,12 @@ class DofHandler(object):
             #
             # Vertices over entire mesh
             # 
-            x = np.empty((self.n_dofs(flag),2))
+            x = np.empty((self.n_dofs(),2))
+            x.fill(np.nan)
             for leaf in self.mesh.root_node().find_leaves(flag=flag):
                 g_dofs = self.get_global_dofs(leaf)
                 x[g_dofs,:] = rule.map(leaf.quadcell(),x=x_ref)
-        return x
+        return x[np.logical_not(np.isnan(x[:,0])),:]
     
                 
     def set_hanging_nodes(self):
@@ -2709,6 +2968,8 @@ class System(object):
             f_vec: double, (n,) vector of function values at the interpolation
                 points.
         """
+        # TODO: Replace this with Function.eval
+        
         dim = 1 if len(x.shape)==1 else x.shape[1]
         if callable(f):
             #
@@ -2931,7 +3192,7 @@ class System(object):
         """
         return self.__rule_1d
     
-    
+    '''
     def make_generic(self,entity):
         """
         Turn a specific entity (QuadCell or Edge) into a generic one
@@ -2946,7 +3207,7 @@ class System(object):
             return ('edge', entity[1])
         else:
             raise Exception('Entity not supported.')
-        
+    '''    
         
     def parse_derivative_info(self, dstring):
         """

@@ -249,7 +249,6 @@ class TestQuadFE(unittest.TestCase):
 class TestTriFE(unittest.TestCase):
     """
     Test TriFE class
-    
     """
 
 class TestFunction(unittest.TestCase):
@@ -260,18 +259,125 @@ class TestFunction(unittest.TestCase):
         """
         Test Constructor
         """ 
+        
+    
         mesh = Mesh.newmesh()
         mesh.record(0)
         mesh.refine()
         mesh.record(1)
         mesh.refine()
         mesh.record(2)
-
-        etype_list = ['Q1','Q2','Q3']        
+        
+        f = lambda x,y: np.sin(np.pi*x)*np.cos(2*np.pi*y) + np.cos(np.pi*y)
+        
+        fig = plt.figure()
+        
+        #
+        # Mesh points at which to plot function
+        # 
+        x0,x1,y0,y1 = mesh.box()
+        nx, ny = 30,30
+        x,y = np.linspace(x0,x1,nx), np.linspace(y0,y1,ny)
+        xx, yy = np.meshgrid(x,y)
+        xy = np.array([xx.ravel(),yy.ravel()]).transpose()
+        
+        #
+        # Test interpolate and eval
+        #
+        fn = Function(f)
+        ax = fig.add_subplot(3,4,1, projection='3d')
+        zz = fn.eval(xy)
+        
+        ax.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
+                        linewidth=0, antialiased=True)
+        ax.set_title('f')
+        #
+        # Interpolate function: continous elements
+        # 
+        continuous_etype = ['Q1','Q2','Q3']
+        for i in range(3):
+            etype = continuous_etype[i]
+            element = QuadFE(2,etype)
+            fn_interp = fn.interpolate(mesh, element)
+            
+            ax = fig.add_subplot(3,4,2+i, projection='3d')
+            zz = fn_interp.eval(xy)
+            ax.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
+                            linewidth=0, antialiased=True)
+            ax.set_title(etype)
+        #
+        # Interpolate function: discontinuous elements
+        #
+        '''
+        Note: The plots in row 2 should be the same as those in row 1, with
+            the exception of DQ0.
+        '''
+        discontinuous_etype = ['DQ0','DQ1','DQ2','DQ3']
+        for i in range(4):
+            etype = discontinuous_etype[i]
+            element = QuadFE(2,etype)
+            fn_interp = fn.interpolate(mesh, element)
+            
+            ax = fig.add_subplot(3,4,5+i, projection='3d')
+            zz = fn_interp.eval(xy)
+            ax.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
+                            linewidth=0, antialiased=True)
+            ax.set_title(etype)
+        
+        
+        #
+        # Differentiate the function with respect to y
+        # 
+        etype_list = ['DQ0','Q1','Q2','Q3']
+        for i in range(4):
+            etype = etype_list[i]
+            element = QuadFE(2,etype)
+            fn_interp = fn.interpolate(mesh, element)
+            
+            ax = fig.add_subplot(3,4,9+i, projection='3d')
+            df_dx = fn_interp.derivative((1,1))
+            zz = df_dx.eval(xy)
+            ax.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
+                            linewidth=0, antialiased=True)
+            ax.set_title(etype)
+        
+        plt.tight_layout(pad=1, w_pad=2, h_pad=2)
+        
+            
+        plt.show()    
+        
+        
+        plot = Plot()
+        element = QuadFE(2,'DQ0')
+        fn.interpolate(mesh, element)
+        ax = fig.add_subplot(1,3,1)
+        ax = plot.mesh(ax, mesh, node_flag=0, color_marked=[0])
+        ax = fig.add_subplot(1,3,2)
+        ax = plot.mesh(ax, mesh, node_flag=1, color_marked=[1])
+        ax = fig.add_subplot(1,3,3)
+        ax = plot.mesh(ax, mesh, node_flag=2, color_marked=[2])
         
         """
-        fig, ax = plt.subplots(3,3)
-        plot = Plot()
+               
+        fig, ax = plt.subplots(2,4)
+        
+        count = 0
+        for etype in etype_list:
+            print(etype)            
+            element = QuadFE(2,etype)
+            dh = DofHandler(mesh,element)
+            dh.distribute_dofs(nested=True)
+            x = dh.dof_vertices(flag=1)
+            fv = f(x[:,0],x[:,1])
+                 
+            fn = Function(fv, mesh=mesh, element=element, flag=1)
+            
+            # Plot 
+            i,j = count//4, count%4
+            ax[i,j] = plot.contour(ax[i,j],fig,fn,mesh,element)
+            count += 1
+        plt.show()
+        
         
         n_flags = 3
         n_element_types = 3
@@ -288,14 +394,6 @@ class TestFunction(unittest.TestCase):
         """
                 
         # Explicit function
-        f = lambda x,y: np.sin(np.pi*x) + np.cos(np.pi*y)
-        fn = Function(f, flag=0)
-        
-        element = QuadFE(2,'DQ0')
-       #print(element.local_dof_matrix())
-        # Mesh function
-        f0_mesh = np.array([f(0.5,0.5)])
-        F0_mesh = Function(f0_mesh, mesh=mesh, element=QuadFE(2,'DQ0'), flag=0)  
         
         # Nodal continuous function
         
@@ -577,8 +675,22 @@ class TestDofHandler(unittest.TestCase):
         pass
     
     def test_get_global_dofs(self):
-        # TODO: test
-        pass
+        # TODO: finish
+        mesh = Mesh.newmesh()
+        for i in range(2):
+            mesh.refine()
+            mesh.record(i)
+        element = QuadFE(2,'DQ0')
+        dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs(nested=True)
+        
+        dofs_1 = dofhandler.get_global_dofs(flag=1)
+        for leaf in mesh.root_node().find_leaves(flag=0):
+            leaf_dofs = dofhandler.get_global_dofs(node=leaf)
+        
+        
+        
+        
     
     def test_n_dofs(self):
         # TODO: test
@@ -1341,7 +1453,7 @@ class TestSystem(unittest.TestCase):
     def test_edge_rule(self):
         pass
     
-                
+    '''            
     def test_make_generic(self):
         mesh = Mesh.newmesh()
         element = QuadFE(2,'Q1')
@@ -1354,7 +1466,7 @@ class TestSystem(unittest.TestCase):
             self.assertEqual(system.make_generic((edge,direction)),\
                              ('edge',direction),\
                              'Cannot convert edge to generic edge')
-    
+    '''
             
     def test_parse_derivative_info(self):
         mesh = Mesh.newmesh()

@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import deque
+import numbers
 
 """
 Created on Jun 29, 2016
@@ -3286,15 +3287,37 @@ class Vertex(object):
             on_boundary: boolean, true if on boundary
               
         """
-        assert type(coordinate) is tuple, 'Vertex coordinate should be a tuple.'
+        if isinstance(coordinate, numbers.Real):
+            #
+            # Coordinate passed as a real number 1D
+            # 
+            dim = 1
+            coordinate = (coordinate,)  # recast coordinate as tuple
+        elif type(coordinate) is tuple:
+            #
+            # Coordinate passed as a tuple
+            # 
+            dim = len(coordinate)
+            assert dim <= 2, 'Only 1D and 2D meshes supported.'
+        else:
+            raise Exception('Enter coordinate as a number or a tuple.')
         self.__coordinate = coordinate
         self.__flags = set()
+        self.__dim = dim
     
     def coordinate(self):
         """
         Return coordinate tuple
         """
         return self.__coordinate
+    
+    
+    def dim(self):
+        """
+        Return the dimension of the vertex
+        """
+        return self.__dim
+        
     
     def mark(self, flag=None):
         """

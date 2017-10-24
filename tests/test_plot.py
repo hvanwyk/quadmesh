@@ -135,9 +135,9 @@ class TestPlot(unittest.TestCase):
                 x = system.dof_vertices()
                 fn = f(x[:,0],x[:,1])
                 fig, ax[1+j,i] = plot.contour(ax[1+j,i], fig, fn, mesh, element,\
-                                            derivatives=(1,j), colorbar=False)
+                                            derivative=(1,j), colorbar=False)
                 ax[1+j,i].axis('off')
-                
+        plt.show()        
                 
     def test_plot_surface(self):
         """

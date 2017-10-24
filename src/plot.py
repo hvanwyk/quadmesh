@@ -186,15 +186,40 @@ class Plot(object):
 
 
 
-    def contour(self,ax, fig, f, mesh, element=None, derivatives=(0,), \
+    def contour(self, ax, fig, f, mesh, element=None, derivative=(0,), \
                 colorbar=True, resolution=(100,100), flag=None):
         """
-        Plot a contour defined at the element nodes
+        Returns a contour plot of a function f
         
-        Loop over cells
-            get local dofs
-            evaluate shapefunctions
+        
+        Inputs:
+        
+            ax: Axis, current axes
             
+            fig: Figure, current figure
+            
+            f: Function, function to be plotted
+            
+            mesh: Mesh, computational mesh
+            
+            *element [None]: TODO: Not necessary if plotting a Function 
+            
+            *derivative [(0,)]: int, tuple specifying the function's derivative
+            
+            *colorbar [True]: bool, add a colorbar?
+            
+            *resolution [(100,100)]: int, tuple resolution of contour plot.
+            
+            *flag [None]: str/int, specifying submesh on which to evaluate f
+                TODO: Unnecessary.
+            
+            
+        Outputs: 
+        
+            ax
+            
+            fig
+                    
         """
         #
         # Initialize grid
@@ -241,7 +266,7 @@ class Plot(object):
                 
                 xy = np.array([x.ravel(), y.ravel()]).transpose()
                 system = System(mesh,element)
-                z = system.f_eval(f, xy, derivatives=derivatives)
+                z = system.f_eval(f, xy, derivatives=derivative)
                 cm = ax.contourf(x,y,z.reshape(ny,nx),200, cmap='viridis')
                 
         if colorbar:
@@ -250,9 +275,9 @@ class Plot(object):
         return fig, ax
     
     
-    def surface(self, ax, f, mesh, element, derivatives=(0,), 
-                shading=True, grid=False, resolution=(10,10),
-                edge_resolution=5):
+    def surface(self, ax, f, mesh=None, element=None, derivatives=(0,), 
+                shading=True, grid=False, resolution=(100,100),
+                edge_resolution=10, flag=None):
         """
         Plot the surface of a function defined on the finite element mesh
         
@@ -260,10 +285,38 @@ class Plot(object):
         
             ax: axis (don't forget to initialize it using projection='3d')
             
-            f: function, 
+            f: Function, function to be plotted
             
-            mesh
+            mesh: Mesh, on which to plot the function 
+            
+            *derivatives [(0,)]: int, tuple specifying what derivatives to
+                plot (see Function.eval for details).
+            
+            *shading [True]: bool, shade surface or use wire plot? 
+            
+            *grid [False]: bool, display grid? 
+            
+            *resolution [(100,100)]: int, tuple (nx,ny) number of points 
+                in the x- and y directions. 
+            
+            *edge_resolution: int, number of points along each each edge
+            
+            *flag [None]: str/int marker for submesh TODO: Not implemented
+            
+        
+        Output:
+        
+            ax: Axis, containing plot.
+        
         """
+        if mesh is None:
+            if isinstance(f, Function) and f.mesh is not None:
+                mesh = f.mesh
+            else:
+                mesh_error = 'Mesh must be specified, either explicitly, '+\
+                    'or as part of the Function.'
+                raise Exception(mesh_error)
+            
         x0,x1,y0,y1 = mesh.box()        
         system = System(mesh,element)
         if shading:
