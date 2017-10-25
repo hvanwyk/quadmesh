@@ -855,7 +855,8 @@ class Function(object):
     """
     
     
-    def __init__(self, f, mesh=None, element=None, dofhandler=None, flag=None):
+    def __init__(self, f, fn_type, mesh=None, element=None, \
+                 dofhandler=None, flag=None):
         """
         Constructor:
         
@@ -863,7 +864,10 @@ class Function(object):
         Inputs:
     
             f: function or vector whose length is consistent with the dofs 
-                required by the mesh/element/flag or dofhandler/flag 
+                required by the mesh/element/flag or dofhandler/flag. 
+                f can also be passed as an (n_dofs, n_samples) array.  
+                
+            fn_type: str, function type ('explicit', 'nodal', or 'constant')
             
             mesh [None]: Mesh, on which the function will be defined
             
@@ -874,164 +878,83 @@ class Function(object):
             
             flag [None]: str/int, marker specifying submesh
     
-        """
+        """ 
+        #
+        # Construct DofHandler if possible
+        # 
         if dofhandler is not None:
             assert isinstance(dofhandler, DofHandler), 'Input dofhandler ' +\
                 'should be of type DofHandler.'
-                
-            self.mesh = dofhandler.mesh
-            self.element = dofhandler.element
-        else:
-            self.mesh = mesh
-            self.element = element
-            if mesh is not None and element is not None:
-                #
-                # Mesh and Element given -> Construct DofHandler
-                #
-                self.dofhandler = DofHandler(mesh, element)
-                nested = False if flag is None else True
-                self.dofhandler.distribute_dofs(nested=nested)
-                  
-            else:
-                self.dofhandler = None  
+        elif mesh is not None and element is not None:
+            dofhandler = DofHandler(mesh, element)
+        self.dofhandler = dofhandler
         
-        #
-        # Determine function type
-        # 
-        if callable(f):       
-            #
-            # Explicit function
-            # 
-            fn_type = 'explicit' 
-            dim = f.__code__.co_argcount
-            n_samples = 1  
-            fn = f
-        elif isinstance(f, numbers.Real):
-            #
-            # Constant function
-            # 
-            fn_type = 'constant'
-            dim = 2  # TODO: Constant functions are independent of dimension
-            n_samples = 1
-            fn = f
-        else:
-            #
-            # Need a mesh and an element or a dofhandler
-            #  
-            if dofhandler is None:
-                
-                assert mesh is not None, \
-                'If input is not a function, the mesh must be specified.'
-                dim = mesh.dim()
-                
-                assert element is not None,\
-                'If input is not a function, the element must be specified.'
-            
-            fn_type = 'nodal'
+        # Distribute Dofs and store them
+        if self.dofhandler is not None:
+            nested = False if flag is None else True
+            self.dofhandler.distribute_dofs(nested=nested)
             self.__global_dofs = self.dofhandler.get_global_dofs(flag=flag)
-            """
-            if type(f) is dict:
-                # -------------------------------------------------------------
-                # Function passed as dictionary
-                # -------------------------------------------------------------
-                fn_type = 'nodal_discontinuous'
-                
-                assert len(f)==mesh.n_cells(flag=flag), \
-                'Length of dictionary must equal number of leaf nodes.'
-                
-                # Generate leaf nodes
-                leaves = mesh.root_node().find_leaves(flag=flag)
-                
-                #
-                # Get some information from the first entry
-                # 
-                assert leaves[0] in f, 'Mesh leaf nodes inconsistent with dict'
-                f0 = f[leaves[0]]
-    
-                if element.element_type()=='DQ0':
-                    if isinstance(f0, numbers.Real):
-                        n_samples = 1  
-                    elif type(f0) is np.ndarray:
-                        n_samples = len(f0)
-                else:    
-                    if len(f0.shape)==1:
-                        n_samples = 1 
-                        assert len(f0)==element.n_dofs(), \
-                        'Number of entries of f0 inconsistent with element n_dofs.' 
-                    elif len(f0.shape)==2:
-                        n_samples = f0.shape[1]
-                        assert f0.shape[0]==element.n_dofs(),\
-                        'Number of entries of f0 inconsistent with element n_dofs.'
-                        
-                for leaf in leaves:
-                    # Leaf nodes must be contained in dictionary
-                    assert leaf in f, \
-                    'Mesh leaf nodes inconsistent with dictionary'
-                    
-                    # Check number of entries per leaf
-                    assert f[leaf].shape[0]==element.n_dofs(), 'Number of'+\
-                    ' function values at node inconsistent with element n_dofs'
-                fn = f
-                """    
-                     
-            if type(f) is np.ndarray:
-                # ---------------------------
-                # Function passed as an array
-                # ---------------------------
-                # Determine number of samples
-                if len(f.shape)==1:
-                    n_samples = 1
-                    nf = f.shape[0]
-                else:
-                    nf, n_samples = f.shape
-                
-                if nf != 1:    
-                    assert nf == self.dofhandler.n_dofs(flag=flag),\
-                        'The number of entries of f does not equal'+\
-                        ' the number of dofs.' 
-                fn = f
-                
-            else:
-                print('Number of entries in f {0}'.format(len(f)))
-                print('Number of dofs {0}'.format(self.dofhandler.n_dofs()))
-                raise Exception('Function must be explicit, or nodal')
             
-                """
-                n_dofs_loc = element.n_dofs()
-                if nf==n_dofs_loc*mesh.n_cells(flag=flag):
-                    #
-                    # Discontinuous nodal function -> convert to dictionary
-                    #    
-                    fn_type = 'nodal_discontinuous'
-                    leaves = mesh.root_node().find_leaves(flag=flag)
-                    fn = dict.fromkeys(leaves)
-                    count = 0
-                    for leaf in leaves:
-                        if len(f.shape)==1:
-                            #
-                            # Only one sample
-                            # 
-                            fn[leaf] = np.array(f[count:count+n_dofs_loc])
-                        else:
-                            #
-                            # Multiple samples
-                            # 
-                            fn[leaf] = np.array(f[count:count+n_dofs_loc,:])
-                        count += n_dofs_loc
-                        
-                elif nf==self.dofhandler.n_dofs(flag=flag):
-                    #
-                    # Continuous nodal function
-                    #
-                    fn_type = 'nodal_continuous'
-                    fn = f
-                """
+        if fn_type == 'explicit':
+            # ---------------------------
+            # Explicit function
+            # ---------------------------
+            dim = f.__code__.co_argcount
+            n_samples = 1                
+            fn = f
+            
+        elif fn_type == 'nodal':
+            # ---------------------------
+            # Nodal (finite element) function
+            # ---------------------------
+            assert self.dofhandler is not None, \
+            'If function_type is "nodal", dofhandler '\
+            '(or mesh and element required).' 
+
+            assert type(f) is np.ndarray, \
+            'Variable "f" must be an array when fn_type" is "nodal".'
+            
+            # 
+            # Function passed as an array
+            # 
+            # Determine number of samples
+            if len(f.shape)==1:
+                n_samples = 1
+                nf = f.shape[0]
+            else:
+                nf, n_samples = f.shape
+            
+            assert nf == self.dofhandler.n_dofs(flag=flag),\
+                'The number of entries of f does not equal'+\
+                ' the number of dofs.' 
+            fn = f
+            dim = self.dofhandler.mesh.dim() 
+            
+                
+        elif fn_type == 'constant':
+            # ---------------------------
+            # Constant function
+            # ---------------------------
+            dim = None
+            # Determine number of samples
+            if type(f) is np.ndarray:
+                assert len(f.shape)==1, 'Constant functions are passed '+\
+                'as scalars or vectors.'
+                n_samples = len(f)
+            elif isinstance(f, numbers.Real):
+                n_samples = 1
+                 
+        else:
+            raise Exception('Variable function_type should be: '+\
+                            ' "explicit", "nodal", or "constant".')        
+        
         self.__dim = dim       
         self.__f = fn
         self.__flag = flag 
         self.__n_samples = n_samples
         self.__type = fn_type
         
+ 
          
     def global_dofs(self):
         """
@@ -1042,11 +965,12 @@ class Function(object):
             return self.__global_dofs
         else:
             raise Exception('Function must be of type "nodal".')
+ 
     
     
     def eval(self, x, node=None, derivative=(0,), samples=None):
         """
-        Evaluate function at a point x
+        Evaluate function at an array of points x
         
         Inputs:
         
@@ -1221,9 +1145,9 @@ class Function(object):
             return f_vec
         
         
-    def interpolate(self, mesh, element, derivative=(0,), flag=None):
+    def interpolate(self, mesh, element, flag=None):
         """
-        Return the interpolant of the function  
+        Return the interpolant of the function on a (new) mesh/element pair 
         
         Inputs:
             
@@ -1255,11 +1179,6 @@ class Function(object):
         return Function(fv, mesh, element, flag=flag) 
     
     
-    def project(self):
-        """
-        Return the projection 
-        """
-    
     def derivative(self, derivative):
         """
         Returns the derivative of the function f (stored as a Function). 
@@ -1282,16 +1201,11 @@ class Function(object):
         mesh, element = self.mesh, self.element
         
         #
-        # Tear element and reduce degree by (at most) one  
+        # Tear element if necessary 
         # 
         etype = element.element_type()
-        degree = np.int(etype[-1])
-        #if degree in [1,2,3]:
-        #    degree -= 1
-            
         if etype[0] == 'Q':
-            etype = 'D' + etype.replace(etype[-1],str(degree))
-        print(etype)
+            etype = 'D' + etype
         element = QuadFE(dim, etype)
         
         #
@@ -1311,7 +1225,7 @@ class Function(object):
         #
         # Define new function
         #
-        return Function(fv, mesh, element, flag=flag) 
+        return Function(fv, 'nodal', dofhandler=dofhandler, flag=flag) 
     
     
     
@@ -1327,28 +1241,35 @@ class Function(object):
             
             element [None]: Element object associated with the new Function
             
-            flag [None]: 
+            flag [None]:
+            
+        
+        Output:
+        
         """
         #
         # Determine data type for g
         # 
         if isinstance(g, numbers.Real):
             # g is a number 
-            g_type = 'number'
+            _type = 'constant'
         elif isinstance(g, Function):
             # g is a function object
             g_type = 'Function'
         elif callable(g):
             # g is an explicit function
             g_type = 'function'
-            
+        
+        if self.__type == 'explicit':
+            pass   
         if mesh is not None and element is not None:
             dofhandler = DofHandler(mesh, element, flag=flag) 
             x = dofhandler.dof_vertices()
             
             
         p = Function()
-
+    
+    
 class DofHandler(object):
     """
     Degrees of freedom handler

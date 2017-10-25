@@ -1368,8 +1368,6 @@ class TestSystem(unittest.TestCase):
             #
             # Bilinear form
             #
-            
-            # TODO: Test fails - investigate 
             b_uv = system.form_eval((1,'u','v'), node)
             self.assertAlmostEqual(v.dot(b_uv.dot(u)),
                                    cell_integrals[etype][0],8, 

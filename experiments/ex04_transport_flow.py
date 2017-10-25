@@ -10,7 +10,7 @@ Flow Equation: Seek pressure p = p(x,y)
 
 Velocity
     
-    u = grad(p)
+    u = -K*grad(p)
 
 Transport Equation: Seek concentration c = c(x,y,t)
 
@@ -111,6 +111,7 @@ p_fn = Function(p, mesh, p_element)
 # TODO: Construct new function by (i) taking derivatives or (ii) multiplying by a constant or another function ...
 
 
+"""
 print('plot')
 fig = plt.figure() 
 ax = fig.add_subplot(1,1,1, projection='3d')
@@ -118,6 +119,7 @@ plot = Plot()
 #plot.contour(ax, fig, p_fn, mesh, p_element, derivatives=(1,0))
 ax = plot.surface(ax, p_fn, mesh, p_element)
 plt.show()
+"""
 
 #
 # Transport
