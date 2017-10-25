@@ -965,7 +965,15 @@ class Function(object):
             return self.__global_dofs
         else:
             raise Exception('Function must be of type "nodal".')
- 
+        
+        
+        
+    def fn_type(self):
+        """
+        Returns function type
+        """
+        return self.__fn_type
+
     
     
     def eval(self, x, node=None, derivative=(0,), samples=None):
@@ -989,7 +997,7 @@ class Function(object):
         
         Output:
         
-            f(x): (n_points, ) array of outputs
+            f(x): (n_points, n_samples) array of outputs
             
         """
         flag = self.__flag
