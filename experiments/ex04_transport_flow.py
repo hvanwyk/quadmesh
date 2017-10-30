@@ -107,7 +107,11 @@ A, b = p_system.assemble(bilinear_forms = bf_flow,
 
 print('solve')
 p = spla.spsolve(A.tocsc(),b)
-p_fn = Function(p, mesh, p_element)
+fn = Function(p, mesh, p_element)
+vx_fn = Function(p_fn.derivative((1,0)).fn(),fn_type='nodal', dofhandler=p_fn.dofhandler, flag=p_fn.flag())
+vy_fn = p_fn.derivative((1,1))
+ 
+
 # TODO: Construct new function by (i) taking derivatives or (ii) multiplying by a constant or another function ...
 
 

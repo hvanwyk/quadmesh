@@ -975,6 +975,12 @@ class Function(object):
         return self.__fn_type
 
     
+    def fn(self):
+        """
+        Return the function 'kernel'
+        """
+        return self.__f
+    
     
     def eval(self, x, node=None, derivative=(0,), samples=None):
         """
@@ -1048,7 +1054,7 @@ class Function(object):
             # Points in numpy array
             # 
             if len(x.shape)==1:
-                assert dim==1, 'Input 1D but Function is not.'
+                assert dim==1, 'Input 1D but Function is not univariate.'
             elif len(x.shape)==2:
                 assert x.shape[1]==dim,\
                 'Dimension of array incompatible with that of Function.'
@@ -1093,7 +1099,7 @@ class Function(object):
             # Initialize output array
             #
             f_vec = np.empty((x.shape[0],sample_size))    
-            f_vec.fill(np.nan)
+            #f_vec.fill(np.nan)
                 
             #
             # Determine tree nodes to traverse
@@ -1113,7 +1119,7 @@ class Function(object):
                 # 
                 idx_node = [self.__global_dofs.index(i) for i in \
                             self.dofhandler.get_global_dofs(node)]  
-                f_loc = self.__f[idx_node]
+                f_loc = self.__f[idx_node,:]
                 if sample_size == 1 and len(f_loc.shape)==1:
                     f_loc = f_loc[:,np.newaxis]
                 #
@@ -1143,6 +1149,7 @@ class Function(object):
                         c *= 1/(x1-x0)
                     elif i==1:
                         c *= 1/(y1-y0)
+            f_vec *= c
                         
         else:
             raise Exception('Function type must be "explicit" or "nodal".')
@@ -1153,7 +1160,7 @@ class Function(object):
             return f_vec
         
         
-    def interpolate(self, mesh, element, flag=None):
+    def interpolate(self, mesh=None, element=None, flag=None):
         """
         Return the interpolant of the function on a (new) mesh/element pair 
         
@@ -1170,6 +1177,11 @@ class Function(object):
             Function, of nodal type that interpolates the given function at
                 the dof vertices defined by the pair (mesh, element).
         """
+        if mesh is None:
+            mesh = self.dofhandler.mesh
+            
+        if element is None:
+            element = self.dofhandler.element
         #
         # Determine dof vertices
         # 
@@ -1184,7 +1196,8 @@ class Function(object):
         #
         # Define new function
         #
-        return Function(fv, mesh, element, flag=flag) 
+        return Function(fv, fn_type='nodal', mesh=mesh, \
+                        element=element, flag=flag) 
     
     
     def derivative(self, derivative):
@@ -1206,7 +1219,7 @@ class Function(object):
         """
         flag = self.__flag
         dim = self.__dim  
-        mesh, element = self.mesh, self.element
+        mesh, element = self.dofhandler.mesh, self.dofhandler.element
         
         #
         # Tear element if necessary 
@@ -1237,45 +1250,7 @@ class Function(object):
     
     
     
-    def times(self, g, mesh=None, element=None, flag=None):
-        """
-        Returns a Function obtained from the product of
-        
-        Inputs:
-        
-            g: Function, double, or function, second factor in the product.
-            
-            mesh [None]: Mesh, object associated with the new Function
-            
-            element [None]: Element object associated with the new Function
-            
-            flag [None]:
-            
-        
-        Output:
-        
-        """
-        #
-        # Determine data type for g
-        # 
-        if isinstance(g, numbers.Real):
-            # g is a number 
-            _type = 'constant'
-        elif isinstance(g, Function):
-            # g is a function object
-            g_type = 'Function'
-        elif callable(g):
-            # g is an explicit function
-            g_type = 'function'
-        
-        if self.__type == 'explicit':
-            pass   
-        if mesh is not None and element is not None:
-            dofhandler = DofHandler(mesh, element, flag=flag) 
-            x = dofhandler.dof_vertices()
-            
-            
-        p = Function()
+   
     
     
 class DofHandler(object):
