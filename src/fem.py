@@ -921,13 +921,14 @@ class Function(object):
             if len(f.shape)==1:
                 n_samples = 1
                 nf = f.shape[0]
+                fn = f[:,np.newaxis]
             else:
                 nf, n_samples = f.shape
-            
+                fn = f[:,np.newaxis]
+                
             assert nf == self.dofhandler.n_dofs(flag=flag),\
                 'The number of entries of f does not equal'+\
                 ' the number of dofs.' 
-            fn = f
             dim = self.dofhandler.mesh.dim() 
             
                 
@@ -1105,7 +1106,7 @@ class Function(object):
             # Determine tree nodes to traverse
             # 
             if node is None:
-                node_list = self.mesh.root_node().find_leaves(flag=flag)
+                node_list = self.dofhandler.mesh.root_node().find_leaves(flag=flag)
             else:
                 assert all(node.quadcell().contains_point(x)), \
                 'Node specified, but not all points contained in node.'
@@ -1120,8 +1121,8 @@ class Function(object):
                 idx_node = [self.__global_dofs.index(i) for i in \
                             self.dofhandler.get_global_dofs(node)]  
                 f_loc = self.__f[idx_node,:]
-                if sample_size == 1 and len(f_loc.shape)==1:
-                    f_loc = f_loc[:,np.newaxis]
+                #if sample_size == 1 and len(f_loc.shape)==1:
+                #    f_loc = f_loc[:,np.newaxis]
                 #
                 # Evaluate shape function at x-values
                 #   
@@ -1129,10 +1130,14 @@ class Function(object):
                 in_cell = cell.contains_point(x)
                 x_loc = x[in_cell,:]
                 x_ref = cell.map_to_reference(x_loc)
-                phi = self.element.shape(x_ref, derivatives=derivative)
+                phi = self.dofhandler.element.shape(x_ref, derivatives=derivative)
                 #
                 # Update output vector
                 # 
+                #print(self.__f)
+                print('shapes:')
+                print('phi {0}'.format(phi.shape))
+                print('f_loc {0}'.format(f_loc))
                 f_vec[in_cell,:] = np.dot(phi, f_loc)
                                                                      
             #

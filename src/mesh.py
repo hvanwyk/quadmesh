@@ -27,7 +27,7 @@ class Mesh(object):
             Warning('Tree node is linked to a cell. Unlinking')    
         root_node.unlink()
         root_node.link(quadcell)
-        self.__quadcell = quadcell
+        self.__cell = quadcell
         self.__root_node = root_node
         self.__triangulated = False 
         self.__mesh_count = 0
@@ -81,7 +81,7 @@ class Mesh(object):
         """
         Return grid size on coarsest level
         """
-        return self.__quadcell.grid_size
+        return self.__cell.grid_size
     
     
     def depth(self):
@@ -546,13 +546,53 @@ class Mesh(object):
         return ax
     
     
-    def plot_trimesh(self):
+class Grid(object):
+    """
+    Description: Structure used for storing Nodes on coarsest refinement level
+    """
+    def __init__(self):
         """
-        Plot Mesh of Triangles
+        Constructor
+        
+        Inputs:
+        
         """
         pass
+    
+    
+    def dim(self):
+        """
+        Returns the underlying dimension of the grid
+        """ 
+        pass
+    
+    
+    def get_neighbor(self, Node, direction):
+        """
+        Returns the neighbor of a Node in the Grid
         
+        Inputs: 
         
+            Node: Node, contained in the grid
+            
+            direction: str, ['left','right'] for a 1D grid or 
+                ['N','S','E','W'] (or combinations) for a 2D grid
+        """
+        pass   
+    
+    
+    def contains_node(self, Node):
+        """
+        Determine whether a given Node is contained in the grid
+        
+        Inputs:
+        
+            Node: Node, 
+        """
+        pass
+    
+    
+    
 class Node(object):
     """
     Description: Tree object for storing and manipulating adaptively
@@ -650,7 +690,7 @@ class Node(object):
         self.depth = node_depth
         self.parent = parent
         self.children = node_children
-        self.__quadcell = quadcell
+        self.__cell = quadcell
         self.__tricells = None
         self.__flags  = set()
         self.__support = False
@@ -659,6 +699,8 @@ class Node(object):
     def info(self):
         """
         Display essential information about Node
+        
+        TODO: move to subclass
         """
         print('-'*11)
         print('Node Info')
@@ -742,7 +784,8 @@ class Node(object):
         Output: 
          
             neighboring cell
-            
+         
+        TODO: move to subclass   
         """
         if self.type == 'ROOT':
             #
@@ -865,13 +908,13 @@ class Node(object):
                             return mu.children[neighbor_pos] 
     
     
-    def max_depth(self):
+    def max_depth(self, flag=None):
         """
         Return the maximum depth of sub-nodes 
         """
         depth = self.depth
         if self.has_children():
-            for child in self.children.values():
+            for child in self.get_children(flag=flag):
                 d = child.max_depth()
                 if d > depth:
                     depth = d 
@@ -1087,6 +1130,8 @@ class Node(object):
     def has_children(self, position=None, flag=None):
         """
         Determine whether node has children
+        
+        TODO: Move to subclass
         """
         if position is None:
             # Check for any children
@@ -1126,6 +1171,8 @@ class Node(object):
             flag: [None], optional marker
         
         Note: Only returns children that are not None 
+        
+        TODO: move to subclass
         """
         if self.has_children(flag=flag):
             if self.type=='ROOT' and self.grid_size() is not None:
@@ -1192,6 +1239,10 @@ class Node(object):
     def in_grid(self):
         """
         Determine whether node position is given by coordinates or directions
+        
+        TODO: move to subclass
+        
+        
         """
         return type(self.position) is tuple
     
@@ -1266,10 +1317,10 @@ class Node(object):
         """
         Determine whether node is linked to a cell
         """
-        return not self.__quadcell is None
+        return not self.__cell is None
     
         
-    def link(self,quadcell,recursive=True):
+    def link(self, cell,recursive=True):
         """
         Link node with QuadCell
         
@@ -1277,27 +1328,28 @@ class Node(object):
         
             Quadcell: QuadCell object, rectangular cell linked to node
             
-            recursive: bool, if True - link entire tree with cells 
+            recursive: bool, if True - link entire tree with cells
+            
         """
-        self.__quadcell = quadcell
+        self.__cell = cell
         if recursive:
             #
             # Link child nodes to appropriate child cells
             #
-            assert self.children.keys() == quadcell.children.keys(), \
+            assert self.children.keys() == cell.children.keys(), \
             'Keys of tree and cell incompatible.'
             
             if self.has_children():
-                if not(quadcell.has_children()):
+                if not(cell.has_children()):
                     #
                     # Cell must be split first
                     #
-                    quadcell.split()
+                    cell.split()
              
                 for pos in self.children.keys():
                     tree_child = self.children[pos]
                     if tree_child.cell == None:
-                        cell_child = quadcell.children[pos]
+                        cell_child = cell.children[pos]
                         tree_child.link(cell_child,recursive=recursive) 
     
         
@@ -1305,7 +1357,7 @@ class Node(object):
         """
         Unlink node from cell
         """
-        self.__quadcell = None
+        self.__cell = None
         if recursive and self.has_children():
             #
             # Unlink child nodes from cells
@@ -1318,8 +1370,10 @@ class Node(object):
     def quadcell(self, position=None):
         """
         Return associated quadcell
+        
+        TODO: change name
         """
-        return self.__quadcell
+        return self.__cell
        
     
     
@@ -1369,8 +1423,8 @@ class Node(object):
         # If node is linked to cell, split cell and attach children
         #
         assert not(self.has_children()),'Node already has children.' 
-        if self.__quadcell is not None: 
-            cell = self.__quadcell
+        if self.__cell is not None: 
+            cell = self.__cell
             #
             # Ensure cell has children
             # 
@@ -1387,6 +1441,8 @@ class Node(object):
     def is_balanced(self):
         """
         Check whether the tree is balanced
+        
+        TODO: move to subclass
         """
         children_to_check = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
                              'E': ['NW', 'SW'], 'W': ['NE', 'SE']}        
@@ -1404,6 +1460,8 @@ class Node(object):
     def balance(self):
         """
         Ensure that subcells of current cell conform to the 2:1 rule
+        
+        TODO: move to subclass
         """
         leaves = set(self.find_leaves())  # set: no duplicates
         leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
@@ -1479,6 +1537,8 @@ class Node(object):
     def pos2id(self, pos):
         """ 
         Convert position to index: 'SW' -> 0, 'SE' -> 1, 'NW' -> 2, 'NE' -> 3 
+        
+        TODO: move to subclass
         """
         if type(pos) is tuple:
             assert len(pos) == 2, 'Expecting a tuple of integers.'
@@ -1495,6 +1555,8 @@ class Node(object):
     def id2pos(self, idx):
         """
         Convert index to position: 0 -> 'SW', 1 -> 'SE', 2 -> 'NW', 3 -> 'NE'
+        
+        TODO: move to subclass
         """
         if type(idx) is tuple:
             #
@@ -1516,15 +1578,604 @@ class Node(object):
             return id_to_pos[idx]
         else:
             raise Exception('Unrecognized format.')
-            
-    def plot(self):
-        """
-        Plot tree
-        """
+
+
+
+class BiNode(Node):
+    """
+    Binary tree Node
+    """
+    def __init__(self):
         pass
     
+    def find_neighbor(self, direction):
+        """
+        Description: Returns the deepest neighboring cell, whose depth is at 
+            most that of the given cell, or 'None' if there aren't any 
+            neighbors.
+         
+        Inputs: 
+         
+            direction: char, 'N'(north), 'S'(south), 'E'(east), or 'W'(west)
+             
+        Output: 
+         
+            neighboring cell
+         
+        TODO: move to subclass   
+        """
+        if self.type == 'ROOT':
+            #
+            # ROOT Cells have no neighbors
+            # 
+            return None
+        #
+        # For a node in a grid, do a brute force search (comparing vertices)
+        #
+        elif self.in_grid():
+            p = self.parent
+            nx, ny = p.grid_size()
 
-class BiCell(object):
+            i,j = self.address[0]
+            if direction == 'N':
+                if j < ny-1:
+                    return p.children[i,j+1]
+                else:
+                    return None
+            elif direction == 'S':
+                if j > 0:
+                    return p.children[i,j-1]
+                else:
+                    return None
+            elif direction == 'E':
+                if i < nx-1:
+                    return p.children[i+1,j]
+                else:
+                    return None
+            elif direction == 'W':
+                if i > 0:
+                    return p.children[i-1,j]
+                else:
+                    return None
+            elif direction == 'SW':
+                if i > 0 and j > 0:
+                    return p.children[i-1,j-1]
+                else:
+                    return None
+            elif direction == 'SE':
+                if i < nx-1 and j > 0:
+                    return p.children[i+1,j-1]
+                else:
+                    return None
+            elif direction == 'NW':
+                if i > 0 and j < ny-1:
+                    return p.children[i-1,j+1]
+                else: 
+                    return None
+            elif direction == 'NE':
+                if i < nx-1 and j < ny-1:
+                    return p.children[i+1,j+1]
+                else:
+                    return None 
+        #
+        # Non-ROOT cells 
+        # 
+        else:
+            #
+            # Check for neighbors interior to parent cell
+            # 
+            if direction == 'N':
+                interior_neighbors_dict = {'SW': 'NW', 'SE': 'NE'}
+            elif direction == 'S':
+                interior_neighbors_dict = {'NW': 'SW', 'NE': 'SE'}
+            elif direction == 'E':
+                interior_neighbors_dict = {'SW': 'SE', 'NW': 'NE'}
+            elif direction == 'W':
+                interior_neighbors_dict = {'SE': 'SW', 'NE': 'NW'}
+            elif direction == 'SW':
+                interior_neighbors_dict = {'NE': 'SW'}
+            elif direction == 'SE':
+                interior_neighbors_dict = {'NW': 'SE'}
+            elif direction == 'NW':
+                interior_neighbors_dict = {'SE': 'NW'}
+            elif direction == 'NE':
+                interior_neighbors_dict = {'SW': 'NE'}
+            else:
+                print("Invalid direction. Use 'N', 'S', 'E', 'NE','SE','NW, 'SW', or 'W'.")
+            
+            if self.position in interior_neighbors_dict:
+                neighbor_pos = interior_neighbors_dict[self.position]
+                return self.parent.children[neighbor_pos]
+            #
+            # Check for (children of) parental neighbors
+            #
+            else:
+                if direction in ['SW','SE','NW','NE'] and direction != self.position:
+                    # Special case
+                    for c1,c2 in zip(self.position,direction):
+                        if c1 == c2:
+                            here = c1
+                    mu = self.parent.find_neighbor(here)
+                    if mu != None and mu.depth == self.depth-1 and mu.has_children():
+                        #
+                        # Diagonal neighbors must share corner vertex
+                        # 
+                        opposite = {'N':'S', 'S':'N', 'W':'E', 'E':'W'}
+                        nb_pos = direction
+                        for i in range(len(direction)):
+                            if direction[i] == here:
+                                nb_pos = nb_pos.replace(here,opposite[here])
+                        child = mu.children[nb_pos]
+                        return child
+                    else:
+                        return None
+                else:
+                    mu = self.parent.find_neighbor(direction)
+                    if mu == None or mu.type == 'LEAF':
+                        return mu
+                    else:
+                        #
+                        # Reverse dictionary to get exterior neighbors
+                        # 
+                        exterior_neighbors_dict = \
+                           {v: k for k, v in interior_neighbors_dict.items()}
+                            
+                        if self.position in exterior_neighbors_dict:
+                            neighbor_pos = exterior_neighbors_dict[self.position]
+                            return mu.children[neighbor_pos] 
+                        
+    
+    
+    def has_children(self, position=None, flag=None):
+        """
+        Determine whether node has children
+        
+        TOOD: modify
+        """
+        if position is None:
+            # Check for any children
+            if flag is None:
+                return any(child is not None for child in self.children.values())
+            else:
+                # Check for flagged children
+                for child in self.children.values():
+                    if child is not None and child.is_marked(flag):
+                        return True
+                return False
+        else:
+            #
+            # Check for child in specific position
+            # 
+            # Ensure position is valid
+            pos_error = 'Position should be one of: "SW", "SE", "NW", or "NE"'
+            assert position in ['SW','SE','NW','NE'], pos_error
+            if flag is None:
+                #
+                # No flag specified
+                #  
+                return self.children[position] is not None
+            else:
+                #
+                # With flag
+                # 
+                return (self.children[position] is not None) and \
+                        self.children[position].is_marked(flag) 
+    
+    
+    
+    def get_children(self, flag=None):
+        """
+        Returns a list of (flagged) children, ordered 
+        
+        Inputs: 
+        
+            flag: [None], optional marker
+        
+        Note: Only returns children that are not None 
+        
+        TODO: modify
+        """
+        if self.has_children(flag=flag):
+            if self.type=='ROOT' and self.grid_size() is not None:
+                #
+                # Gridded root node - traverse from bottom to top, left to right
+                # 
+                nx, ny = self.grid_size()
+                for j in range(ny):
+                    for i in range(nx):
+                        child = self.children[(i,j)]
+                        if child is not None:
+                            if flag is None:
+                                yield child
+                            elif child.is_marked(flag):
+                                yield child
+            #
+            # Usual quadcell division: traverse in bottom-to-top mirror Z order
+            #  
+            else:
+                for pos in ['SW','SE','NW','NE']:
+                    child = self.children[pos]
+                    if child is not None:
+                        if flag is None:
+                            yield child
+                        elif child.is_marked(flag):
+                            yield child
+                    
+    def info(self):
+        """
+        Display essential information about Node
+        
+        TODO: change
+        """
+        print('-'*11)
+        print('Node Info')
+        print('-'*11)
+        print('{0:10}: {1}'.format('Address', self.address))
+        print('{0:10}: {1}'.format('Type', self.type))
+        if self.type != 'ROOT':
+            print('{0:10}: {1}'.format('Parent', self.parent.address))
+            print('{0:10}: {1}'.format('Position', self.position))
+        print('{0:10}: {1}'.format('Flags', self.__flags))
+        if self.has_children():
+            if self.type == 'ROOT' and self.grid_size() != None:
+                nx, ny = self.grid_size()
+                for iy in range(ny):
+                    str_row = ''
+                    for ix in range(nx):
+                        str_row += repr((ix,iy)) + ': ' 
+                        if self.children[(ix,iy)] != None:
+                            str_row += '1,  '
+                        else:
+                            str_row += '0,  '
+                    if iy == 0:
+                        print('{0:10}: {1}'.format('Children', str_row))
+                    else:
+                        print('{0:11} {1}'.format(' ', str_row))
+            else:
+                child_string = ''
+                for key in ['SW','SE','NW','NE']:
+                    child = self.children[key]
+                    if child != None:
+                        child_string += key + ': 1,  '
+                    else:
+                        child_string += key + ': 0,  '
+                print('{0:10}: {1}'.format('Children',child_string))
+        else:
+            child_string = 'None'
+            print('{0:10}: {1}'.format('Children',child_string))
+    
+    
+class QuadNode(Node):
+    """
+    Quadtree Node
+    """
+    def __init__(self, parent=None, position=None, \
+                 grid_size=None, quadcell=None):
+        """
+        Constructor
+        
+        Inputs:
+                    
+            parent: Node, parental node
+            
+            position: position within parent 
+                ['SW','SE','NE','NW'] if parent = Node
+                None if parent = None
+                [i,j] if parent is a ROOT node with specified grid_size
+                
+            grid_size: int, tuple (nx,ny) specifying shape of a
+                ROOT node's child array (optional).
+                
+            quadcell: QuadCell, physical Cell associated with tree
+            
+        """             
+        #
+        # Types
+        # 
+        if parent == None:
+            #
+            # ROOT node
+            #
+            node_type = 'ROOT'
+            node_address = []
+            node_depth = 0
+            if grid_size != None:
+                assert type(grid_size) is tuple \
+                and all(type(i) is int for i in grid_size), \
+                'Child grid size should be a tuple of integers'
+                nx,ny = grid_size
+                node_children = {}
+                for i in range(nx):
+                    for j in range(ny):
+                        node_children[i,j] = None
+            else:
+                node_children = {'SW':None, 'SE':None, 'NW':None, 'NE':None}
+            self.__grid_size = grid_size
+        else:
+            #
+            # LEAF node
+            # 
+            node_type = 'LEAF'
+            node_address = parent.address + [self.pos2id(position)]
+            node_depth = parent.depth + 1
+            node_children = {'SW': None, 'SE': None, 'NW': None, 'NE': None}
+            if parent.type == 'LEAF':
+                parent.type = 'BRANCH'  # modify parent to branch
+            
+        #
+        # Record Attributes
+        # 
+        self.type = node_type
+        self.position = position
+        self.address = node_address
+        self.depth = node_depth
+        self.parent = parent
+        self.children = node_children
+        self.__cell = quadcell
+        self.__tricells = None
+        self.__flags  = set()
+        self.__support = False
+        
+        
+    def find_neighbor(self, direction):
+        """
+        Description: Returns the deepest neighboring cell, whose depth is at 
+            most that of the given cell, or 'None' if there aren't any 
+            neighbors.
+         
+        Inputs: 
+         
+            direction: char, 'N'(north), 'S'(south), 'E'(east), or 'W'(west)
+             
+        Output: 
+         
+            neighboring cell
+         
+        """
+        if self.type == 'ROOT':
+            #
+            # ROOT Cells have no neighbors
+            # 
+            return None
+        #
+        # For a node in a grid, do a brute force search (comparing vertices)
+        #
+        elif self.in_grid():
+            p = self.parent
+            nx, ny = p.grid_size()
+
+            i,j = self.address[0]
+            if direction == 'N':
+                if j < ny-1:
+                    return p.children[i,j+1]
+                else:
+                    return None
+            elif direction == 'S':
+                if j > 0:
+                    return p.children[i,j-1]
+                else:
+                    return None
+            elif direction == 'E':
+                if i < nx-1:
+                    return p.children[i+1,j]
+                else:
+                    return None
+            elif direction == 'W':
+                if i > 0:
+                    return p.children[i-1,j]
+                else:
+                    return None
+            elif direction == 'SW':
+                if i > 0 and j > 0:
+                    return p.children[i-1,j-1]
+                else:
+                    return None
+            elif direction == 'SE':
+                if i < nx-1 and j > 0:
+                    return p.children[i+1,j-1]
+                else:
+                    return None
+            elif direction == 'NW':
+                if i > 0 and j < ny-1:
+                    return p.children[i-1,j+1]
+                else: 
+                    return None
+            elif direction == 'NE':
+                if i < nx-1 and j < ny-1:
+                    return p.children[i+1,j+1]
+                else:
+                    return None 
+        #
+        # Non-ROOT cells 
+        # 
+        else:
+            #
+            # Check for neighbors interior to parent cell
+            # 
+            if direction == 'N':
+                interior_neighbors_dict = {'SW': 'NW', 'SE': 'NE'}
+            elif direction == 'S':
+                interior_neighbors_dict = {'NW': 'SW', 'NE': 'SE'}
+            elif direction == 'E':
+                interior_neighbors_dict = {'SW': 'SE', 'NW': 'NE'}
+            elif direction == 'W':
+                interior_neighbors_dict = {'SE': 'SW', 'NE': 'NW'}
+            elif direction == 'SW':
+                interior_neighbors_dict = {'NE': 'SW'}
+            elif direction == 'SE':
+                interior_neighbors_dict = {'NW': 'SE'}
+            elif direction == 'NW':
+                interior_neighbors_dict = {'SE': 'NW'}
+            elif direction == 'NE':
+                interior_neighbors_dict = {'SW': 'NE'}
+            else:
+                print("Invalid direction. Use 'N', 'S', 'E', 'NE','SE','NW, 'SW', or 'W'.")
+            
+            if self.position in interior_neighbors_dict:
+                neighbor_pos = interior_neighbors_dict[self.position]
+                return self.parent.children[neighbor_pos]
+            #
+            # Check for (children of) parental neighbors
+            #
+            else:
+                if direction in ['SW','SE','NW','NE'] and direction != self.position:
+                    # Special case
+                    for c1,c2 in zip(self.position,direction):
+                        if c1 == c2:
+                            here = c1
+                    mu = self.parent.find_neighbor(here)
+                    if mu != None and mu.depth == self.depth-1 and mu.has_children():
+                        #
+                        # Diagonal neighbors must share corner vertex
+                        # 
+                        opposite = {'N':'S', 'S':'N', 'W':'E', 'E':'W'}
+                        nb_pos = direction
+                        for i in range(len(direction)):
+                            if direction[i] == here:
+                                nb_pos = nb_pos.replace(here,opposite[here])
+                        child = mu.children[nb_pos]
+                        return child
+                    else:
+                        return None
+                else:
+                    mu = self.parent.find_neighbor(direction)
+                    if mu == None or mu.type == 'LEAF':
+                        return mu
+                    else:
+                        #
+                        # Reverse dictionary to get exterior neighbors
+                        # 
+                        exterior_neighbors_dict = \
+                           {v: k for k, v in interior_neighbors_dict.items()}
+                            
+                        if self.position in exterior_neighbors_dict:
+                            neighbor_pos = exterior_neighbors_dict[self.position]
+                            return mu.children[neighbor_pos] 
+                        
+
+
+    def has_children(self, position=None, flag=None):
+        """
+        Determine whether node has children
+        """
+        if position is None:
+            # Check for any children
+            if flag is None:
+                return any(child is not None for child in self.children.values())
+            else:
+                # Check for flagged children
+                for child in self.children.values():
+                    if child is not None and child.is_marked(flag):
+                        return True
+                return False
+        else:
+            #
+            # Check for child in specific position
+            # 
+            # Ensure position is valid
+            pos_error = 'Position should be one of: "SW", "SE", "NW", or "NE"'
+            assert position in ['SW','SE','NW','NE'], pos_error
+            if flag is None:
+                #
+                # No flag specified
+                #  
+                return self.children[position] is not None
+            else:
+                #
+                # With flag
+                # 
+                return (self.children[position] is not None) and \
+                        self.children[position].is_marked(flag) 
+    
+    
+    
+    def get_children(self, flag=None):
+        """
+        Returns a list of (flagged) children, ordered 
+        
+        Inputs: 
+        
+            flag: [None], optional marker
+        
+        Note: Only returns children that are not None 
+        """
+        if self.has_children(flag=flag):
+            if self.type=='ROOT' and self.grid_size() is not None:
+                #
+                # Gridded root node - traverse from bottom to top, left to right
+                # 
+                nx, ny = self.grid_size()
+                for j in range(ny):
+                    for i in range(nx):
+                        child = self.children[(i,j)]
+                        if child is not None:
+                            if flag is None:
+                                yield child
+                            elif child.is_marked(flag):
+                                yield child
+            #
+            # Usual quadcell division: traverse in bottom-to-top mirror Z order
+            #  
+            else:
+                for pos in ['SW','SE','NW','NE']:
+                    child = self.children[pos]
+                    if child is not None:
+                        if flag is None:
+                            yield child
+                        elif child.is_marked(flag):
+                            yield child
+
+
+    def info(self):
+        """
+        Displays relevant information about the QuadNode
+        """
+        print('-'*11)
+        print('Node Info')
+        print('-'*11)
+        print('{0:10}: {1}'.format('Address', self.address))
+        print('{0:10}: {1}'.format('Type', self.type))
+        if self.type != 'ROOT':
+            print('{0:10}: {1}'.format('Parent', self.parent.address))
+            print('{0:10}: {1}'.format('Position', self.position))
+        print('{0:10}: {1}'.format('Flags', self.__flags))
+        if self.has_children():
+            if self.type == 'ROOT' and self.grid_size() != None:
+                nx, ny = self.grid_size()
+                for iy in range(ny):
+                    str_row = ''
+                    for ix in range(nx):
+                        str_row += repr((ix,iy)) + ': ' 
+                        if self.children[(ix,iy)] != None:
+                            str_row += '1,  '
+                        else:
+                            str_row += '0,  '
+                    if iy == 0:
+                        print('{0:10}: {1}'.format('Children', str_row))
+                    else:
+                        print('{0:11} {1}'.format(' ', str_row))
+            else:
+                child_string = ''
+                for key in ['SW','SE','NW','NE']:
+                    child = self.children[key]
+                    if child != None:
+                        child_string += key + ': 1,  '
+                    else:
+                        child_string += key + ': 0,  '
+                print('{0:10}: {1}'.format('Children',child_string))
+        else:
+            child_string = 'None'
+            print('{0:10}: {1}'.format('Children',child_string))
+            
+            
+class Cell(object):
+    """
+    Cell object
+    """
+    pass
+
+
+class BiCell(Cell):
     """
     Binary tree of sub-intervals in a 1d mesh
     
@@ -1643,7 +2294,167 @@ class BiCell(object):
                 return 0
             else:
                 return 1
+
+
+class TriCell(object):
+    """
+    TriCell object
+    
+    Attributes:
+        
+    
+    Methods:
+    
+    """
+    def __init__(self, vertices, parent=None):
+        """
+        Inputs:
+        
+            vertices: Vertex, list of three vertices (ordered counter-clockwise)
             
+            parent: QuadCell that contains triangle
+            
+        """
+        v = []
+        e = []
+        assert len(vertices) == 3, 'Must have exactly 3 vertices.'
+        for i in range(3):
+            #
+            # Define vertices and Half-Edges with minimun information
+            # 
+            v.append(Vertex(vertices[i],2))        
+        #
+        # Some edge on outerboundary
+        # 
+        self.outer_component = e[0]
+        
+        for i in range(3):
+            #
+            # Half edge originating from v[i]
+            # 
+            v[i].incident_edge = e[i]
+            #
+            # Edges preceding/following e[i]
+            # 
+            j = np.remainder(i+1,3)
+            e[i].next = e[j]
+            e[j].previous = e[i]
+            #
+            #  Incident face
+            # 
+            e[i].incident_face = self
+            
+        self.parent_node = parent
+        self.__vertices = v
+        self.__edges = [
+                        Edge(vertices[0], vertices[1], parent=self), \
+                        Edge(vertices[1], vertices[2], parent=self), \
+                        Edge(vertices[2], vertices[0], parent=self)
+                        ]
+        self.__element_no = None
+        self.__flags = set()
+        
+        
+    def vertices(self,n):
+        return self.__vertices[n]
+    
+    def edges(self):
+        return self.__edges
+    
+        
+    def area(self):
+        """
+        Compute the area of the triangle
+        """
+        v = self.__vertices
+        a = [v[1].coordinate()[i] - v[0].coordinate()[i] for i in range(2)]
+        b = [v[2].coordinate()[i] - v[0].coordinate()[i] for i in range(2)]
+        return 0.5*abs(a[0]*b[1]-a[1]*b[0])
+    
+     
+    def normal(self, edge):
+        #p = ((y1-y0)/nnorm,(x0-x1)/nnorm)
+        pass    
+    
+    
+    def number(self, num, overwrite=False):
+        """
+        Assign a number to the triangle
+        """
+        if self.__element_no == None or overwrite:
+            self.__element_no = num
+        else:
+            raise Warning('Element already numbered. Overwrite disabled.')
+            return
+        
+    def find_neighbor(self, edge, tree):
+        """
+        Find neighboring triangle across edge wrt a given tree   
+        """
+        pass
+
+    def mark(self, flag=None):
+        """
+        Mark TriCell
+        
+        Inputs:
+        
+            flag: optional label used to mark cell
+        """  
+        if flag is None:
+            self.__flags.add(True)
+        else:
+            self.__flags.add(flag)
+            
+        
+    def unmark(self, flag=None, recursive=False):
+        """
+        Remove label from TriCell
+        
+        Inputs: 
+        
+            flag: label to be removed
+        
+            recursive: bool, also unmark all subcells
+        """
+        #
+        # Remove label from own list
+        #
+        if flag is None:
+            # No flag specified -> delete all
+            self.__flags.clear()
+        else:
+            # Remove specified flag (if present)
+            if flag in self.__flags: self.__flags.remove(flag)
+        
+        #
+        # Remove label from children if applicable   
+        # 
+        if recursive and self.has_children():
+            for child in self.children.values():
+                child.unmark(flag=flag, recursive=recursive)
+                
+ 
+         
+    def is_marked(self,flag=None):
+        """
+        Check whether cell is marked
+        
+        Input: flag, label for QuadCell: usually one of the following:
+            True (catchall), 'split' (split cell), 'count' (counting)
+            
+        TODO: Possible to add/remove set? Useful? 
+        """ 
+        if flag is None:
+            # No flag -> check whether set is empty
+            if self.__flags:
+                return True
+            else:
+                return False
+        else:
+            # Check wether given label is contained in quadcell's set
+            return flag in self.__flags
+                    
         
 class QuadCell(object):
     """
@@ -2897,172 +3708,7 @@ class QuadCell(object):
     
         return ax
 
-
-
-# ==============
-# TriCell Class
-# ==============
-
-class TriCell(object):
-    """
-    TriCell object
-    
-    Attributes:
-        
-    
-    Methods:
-    
-    """
-    def __init__(self, vertices, parent=None):
-        """
-        Inputs:
-        
-            vertices: Vertex, list of three vertices (ordered counter-clockwise)
-            
-            parent: QuadCell that contains triangle
-            
-        """
-        v = []
-        e = []
-        assert len(vertices) == 3, 'Must have exactly 3 vertices.'
-        for i in range(3):
-            #
-            # Define vertices and Half-Edges with minimun information
-            # 
-            v.append(Vertex(vertices[i],2))        
-        #
-        # Some edge on outerboundary
-        # 
-        self.outer_component = e[0]
-        
-        for i in range(3):
-            #
-            # Half edge originating from v[i]
-            # 
-            v[i].incident_edge = e[i]
-            #
-            # Edges preceding/following e[i]
-            # 
-            j = np.remainder(i+1,3)
-            e[i].next = e[j]
-            e[j].previous = e[i]
-            #
-            #  Incident face
-            # 
-            e[i].incident_face = self
-            
-        self.parent_node = parent
-        self.__vertices = v
-        self.__edges = [
-                        Edge(vertices[0], vertices[1], parent=self), \
-                        Edge(vertices[1], vertices[2], parent=self), \
-                        Edge(vertices[2], vertices[0], parent=self)
-                        ]
-        self.__element_no = None
-        self.__flags = set()
-        
-        
-    def vertices(self,n):
-        return self.__vertices[n]
-    
-    def edges(self):
-        return self.__edges
-    
-        
-    def area(self):
-        """
-        Compute the area of the triangle
-        """
-        v = self.__vertices
-        a = [v[1].coordinate()[i] - v[0].coordinate()[i] for i in range(2)]
-        b = [v[2].coordinate()[i] - v[0].coordinate()[i] for i in range(2)]
-        return 0.5*abs(a[0]*b[1]-a[1]*b[0])
-    
-     
-    def normal(self, edge):
-        #p = ((y1-y0)/nnorm,(x0-x1)/nnorm)
-        pass    
-    
-    
-    def number(self, num, overwrite=False):
-        """
-        Assign a number to the triangle
-        """
-        if self.__element_no == None or overwrite:
-            self.__element_no = num
-        else:
-            raise Warning('Element already numbered. Overwrite disabled.')
-            return
-        
-    def find_neighbor(self, edge, tree):
-        """
-        Find neighboring triangle across edge wrt a given tree   
-        """
-        pass
-
-    def mark(self, flag=None):
-        """
-        Mark TriCell
-        
-        Inputs:
-        
-            flag: optional label used to mark cell
-        """  
-        if flag is None:
-            self.__flags.add(True)
-        else:
-            self.__flags.add(flag)
-            
-        
-    def unmark(self, flag=None, recursive=False):
-        """
-        Remove label from TriCell
-        
-        Inputs: 
-        
-            flag: label to be removed
-        
-            recursive: bool, also unmark all subcells
-        """
-        #
-        # Remove label from own list
-        #
-        if flag is None:
-            # No flag specified -> delete all
-            self.__flags.clear()
-        else:
-            # Remove specified flag (if present)
-            if flag in self.__flags: self.__flags.remove(flag)
-        
-        #
-        # Remove label from children if applicable   
-        # 
-        if recursive and self.has_children():
-            for child in self.children.values():
-                child.unmark(flag=flag, recursive=recursive)
-                
- 
-         
-    def is_marked(self,flag=None):
-        """
-        Check whether cell is marked
-        
-        Input: flag, label for QuadCell: usually one of the following:
-            True (catchall), 'split' (split cell), 'count' (counting)
-            
-        TODO: Possible to add/remove set? Useful? 
-        """ 
-        if flag is None:
-            # No flag -> check whether set is empty
-            if self.__flags:
-                return True
-            else:
-                return False
-        else:
-            # Check wether given label is contained in quadcell's set
-            return flag in self.__flags
-        
-        
+       
 class Edge(object):
     '''
     Description: Edge object in quadtree

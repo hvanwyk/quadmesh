@@ -284,7 +284,7 @@ class TestFunction(unittest.TestCase):
         #
         # Test interpolate and eval
         #
-        fn = Function(f)
+        fn = Function(f,'explicit')
         ax = fig.add_subplot(3,4,1, projection='3d')
         zz = fn.eval(xy)
         
@@ -331,6 +331,7 @@ class TestFunction(unittest.TestCase):
         etype_list = ['DQ0','Q1','Q2','Q3']
         for i in range(4):
             etype = etype_list[i]
+            print(etype)
             element = QuadFE(2,etype)
             fn_interp = fn.interpolate(mesh, element)
             
