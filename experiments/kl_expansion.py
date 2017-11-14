@@ -1,6 +1,10 @@
 """
 Experiment with representation, simulation and conditioning of Gaussian fields
-using the KL expansion. 
+using the KL expansion.
+
+Note: The eigenvalue problem on an adaptively refined mesh yields modes 
+    that behave erratically near the local refinement. 
+    
 """
 # Local imports
 from mesh import Mesh
@@ -13,7 +17,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.linalg as la
 
-# TODO: WHY DOES ONE SEE THE MESH? PIECEWISE CONTINUOUS??
 
 #
 # Generate mesh and finite elements
@@ -43,7 +46,7 @@ mesh.record(1)
 #
 # Assemble the covariance Matrix
 # 
-element = QuadFE(2,'Q1')
+element = QuadFE(2,'Q2')
 system = System(mesh, element)
 
 print('Assembling Mass matrix')

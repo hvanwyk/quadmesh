@@ -58,9 +58,9 @@ def test01():
     
     print('generating realizations')
     X = spla.spsolve(A.tocsc(), np.sqrt(m_lumped)*Z)
-    fX = Function(X,mesh, element, flag=1)
+    fX = Function(X,'nodal', mesh, element, flag=1)
     R01 = system.restrict(0,1)
-    Xr = Function(R01.dot(X),mesh, element, flag=0)
+    Xr = Function(R01.dot(X), 'nodal', mesh, element, flag=0)
     
     print('plotting')
     plot = Plot()
