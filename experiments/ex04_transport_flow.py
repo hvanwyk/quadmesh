@@ -46,16 +46,15 @@ import matplotlib.pyplot as plt
 # 
 
 # permeability field
-phi = 1  # porosity
-D = 0.0252  # dispersivity
-K = 1  # permeability
-
+phi = Function(1, 'constant')  # porosity
+D   = Function(0.0252, 'constant')  # dispersivity
+K   = Function(1, 'constant')  # permeability
 
 # =============================================================================
 # Mesh and Elements
 # =============================================================================
 # Finite element mesh
-mesh = Mesh.newmesh(grid_size=(50,50))
+mesh = Mesh.newmesh(grid_size=(20,20))
 mesh.refine()
  
 p_element = QuadFE(2,'Q1')  # element for pressure
@@ -82,7 +81,7 @@ def bnd_outflow(x,y):
 
 p_inflow = lambda x,y: np.ones(shape=x.shape)
 p_outflow = lambda x,y: np.zeros(shape=x.shape)
-
+c_inflow = lambda x,y: np.zeros(shape=x.shape)
 
 # =============================================================================
 # Assembly
@@ -100,38 +99,49 @@ lf_flow = [(0,'v')]
 # Boundary conditions
 bc_flow = {'dirichlet': [(bnd_inflow, p_inflow),(bnd_outflow, p_outflow)]}
 
-print('assembly')
 A, b = p_system.assemble(bilinear_forms = bf_flow, 
                          linear_forms = lf_flow, 
                          boundary_conditions = bc_flow)
 
-print('solve')
 p = spla.spsolve(A.tocsc(),b)
-fn = Function(p, mesh, p_element)
-vx_fn = Function(p_fn.derivative((1,0)).fn(),fn_type='nodal', dofhandler=p_fn.dofhandler, flag=p_fn.flag())
+p_fn = Function(p, 'nodal', mesh, p_element)
+
+
+# Use Darcy's law to construct the velocity functions
+vx_fn = p_fn.derivative((1,0))
 vy_fn = p_fn.derivative((1,1))
- 
-
-# TODO: Construct new function by (i) taking derivatives or (ii) multiplying by a constant or another function ...
 
 
-"""
-print('plot')
-fig = plt.figure() 
-ax = fig.add_subplot(1,1,1, projection='3d')
-plot = Plot()
-#plot.contour(ax, fig, p_fn, mesh, p_element, derivatives=(1,0))
-ax = plot.surface(ax, p_fn, mesh, p_element)
-plt.show()
-"""
+
+dt = Function(0.01, 'constant')
+T  = 2
+n_time = np.int(T/0.01)
+c0 = Function(1, 'constant').interpolate(mesh=mesh, element=c_element)
 
 #
 # Transport
 # 
-bf_trans = [(1,'u','v'), (dt*vx_fn, 'ux','v'), (dt*vy_fn, 'uy','v'), 
-            (dt*D,'ux','vx'), (dt*D,'uy','vy')]
-lf_trans = []
-
+c_vals = np.empty((c_system.dofhandler().n_dofs(),n_time))
+c_fn = Function(c_vals, 'nodal', mesh, c_element)
+c_fn.assign(c0.fn(),pos=0)
+for i in range(n_time-1):
+    print(i)
+    # Assembly
+    bf_transport = [(1,'u','v'), 
+                    (dt.times(vx_fn), 'ux','v'), (dt.times(vy_fn), 'uy','v'), 
+                    (dt.times(D),'ux','vx'), (dt.times(D),'uy','vy')]
+    lf_transport = [(c0,'v')]
+    
+    bc_transport = {'dirichlet': [(bnd_inflow, c_inflow)]}
+    A,b = c_system.assemble(bilinear_forms=bf_transport, 
+                            linear_forms=lf_transport, 
+                            boundary_conditions = bc_transport)
+    c = spla.spsolve(A.tocsc(),b)
+    c_fn.assign(c, pos=i+1)
+    c0.assign(c)
+    
 # ============================================================================
 # 
 # ============================================================================
+
+print('done')

@@ -877,6 +877,12 @@ class Function(object):
                 which the function is defined.
             
             flag [None]: str/int, marker specifying submesh
+            
+            
+        Note: We allow for the option of specifying multiple realizations 
+            - If the function is not stochastic, the number of samples is None
+            - If the function has multiple realizations, its function values 
+                are stored in an (n_dofs, n_samples) array. 
     
         """ 
         #
@@ -900,7 +906,7 @@ class Function(object):
             # Explicit function
             # ---------------------------
             dim = f.__code__.co_argcount
-            n_samples = 1                
+            n_samples = None               
             fn = f
             
         elif fn_type == 'nodal':
@@ -919,12 +925,12 @@ class Function(object):
             # 
             # Determine number of samples
             if len(f.shape)==1:
-                n_samples = 1
+                n_samples = None
                 nf = f.shape[0]
-                fn = f[:,np.newaxis]
+                fn = f
             else:
                 nf, n_samples = f.shape
-                fn = f[:,np.newaxis]
+                fn = f
                 
             assert nf == self.dofhandler.n_dofs(flag=flag),\
                 'The number of entries of f does not equal'+\
@@ -942,8 +948,10 @@ class Function(object):
                 assert len(f.shape)==1, 'Constant functions are passed '+\
                 'as scalars or vectors.'
                 n_samples = len(f)
+                fn = f
             elif isinstance(f, numbers.Real):
-                n_samples = 1
+                n_samples = None
+                fn = f
                  
         else:
             raise Exception('Variable function_type should be: '+\
@@ -954,7 +962,52 @@ class Function(object):
         self.__flag = flag 
         self.__n_samples = n_samples
         self.__type = fn_type
+ 
+ 
+    def assign(self, v, pos=None):
+        """
+        Assign function values to the function in the specified position
         
+        Inputs: 
+        
+            v: double, array 
+            
+            pos: int, array or constant (indicating position)
+            
+        TODO: Test
+        """
+        assert self.fn_type() != 'explicit', \
+        'Only nodal or constant Functions can be assigned function values'
+        
+        if pos is not None:
+            # Check if position is compatible with sample size
+            if isinstance(pos, numbers.Real):
+                assert pos <= self.n_samples(),\
+                'Position "pos" exceeds the sample size.'
+            elif type(pos) is np.ndarray:
+                assert pos.max() <= self.n_samples(),\
+                'Maximum position in "pos" exceeds sample size.'
+        if self.fn_type() == 'nodal':
+            #
+            # Nodal function
+            #
+            if not isinstance(v, numbers.Real):
+                assert v.shape[0] == self.fn().shape[0],\
+                'Assigned vector incompatible length with function.'
+            
+            if pos is not None:
+                self.__f[:,pos] = v
+            else:
+                self.__f = v   
+        elif self.fn_type() == 'constant':
+            #
+            # Constant function
+            #
+            if pos is not None: 
+                self.__f[pos] = v
+            else:
+                self.__f = v
+                              
  
          
     def global_dofs(self):
@@ -966,14 +1019,43 @@ class Function(object):
             return self.__global_dofs
         else:
             raise Exception('Function must be of type "nodal".')
+    
+    
+    def flag(self):
+        """
+        Returns the flag used to define the mesh restriction on which 
+        the function is defined
+        """    
+        return self.__flag
+    
         
+    def input_dim(self):
+        """
+        Returns the dimension of the function's domain
+        """
+        return self.__dim
+    
+    
+    def output_dim(self):
+        """
+        Returns the dimensions of the function's output
         
+        TODO: Implement this 
+        """
+        pass
+    
+    def n_samples(self):
+        """
+        Returns the number of realizations stored by the function
+        """
+        return self.__n_samples
+    
         
     def fn_type(self):
         """
         Returns function type
         """
-        return self.__fn_type
+        return self.__type
 
     
     def fn(self):
@@ -983,7 +1065,7 @@ class Function(object):
         return self.__f
     
     
-    def eval(self, x, node=None, derivative=(0,), samples=None):
+    def eval(self, x, node=None, derivative=(0,), samples='all'):
         """
         Evaluate function at an array of points x
         
@@ -1001,6 +1083,7 @@ class Function(object):
                 (2,1,0) computes d^2p/dxdy = p_yx
             
             samples: int, (r, ) integer array specifying the samples to evaluate
+                or use 'all' to denote all samples
         
         Output:
         
@@ -1009,7 +1092,6 @@ class Function(object):
         """
         flag = self.__flag
         dim = self.__dim
-        
         # ---------------------------------------------------------------------
         # Parse Input
         # ---------------------------------------------------------------------
@@ -1054,30 +1136,34 @@ class Function(object):
             #
             # Points in numpy array
             # 
-            if len(x.shape)==1:
-                assert dim==1, 'Input 1D but Function is not univariate.'
-            elif len(x.shape)==2:
-                assert x.shape[1]==dim,\
-                'Dimension of array incompatible with that of Function.'
-            else:
-                raise Exception('Only 1- or 2 dimensional arrays allowed.')  
+            if dim is not None:
+                if len(x.shape)==1:
+                    assert dim==1, 'Input 1D but Function is not univariate.'
+                elif len(x.shape)==2:
+                    assert x.shape[1]==dim,\
+                    'Dimension of array incompatible with that of Function.'
+                else:
+                    raise Exception('Only 1- or 2 dimensional arrays allowed.')  
             
         # ---------------------------------------------------------------------
         # Parse sample size
         # ---------------------------------------------------------------------
-        if samples is None:
-            sample_size = 1
-        elif samples == 'all':
-            samples = np.array(range(self.__n_samples), dtype=np.int)
-        else:
+        if samples != 'all':
+            assert type(samples) is np.ndarray, \
+            'vector specifying samples should be an array'
+            
+            assert len(samples.shape) == 1, \
+            'sample indexing vector should have dimension 1'
+            
             assert self.__n_samples > samples.max(), \
             'Sample paths not stored in function.'
+            
             sample_size = len(samples)  
         
         # ---------------------------------------------------------------------
         # Parse function type
         # ---------------------------------------------------------------------
-        if self.__type == 'explicit':
+        if self.fn_type() == 'explicit':
             #
             # Explicit function
             # 
@@ -1085,8 +1171,8 @@ class Function(object):
                 'Unable to take derivatives of function directly.'+\
                 'Interpolate/Project onto finite element space first.'  
                       
-            assert sample_size==1, \
-                'Unable to sample from function directly.'
+            assert samples=='all', \
+                'Use samples="all" for explicit functions.'
             
             if dim == 1:
                 f_vec = self.__f(x)
@@ -1095,12 +1181,17 @@ class Function(object):
             else:
                 raise Exception('Only 1D and 2D inputs supported.')
     
-        elif self.__type == 'nodal':
+        elif self.fn_type() == 'nodal':
             #
             # Initialize output array
             #
-            f_vec = np.empty((x.shape[0],sample_size))    
-            #f_vec.fill(np.nan)
+            n_samples = self.n_samples()
+            if n_samples is None:
+                f_vec = np.empty(x.shape[0])
+            elif samples == 'all':
+                f_vec = np.empty((x.shape[0],n_samples))
+            else:
+                f_vec = np.empty((x.shape[0],sample_size))    
                 
             #
             # Determine tree nodes to traverse
@@ -1120,9 +1211,13 @@ class Function(object):
                 # 
                 idx_node = [self.__global_dofs.index(i) for i in \
                             self.dofhandler.get_global_dofs(node)]  
-                f_loc = self.__f[idx_node,:]
-                #if sample_size == 1 and len(f_loc.shape)==1:
-                #    f_loc = f_loc[:,np.newaxis]
+                if self.n_samples() is None:
+                    f_loc = self.__f[idx_node]
+                elif samples == 'all':
+                    f_loc = self.__f[idx_node,:]
+                else:
+                    f_loc = self.__[idx_node, samples]
+    
                 #
                 # Evaluate shape function at x-values
                 #   
@@ -1134,30 +1229,31 @@ class Function(object):
                 #
                 # Update output vector
                 # 
-                #print(self.__f)
-                print('shapes:')
-                print('phi {0}'.format(phi.shape))
-                print('f_loc {0}'.format(f_loc))
-                f_vec[in_cell,:] = np.dot(phi, f_loc)
+                if n_samples is None:
+                    f_vec[in_cell] = np.dot(phi, f_loc)
+                else:
+                    f_vec[in_cell,:] = np.dot(phi, f_loc)
                                                                      
             #
             # Determine multiplier for derivatives (chain rule)
             # 
-            c = 1
-            if derivative[0] in {1,2} and cell is not None:
-                # 
-                # There's a map and we're taking derivatives
-                #
-                x0,x1,y0,y1 = cell.box()
-                for i in derivative[1:]:
-                    if i==0:
-                        c *= 1/(x1-x0)
-                    elif i==1:
-                        c *= 1/(y1-y0)
+            c = cell.derivative_multiplier(derivative)
             f_vec *= c
-                        
+        elif self.fn_type() == 'constant':
+            n_samples = self.n_samples()
+            
+            if n_samples is None:
+                f_vec = self.fn()*np.ones((x.shape[0]))
+            elif samples == 'all':
+                one = np.ones((x.shape[0], n_samples))
+                f_vec = np.dot(one, self.fn())
+            else:
+                one = np.ones((x.shape[0], sample_size))
+                f_vec = np.dot(one, self.fn()[samples])
+                            
         else:
-            raise Exception('Function type must be "explicit" or "nodal".')
+            raise Exception('Function type must be "explicit", "nodal", '+\
+                            ' or "constant".')
                                 
         if is_singleton:
             return f_vec[0]
@@ -1253,6 +1349,97 @@ class Function(object):
         #
         return Function(fv, 'nodal', dofhandler=dofhandler, flag=flag) 
     
+    
+    def times(self, g):
+        """
+        Form the product of function with another function g. When possible, 
+        the product will have the same properties as self. 
+        
+        
+        Inputs: 
+        
+            g: Function, to be multiplied by
+            
+            
+        Output:
+        
+            fg: Function, product of self and g.
+            
+            
+        Note: The product's function type is determined by the following table 
+        
+         g  \  f   : 'explicit' | 'nodal(f)'   | 'constant'
+        ---------------------------------------------------  
+        'explicit' : 'explicit' | 'nodal(f)'   | 'explicit'
+        'nodal(g)' : 'nodal(g)' | 'nodal(f/g)' | 'nodal(g)' 
+        'constant' : 'explicit' | 'nodal(f)'   | 'constant'
+        
+        In the case of 'nodal(f/g)', we determine the finite element space 
+        as follows:
+            - If element(f) = (D)Qi and element(g) = (D)Qj, 
+                then element(fg)=(D)Q_{max(i,j)}
+            - If element(f) = DQi and element(g) = Qj (or vice versa), 
+                then element(fg) = DQi. 
+        """
+        assert isinstance(g, Function)
+        dim = self.input_dim()
+        assert dim == g.input_dim() or dim is None or g.input_dim() is None,\
+            'Function domains have incompatible dimensions'
+            
+        # Determine product's function type
+        ftype = self.fn_type()
+        gtype = g.fn_type() 
+        
+        if ftype == 'explicit':
+            if gtype == 'explicit':
+                # fg is explicit
+                if dim == 1:
+                    fg_fn = lambda x: self.fn()(x)*g.fn()(x)
+                elif dim == 2:
+                    fg_fn = lambda x,y: self.fn()(x,y)*g.fn()(x,y)
+                fg = Function(fg_fn, 'explicit')
+            elif gtype == 'nodal':
+                # fg nodal
+                x = g.dofhandler.dof_vertices()
+                fg_fn = self.eval(x)*g.fn()
+                fg = Function(fg_fn, 'nodal', dofhandler=g.dofhandler)
+            elif gtype == 'constant':
+                # fg explicit
+                if dim == 1:
+                    fg_fn = lambda x: g.fn()*self.eval(x)
+                elif dim == 2:
+                    fg_fn = lambda x,y: g.fn()*self.eval(x,y)
+                    
+        elif ftype == 'nodal':
+            if gtype == 'explicit':
+                # fg nodal
+                x = self.dofhandler.dof_vertices()
+                fg_fn = self.fn()*g.eval(x)
+                fg = Function(fg_fn, 'nodal', dofhandler=self.dofhandler)
+            elif gtype == 'nodal':
+                # fg nodal 
+                # TODO: finish
+                pass
+            elif gtype == 'constant':
+                fg_fn = g.fn()*self.fn()
+                fg = Function(fg_fn, 'nodal', dofhandler=self.dofhandler)
+        elif ftype == 'constant':
+            if gtype == 'explicit':
+                # fg explicit
+                if g.input_dim() == 1:
+                    fg_fn = lambda x: self.fn()*g.fn()(x)
+                elif g.input_dim() == 2:
+                    fg_fn = lambda x, y: self.fn()*g.fn()(x,y)
+                fg = Function(fg_fn, 'explicit')
+            elif gtype == 'nodal':
+                # fg nodal
+                fg_fn = self.fn()*g.fn()
+                fg = Function(fg_fn, 'nodal', dofhandler=g.dofhandler)
+            elif gtype == 'constant':
+                # fg constant
+                fg_fn = self.fn()*g.fn()
+                fg = Function(fg_fn, 'constant')
+        return fg
     
     
    
@@ -2800,6 +2987,9 @@ class System(object):
             phi: (n_points,n_dofs) array, the jth column of which is the 
                 (derivative of) the jth shape function evaluated at the 
                 specified points. 
+                
+                
+        TODO: Move this to the QuadFE
         """
         #
         # Determine multiplier for derivatives (chain rule)
@@ -2961,7 +3151,7 @@ class System(object):
         return f_vec
             
         
-    def f_eval_loc(self, f, cell, edge_loc=None, derivatives=(0,), x=None):
+    def f_eval_loc(self, f, node, edge_loc=None, derivatives=(0,), x=None):
         """
         Evaluates a function (or its partial derivatives) at a set of 
         local nodes (quadrature nodes if none are specified).
@@ -2988,6 +3178,7 @@ class System(object):
         
             fv: vector of function values, at x points
         """
+        cell = node.quadcell()
         #
         # Parse points x
         # 
@@ -3026,7 +3217,7 @@ class System(object):
             #
             # f is a Function object
             # 
-            return f.eval(x)
+            return f.eval(x, node=node)
         elif isinstance(f,numbers.Real):
             #
             # f is a constant
@@ -3094,7 +3285,7 @@ class System(object):
                 kernel_size==self.__n_gauss_2d, \
                 'Kernel size not compatible with quadrature rule.'
         else:
-            kernel = self.f_eval_loc(f,cell=cell, edge_loc=edge_loc)
+            kernel = self.f_eval_loc(f,node, edge_loc=edge_loc)
         
         if len(form) > 1:
             #

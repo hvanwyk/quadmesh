@@ -1367,7 +1367,7 @@ class Node(object):
                     child.unlink()
         
     
-    def quadcell(self, position=None):
+    def quadcell(self):
         """
         Return associated quadcell
         
@@ -1586,6 +1586,11 @@ class BiNode(Node):
     Binary tree Node
     """
     def __init__(self):
+        """
+        Constructor
+        
+        TODO: 
+        """
         pass
     
     def find_neighbor(self, direction):
@@ -3281,6 +3286,24 @@ class QuadCell(object):
                       y0 + (y1-y0)*x_ref[:,1]]).T
         return x
     
+    
+    def derivative_multiplier(self, derivative):
+        """
+        Deter
+        """
+        c = 1
+        if derivative[0] in {1,2}:
+            # 
+            # There's a map and we're taking derivatives
+            #
+            x0,x1,y0,y1 = self.box()
+            for i in derivative[1:]:
+                if i==0:
+                    c *= 1/(x1-x0)
+                elif i==1:
+                    c *= 1/(y1-y0)
+        return c
+     
      
     def mark(self, flag=None):
         """
