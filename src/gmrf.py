@@ -21,226 +21,24 @@ Commonly used covariance functions
 For each function, we assume the input is given by two d-dimensional
 vectors of length n. 
 """
-def constant_cov(x,y,sgm=1):
-    """
-    Constant covariance kernel
-    
-        C(x,y) = sgm
-    
-    Inputs: 
-    
-        x,y: double, two (n,d) arrays
-        
-        sgm: double >0, standard deviation
-            
-    Outputs:
-    
-        double, (n,) array of covariances  
-    """
-    assert x.shape == y.shape, \
-    'Input arrays have incompatible shapes.'
-    
-    return sgm*np.ones(x.shape[0])
-    
-
-def linear_cov(x,y,sgm=1, M=None):
-    """
-    Linear covariance
-    
-        C(x,y) = sgm^2 + <x,My>  (Euclidean inner product)
-        
-    Inputs: 
-    
-        x,y: double, np.array
-        
-        sgm: double >0, standard deviation
-        
-        M: double, positive definite anisotropy tensor 
-     
-    """
-    return sgm**2 + np.sum(x*y,axis=1)
-
-    
-def sqr_exponential_cov(x,y,sgm=1,l=1,M=None):
-    """
-    Squared exponential covariance function
-    
-        C(x,y) = exp(-|x-y|^2/(2l^2))
-    
-    """
-    d = distance(x,y,M)
-    return sgm**2*np.exp(-d**2/(2*l**2))
-
-    
-def exponential_cov(x,y,sgm=1, l=0.1, M=None):
-    """
-    Exponential covariance function
-    
-        C(x,y) = exp(-|x-y|/l)
-        
-    Inputs: 
-    
-        x,y: np.array, spatial points
-        
-        l: range parameter
-    """
-    d = distance(x,y,M)
-    return sgm**2*np.exp(-d/l)
-
-    
-def matern_cov(x,y,sgm,nu,l,M=None):
-    """
-    Matern covariance function
-    
-    Inputs:
-    
-        x,y: np.array, spatial points
-        
-        sgm: variance
-        
-        nu: shape parameter (k times differentiable if nu > k)
-        
-        l: range parameter 
-        
-    Source: 
-    """
-    d = distance(x,y,M)
-    K = sgm**2*2**(1-nu)/gamma(nu)*(np.sqrt(2*nu)*d/l)**nu*\
-        kv(nu,np.sqrt(2*nu)*d/l)
-    #
-    # Modified Bessel function undefined at d=0, covariance should be 1
-    #
-    K[np.isnan(K)] = 1
-    return K
-    
-    
-def rational_cov(x,y,a,M):
-    """
-    Rational covariance
-    
-        C(x,y) = 1/(1 + |x-y|^2)^a
-         
-    """
-    d = distance(x,y,M)
-    return (1/(1+d**2))**a
 
 
-def distance(x,y,M=None):
-    """
-    Compute the Euclidean distance vector between rows in x and rows in y
     
-    Inputs: 
+
+
+
     
-        x,y: (n,dim) column vectors
-        
-        M: double, (2,2) positive semidefinite matrix
-        
-        
-    Outputs: 
+
+
     
-        d: double, (n,1) vector |x[i]-y[i]| of Euclidean distances
-         
-    """
-    #
-    # Check wether x and y have the same dimensions
-    # 
-    assert x.shape == y.shape, 'Vectors x and y have incompatible shapes.'
-    if M is None:
-        return np.sqrt(np.sum((x-y)**2,axis=1))
-    else:
-        assert all(np.linalg.eigvals(M)>=0) and np.allclose(M,M.transpose()),\
-        'M should be symmetric positive definite.'
-        
-        n = x.shape[0]
-        d = np.empty(n)
-        xmy = x-y
-        for i in range(n):
-            d[i] = xmy[i,:].dot(M.dot(xmy[i,:].transpose()))
-        return np.sqrt(d)
+
+
+
+
              
         
      
-def matern_precision(mesh, element, alpha, kappa, tau=None, 
-                     boundary_conditions=None):
-    """
-    Return the precision matrix for the Matern random field defined on the 
-    spatial mesh. The field X satisfies
-    
-        (k^2 - div[T(x)grad(.)])^{a/2} X = W
-    
-    Inputs: 
-    
-        mesh: Mesh, finite element mesh on which the field is defined
-        
-        element: QuadFE, finite element space of piecewise polynomials
-        
-        alpha: int, positive integer (doubles not yet implemented).
-        
-        kappa: double, positive regularization parameter.
-        
-        tau: (Axx,Axy,Ayy) symmetric tensor or diffusion coefficient function.
-        
-        boundary_conditions: tuple of boundary locator function and boundary value
-            function (viz. fem.System)
-        
-        
-    Outputs:
-    
-        Q: sparse matrix, in CSC format
-        
-    """
-    system = System(mesh, element)
-    
-    #
-    # Assemble (kappa * M + K)
-    #
-    bf = [(kappa,'u','v')]
-    if tau is not None:
-        #
-        # Test whether tau is a symmetric tensor
-        # 
-        if type(tau) is tuple:
-            assert len(tau)==3, 'Symmetric tensor should have length 3.'
-            axx,axy,ayy = tau
-            bf += [(axx,'ux','vx'),(axy,'uy','vx'),
-                   (axy,'ux','vy'),(ayy,'uy','vy')]
-        else:
-            assert callable(tau) or isinstance(tau, Number)
-            bf += [(tau,'ux','vx'),(tau,'uy','vy')]
-    else:
-        bf += [(1,'ux','vx'),(1,'uy','vy')]
-    G = system.assemble(bilinear_forms=bf, 
-                        boundary_conditions=boundary_conditions)
-    G = G.tocsr()
-    
-    #
-    # Lumped mass matrix
-    # 
-    M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
-    m_lumped = np.array(M.sum(axis=1)).squeeze()
-    
-        
-    if np.mod(alpha,2) == 0:
-        #
-        # Even power alpha
-        # 
-        Q = cholesky(G.tocsc())
-        count = 1
-    else:
-        #
-        # Odd power alpha
-        # 
-        Q = cholesky_AAt((G*sp.diags(1/np.sqrt(m_lumped))).tocsc())
-        count = 2
-    
-    while count < alpha:
-        #
-        # Update Q
-        #
-        Q = cholesky_AAt((G*sp.diags(1/m_lumped)*Q.apply_Pt(Q.L())).tocsc()) 
-        count += 2
-    
-    return Q
+
 
          
 # =============================================================================
@@ -278,6 +76,295 @@ class Gmrf(object):
     TODO: Check For sparse matrix A, Ax is computed by A.dot(x), not np.dot(A,x) 
     
     """
+    @staticmethod
+    def constant_cov(x,y,sgm=1):
+        """
+        Constant covariance kernel
+        
+            C(x,y) = sgm
+        
+        Inputs: 
+        
+            x,y: double, two (n,d) arrays
+            
+            sgm: double >0, standard deviation
+                
+        Outputs:
+        
+            double, (n,) array of covariances  
+        """
+        assert x.shape == y.shape, \
+        'Input arrays have incompatible shapes.'
+        
+        return sgm*np.ones(x.shape[0])
+ 
+    
+    @staticmethod
+    def linear_cov(x,y,sgm=1, M=None):
+        """
+        Linear covariance
+        
+            C(x,y) = sgm^2 + <x,My>  (Euclidean inner product)
+            
+        Inputs: 
+        
+            x,y: double, np.array
+            
+            sgm: double >0, standard deviation
+            
+            M: double, positive definite anisotropy tensor 
+         
+        """
+        return sgm**2 + np.sum(x*y,axis=1)
+    
+    
+    @staticmethod
+    def gaussian_cov(x,y,sgm=1,l=1,M=None):
+        """
+        Squared exponential covariance function
+        
+            C(x,y) = exp(-|x-y|^2/(2l^2))
+        
+        """
+        d = Gmrf.distance(x,y,M)
+        return sgm**2*np.exp(-d**2/(2*l**2))
+ 
+ 
+    @staticmethod
+    def exponential_cov(x,y,sgm=1, l=0.1, M=None):
+        """
+        Exponential covariance function
+        
+            C(x,y) = exp(-|x-y|/l)
+            
+        Inputs: 
+        
+            x,y: np.array, spatial points
+            
+            l: range parameter
+        """
+        d = Gmrf.distance(x,y,M)
+        return sgm**2*np.exp(-d/l)
+    
+    
+    @staticmethod    
+    def matern_cov(x,y,sgm,nu,l,M=None):
+        """
+        Matern covariance function
+        
+        Inputs:
+        
+            x,y: np.array, spatial points
+            
+            sgm: variance
+            
+            nu: shape parameter (k times differentiable if nu > k)
+            
+            l: range parameter 
+            
+        Source: 
+        """
+        d = Gmrf.distance(x,y,M)
+        K = sgm**2*2**(1-nu)/gamma(nu)*(np.sqrt(2*nu)*d/l)**nu*\
+            kv(nu,np.sqrt(2*nu)*d/l)
+        #
+        # Modified Bessel function undefined at d=0, covariance should be 1
+        #
+        K[np.isnan(K)] = 1
+        return K
+        
+        
+    @staticmethod    
+    def rational_cov(x,y,a,M):
+        """
+        Rational covariance
+        
+            C(x,y) = 1/(1 + |x-y|^2)^a
+             
+        """
+        d = Gmrf.distance(x, y, M)
+        return (1/(1+d**2))**a   
+    
+    
+    @staticmethod
+    def distance(x , y, M=None):
+        """
+        Compute the Euclidean distance vector between rows in x and rows in y
+        
+        Inputs: 
+        
+            x,y: (n,dim) column vectors
+            
+            M: double, (2,2) positive semidefinite matrix
+            
+            
+        Outputs: 
+        
+            d: double, (n,1) vector |x[i]-y[i]| of Euclidean distances
+             
+        """
+        #
+        # Check wether x and y have the same dimensions
+        # 
+        assert x.shape == y.shape, 'Vectors x and y have incompatible shapes.'
+        if M is None:
+            return np.sqrt(np.sum((x-y)**2,axis=1))
+        else:
+            assert all(np.linalg.eigvals(M)>=0) and np.allclose(M,M.transpose()),\
+            'M should be symmetric positive definite.'
+            
+            n = x.shape[0]
+            d = np.empty(n)
+            xmy = x-y
+            for i in range(n):
+                d[i] = xmy[i,:].dot(M.dot(xmy[i,:].transpose()))
+            return np.sqrt(d)
+    
+    
+    @staticmethod
+    def covariance_matrix(cov_name, cov_par, mesh, element=None, M=None, 
+                          assembly_type='finite_differences', 
+                          lumped=False, periodic=False):
+        """
+        Construct a covariance matrix from the specified covariance kernel
+        
+        Inputs: 
+        
+            cov_name: str, name of covariance kernel 
+                'constant', 'linear', 'gaussian', 
+                'exponential', 'matern', or 'rational'
+            
+            cov_par: dict, parameter name/value pairs
+            
+            mesh: Mesh, object denoting physical mesh
+            
+            element: [optional] QuadFE, finite element 
+        """
+        #
+        # Determine covariance kernel
+        # 
+        if cov_name == 'constant':
+            cov_fn = Gmrf.constant_cov
+        elif cov_name == 'linear':
+            cov_fn = Gmrf.linear_cov
+        elif cov_name == 'gaussian':
+            cov_fn = Gmrf.gaussian_cov
+        elif cov_name == 'exponential':
+            cov_fn = Gmrf.exponential_cov
+        elif cov_name == 'matern':
+            cov_fn = Gmrf.matern_cov
+        elif cov_name == 'rational':
+            cov_fn = Gmrf.rational_cov
+        
+        
+        if assembly_type=='finite_elements':
+            assert element is not None, \
+            'Specify "element" if "assembly_type" is '+\
+            '"finite_elements" is used.'
+            
+            dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
+            
+        elif assembly_type=='finite_differences':
+            dim = mesh.dim()
+            element = QuadFE(dim, 'Q1')
+            x = dofhandler.dof_vertices()
+            n = dofhandler.n_dofs()
+            if dim == 2:
+                
+                X = (x[:,0],x[:,1])
+                if periodic:
+                    
+                    x_min, x_max, y_min, y_max = mesh.box()
+                else:
+                    pass
+        else:
+            raise Exception('Use "finite_elements" or '+\
+                            ' "finite_differences" for input "assembly_type"')
+    
+    @staticmethod
+    def matern_precision(mesh, element, alpha, kappa, tau=None, 
+                     boundary_conditions=None):
+        """
+        Return the precision matrix for the Matern random field defined on the 
+        spatial mesh. The field X satisfies
+        
+            (k^2 - div[T(x)grad(.)])^{a/2} X = W
+        
+        Inputs: 
+        
+            mesh: Mesh, finite element mesh on which the field is defined
+            
+            element: QuadFE, finite element space of piecewise polynomials
+            
+            alpha: int, positive integer (doubles not yet implemented).
+            
+            kappa: double, positive regularization parameter.
+            
+            tau: (Axx,Axy,Ayy) symmetric tensor or diffusion coefficient function.
+            
+            boundary_conditions: tuple of boundary locator function and boundary value
+                function (viz. fem.System)
+            
+            
+        Outputs:
+        
+            Q: sparse matrix, in CSC format
+            
+        """
+        system = System(mesh, element)
+        
+        #
+        # Assemble (kappa * M + K)
+        #
+        bf = [(kappa,'u','v')]
+        if tau is not None:
+            #
+            # Test whether tau is a symmetric tensor
+            # 
+            if type(tau) is tuple:
+                assert len(tau)==3, 'Symmetric tensor should have length 3.'
+                axx,axy,ayy = tau
+                bf += [(axx,'ux','vx'),(axy,'uy','vx'),
+                       (axy,'ux','vy'),(ayy,'uy','vy')]
+            else:
+                assert callable(tau) or isinstance(tau, Number)
+                bf += [(tau,'ux','vx'),(tau,'uy','vy')]
+        else:
+            bf += [(1,'ux','vx'),(1,'uy','vy')]
+        G = system.assemble(bilinear_forms=bf, 
+                            boundary_conditions=boundary_conditions)
+        G = G.tocsr()
+        
+        #
+        # Lumped mass matrix
+        # 
+        M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
+        m_lumped = np.array(M.sum(axis=1)).squeeze()
+        
+            
+        if np.mod(alpha,2) == 0:
+            #
+            # Even power alpha
+            # 
+            Q = cholesky(G.tocsc())
+            count = 1
+        else:
+            #
+            # Odd power alpha
+            # 
+            Q = cholesky_AAt((G*sp.diags(1/np.sqrt(m_lumped))).tocsc())
+            count = 2
+        
+        while count < alpha:
+            #
+            # Update Q
+            #
+            Q = cholesky_AAt((G*sp.diags(1/m_lumped)*Q.apply_Pt(Q.L())).tocsc()) 
+            count += 2
+        
+        return Q
+ 
  
     def __init__(self, mu=None, precision=None, covariance=None, 
                  mesh=None, element=None, discretization='finite_elements'):
@@ -452,7 +539,8 @@ class Gmrf(object):
         Note: In the case of finite element discretization, mass lumping is used. 
         """
         # Convert covariance name to function 
-        cov_fn = globals()[cov_name+'_cov']
+        #cov_fn = globals()['Gmrf.'+cov_name+'_cov']
+        cov_fn = locals()[cov_name+'_cov']
         #
         # Discretize the covariance function
         # 
@@ -549,7 +637,7 @@ class Gmrf(object):
         #else:
         #    discretization = 'finite_differences'
             
-        Q = matern_precision(mesh, element, alpha, kappa, tau)
+        Q = Gmrf.matern_precision(mesh, element, alpha, kappa, tau)
         return cls(precision=Q, mesh=mesh, element=element)
     
     

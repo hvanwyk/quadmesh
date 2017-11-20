@@ -63,13 +63,13 @@ class TestGmrf(unittest.TestCase):
                 #
                 # Finite Difference
                 # 
-                X_fd = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh)
+                #X_fd = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh)
                 
                 #
                 # Finite Elements
                 # 
-                X_fe = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh, \
-                                                   element=element)
+                #X_fe = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh, \
+                #                                   element=element)
                         
         
         
