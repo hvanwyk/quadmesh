@@ -21,13 +21,13 @@ import scipy.linalg as la
 #
 # Generate mesh and finite elements
 # 
-mesh = Mesh.newmesh(grid_size=(10,10))
+mesh = Mesh.newmesh(grid_size=(20,20))
 mesh.refine()
 mesh.record(0)
 
 box = [0.25,0.5,0.25,0.5]
 
-for i in range(2):    
+for i in range(0):    
     for node in mesh.root_node().find_leaves():
         cell = node.quadcell()
         outside_box = False
@@ -124,6 +124,6 @@ ax = fig.add_subplot(1,4,3)
 ax = plot.contour(ax, fig, X, mesh, element)
 
 ax = fig.add_subplot(1,4,4)
-ax = plot.contour(ax, fig, V[:,-3], mesh, element)
+ax = plot.contour(ax, fig, V[:,0], mesh, element)
 
 plt.show()

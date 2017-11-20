@@ -3143,7 +3143,7 @@ class System(object):
                 in_cell = cell.contains_point(x)
                 x_loc = x[in_cell,:]
                 f_vec[in_cell] = \
-                    self.f_eval_loc(f_loc, cell, derivatives=derivatives,\
+                    self.f_eval_loc(f_loc, node, derivatives=derivatives,\
                                     x=x_loc)
         else:
             raise Exception('Function must be explicit, nodal, or cellwise.')

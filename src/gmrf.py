@@ -37,6 +37,9 @@ def constant_cov(x,y,sgm=1):
     
         double, (n,) array of covariances  
     """
+    assert x.shape == y.shape, \
+    'Input arrays have incompatible shapes.'
+    
     return sgm*np.ones(x.shape[0])
     
 
@@ -277,7 +280,7 @@ class Gmrf(object):
     """
  
     def __init__(self, mu=None, precision=None, covariance=None, 
-                 mesh=None, element=None, discretization=None):
+                 mesh=None, element=None, discretization='finite_elements'):
         """
         Constructor
         
@@ -463,11 +466,6 @@ class Gmrf(object):
             X = np.tile(x, (n_verts,1))
             Sigma = cov_fn(X,Y,**cov_par).reshape(n_verts,n_verts)
             discretization = 'finite_differences' 
-        elif element.element_type() == 'Q0':
-            #
-            # Piecewise constant 
-            # 
-            pass
         else:
             #
             # Finite element discretization of the kernel
@@ -681,7 +679,8 @@ class Gmrf(object):
         """
         Return the rank of the covariance/precision matrix
         
-        TODO: Finish
+        Note: If the matrix is degenerate, we must use the covariance's
+            or precision's eigendecomposition.
         """
         pass
     

@@ -27,6 +27,8 @@ def test01():
     """
     Condition on coarse realization
     """
+    print('Test 1:')
+
     mesh = Mesh.newmesh([0,20,0,20], grid_size=(10,10))
     mesh.refine()
     mesh.record(flag=0)
@@ -79,6 +81,8 @@ def test02():
     """
     Spatially varying anisotropy
     """
+    print('Test 2:')
+
     mesh = Mesh.newmesh([0,20,0,20], grid_size=(100,100))
     mesh.refine()
     element = QuadFE(2,'Q1')
@@ -111,6 +115,7 @@ def test03():
     """
     Constant Anisotropy
     """
+    print('Test 3:')
     # Mesh
     mesh = Mesh.newmesh([0,20,0,20], grid_size=(40,40))
     mesh.refine()
@@ -151,3 +156,4 @@ def test04():
 if __name__ == '__main__':
     test01()
     test02()
+    test03()

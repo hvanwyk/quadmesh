@@ -8,7 +8,6 @@ Created on Jun 29, 2016
 @author: hans-werner
 
 """
-
 class Mesh(object):
     """
     Description: Mesh Class, consisting of a quadcell (background mesh), together with a tree, 
@@ -559,6 +558,13 @@ class Grid(object):
         """
         pass
     
+    @classmethod 
+    def from_gmsh(cls, file_name):
+        """
+        Constructor: Initialize quadrilateral grid from a .msh file. 
+        """
+        pass
+    
     
     def dim(self):
         """
@@ -575,13 +581,13 @@ class Grid(object):
         
             Node: Node, contained in the grid
             
-            direction: str, ['left','right'] for a 1D grid or 
+            direction: str, ['L','R'] for a 1D grid or 
                 ['N','S','E','W'] (or combinations) for a 2D grid
         """
         pass   
     
     
-    def contains_node(self, Node):
+    def contains_node(self, node):
         """
         Determine whether a given Node is contained in the grid
         
@@ -1584,14 +1590,89 @@ class Node(object):
 class BiNode(Node):
     """
     Binary tree Node
+    
+    Attributes:
+    
+        address:
+        
+        children:
+        
+        depth:
+        
+        parent: 
+        
+        position:
+        
+        type:
+        
+        __cell:
+        
+        __flags:
+        
+        __support:
+        
     """
-    def __init__(self):
+    def __init__(self, parent=None, position=None, 
+                 grid_size=None, bicell=None):
         """
         Constructor
         
-        TODO: 
+        Inputs:
+                    
+            parent: BiNode, parental node
+            
+            position: position within parent 
+                ['L','R'] if parent = Node
+                None if parent = None
+                i if parent is a ROOT node with specified grid_size
+                
+            grid_size: int, number children of ROOT node (optional).
+                
+            bicell: BiCell, physical Cell associated with tree: 
         """
-        pass
+        #
+        # Types
+        # 
+        if parent == None:
+            #
+            # ROOT node
+            #
+            node_type = 'ROOT'
+            node_address = []
+            node_depth = 0
+            if grid_size is not None:
+                assert type(grid_size) is int,\
+                'Child grid size should be an integer.'
+                nx = grid_size
+                node_children = {}
+                for i in range(nx):
+                        node_children[i] = None
+            else:
+                node_children = {'L':None, 'R':None}
+            self.__grid_size = grid_size
+        else:
+            #
+            # LEAF node
+            # 
+            node_type = 'LEAF'
+            node_address = parent.address + [self.pos2id(position)]
+            node_depth = parent.depth + 1
+            node_children = {'L': None, 'R': None}
+            if parent.type == 'LEAF':
+                parent.type = 'BRANCH'  # modify parent to branch  
+        #
+        # Record Attributes
+        # 
+        self.type = node_type
+        self.position = position
+        self.address = node_address
+        self.depth = node_depth
+        self.parent = parent
+        self.children = node_children
+        self.__cell = bicell
+        self.__flags  = set()
+        self.__support = False
+    
     
     def find_neighbor(self, direction):
         """
@@ -1601,14 +1682,16 @@ class BiNode(Node):
          
         Inputs: 
          
-            direction: char, 'N'(north), 'S'(south), 'E'(east), or 'W'(west)
+            direction: char, 'L'(left), 'R'(right)
              
         Output: 
          
             neighboring cell
          
-        TODO: move to subclass   
         """
+        
+        assert direction in ['L','R'], 'Invalid direction: use "L" or "R".'
+        
         if self.type == 'ROOT':
             #
             # ROOT Cells have no neighbors
@@ -1619,49 +1702,19 @@ class BiNode(Node):
         #
         elif self.in_grid():
             p = self.parent
-            nx, ny = p.grid_size()
+            nx = p.grid_size()
 
-            i,j = self.address[0]
-            if direction == 'N':
-                if j < ny-1:
-                    return p.children[i,j+1]
-                else:
-                    return None
-            elif direction == 'S':
-                if j > 0:
-                    return p.children[i,j-1]
-                else:
-                    return None
-            elif direction == 'E':
-                if i < nx-1:
-                    return p.children[i+1,j]
-                else:
-                    return None
-            elif direction == 'W':
+            i = self.address[0]
+            if direction == 'L':
                 if i > 0:
-                    return p.children[i-1,j]
+                    return p.children[i-1]
                 else:
                     return None
-            elif direction == 'SW':
-                if i > 0 and j > 0:
-                    return p.children[i-1,j-1]
+            elif direction == 'R':
+                if i < nx-1:
+                    return p.children[i+1]
                 else:
                     return None
-            elif direction == 'SE':
-                if i < nx-1 and j > 0:
-                    return p.children[i+1,j-1]
-                else:
-                    return None
-            elif direction == 'NW':
-                if i > 0 and j < ny-1:
-                    return p.children[i-1,j+1]
-                else: 
-                    return None
-            elif direction == 'NE':
-                if i < nx-1 and j < ny-1:
-                    return p.children[i+1,j+1]
-                else:
-                    return None 
         #
         # Non-ROOT cells 
         # 
@@ -1669,73 +1722,24 @@ class BiNode(Node):
             #
             # Check for neighbors interior to parent cell
             # 
-            if direction == 'N':
-                interior_neighbors_dict = {'SW': 'NW', 'SE': 'NE'}
-            elif direction == 'S':
-                interior_neighbors_dict = {'NW': 'SW', 'NE': 'SE'}
-            elif direction == 'E':
-                interior_neighbors_dict = {'SW': 'SE', 'NW': 'NE'}
-            elif direction == 'W':
-                interior_neighbors_dict = {'SE': 'SW', 'NE': 'NW'}
-            elif direction == 'SW':
-                interior_neighbors_dict = {'NE': 'SW'}
-            elif direction == 'SE':
-                interior_neighbors_dict = {'NW': 'SE'}
-            elif direction == 'NW':
-                interior_neighbors_dict = {'SE': 'NW'}
-            elif direction == 'NE':
-                interior_neighbors_dict = {'SW': 'NE'}
-            else:
-                print("Invalid direction. Use 'N', 'S', 'E', 'NE','SE','NW, 'SW', or 'W'.")
-            
-            if self.position in interior_neighbors_dict:
-                neighbor_pos = interior_neighbors_dict[self.position]
-                return self.parent.children[neighbor_pos]
-            #
-            # Check for (children of) parental neighbors
-            #
-            else:
-                if direction in ['SW','SE','NW','NE'] and direction != self.position:
-                    # Special case
-                    for c1,c2 in zip(self.position,direction):
-                        if c1 == c2:
-                            here = c1
-                    mu = self.parent.find_neighbor(here)
-                    if mu != None and mu.depth == self.depth-1 and mu.has_children():
-                        #
-                        # Diagonal neighbors must share corner vertex
-                        # 
-                        opposite = {'N':'S', 'S':'N', 'W':'E', 'E':'W'}
-                        nb_pos = direction
-                        for i in range(len(direction)):
-                            if direction[i] == here:
-                                nb_pos = nb_pos.replace(here,opposite[here])
-                        child = mu.children[nb_pos]
-                        return child
-                    else:
-                        return None
+            opposite = {'L': 'R', 'R': 'L'}
+            if self.position == opposite[direction]:
+                return self.parent.children[direction]
+            else: 
+                #
+                # Children 
+                # 
+                mu = self.parent.find_neighbor(direction)
+                if mu is None or mu.type == 'LEAF':
+                    return mu
                 else:
-                    mu = self.parent.find_neighbor(direction)
-                    if mu == None or mu.type == 'LEAF':
-                        return mu
-                    else:
-                        #
-                        # Reverse dictionary to get exterior neighbors
-                        # 
-                        exterior_neighbors_dict = \
-                           {v: k for k, v in interior_neighbors_dict.items()}
-                            
-                        if self.position in exterior_neighbors_dict:
-                            neighbor_pos = exterior_neighbors_dict[self.position]
-                            return mu.children[neighbor_pos] 
-                        
+                    return mu.children[opposite[direction]]    
+                                        
     
     
     def has_children(self, position=None, flag=None):
         """
         Determine whether node has children
-        
-        TOOD: modify
         """
         if position is None:
             # Check for any children
@@ -1752,8 +1756,8 @@ class BiNode(Node):
             # Check for child in specific position
             # 
             # Ensure position is valid
-            pos_error = 'Position should be one of: "SW", "SE", "NW", or "NE"'
-            assert position in ['SW','SE','NW','NE'], pos_error
+            pos_error = 'Position should be one of: "L", or "R".'
+            assert position in ['L','R'], pos_error
             if flag is None:
                 #
                 # No flag specified
@@ -1778,27 +1782,25 @@ class BiNode(Node):
         
         Note: Only returns children that are not None 
         
-        TODO: modify
         """
         if self.has_children(flag=flag):
             if self.type=='ROOT' and self.grid_size() is not None:
                 #
                 # Gridded root node - traverse from bottom to top, left to right
                 # 
-                nx, ny = self.grid_size()
-                for j in range(ny):
-                    for i in range(nx):
-                        child = self.children[(i,j)]
-                        if child is not None:
-                            if flag is None:
-                                yield child
-                            elif child.is_marked(flag):
-                                yield child
+                nx = self.grid_size()
+                for i in range(nx):
+                    child = self.children[i]
+                    if child is not None:
+                        if flag is None:
+                            yield child
+                        elif child.is_marked(flag):
+                            yield child
             #
-            # Usual quadcell division: traverse in bottom-to-top mirror Z order
+            # Traverse in left-to-right order
             #  
             else:
-                for pos in ['SW','SE','NW','NE']:
+                for pos in ['L','R']:
                     child = self.children[pos]
                     if child is not None:
                         if flag is None:
@@ -1809,8 +1811,6 @@ class BiNode(Node):
     def info(self):
         """
         Display essential information about Node
-        
-        TODO: change
         """
         print('-'*11)
         print('Node Info')
@@ -1822,25 +1822,22 @@ class BiNode(Node):
             print('{0:10}: {1}'.format('Position', self.position))
         print('{0:10}: {1}'.format('Flags', self.__flags))
         if self.has_children():
-            if self.type == 'ROOT' and self.grid_size() != None:
-                nx, ny = self.grid_size()
-                for iy in range(ny):
-                    str_row = ''
-                    for ix in range(nx):
-                        str_row += repr((ix,iy)) + ': ' 
-                        if self.children[(ix,iy)] != None:
-                            str_row += '1,  '
-                        else:
-                            str_row += '0,  '
-                    if iy == 0:
-                        print('{0:10}: {1}'.format('Children', str_row))
+            if self.type == 'ROOT' and self.grid_size() is not None:
+                str_row = ''
+                nx = self.grid_size()
+                for ix in range(nx):
+                    str_row += repr(ix) + ': ' 
+                    if self.children[ix] is not None:
+                        str_row += '1,  '
                     else:
-                        print('{0:11} {1}'.format(' ', str_row))
+                        str_row += '0,  '
+                print('{0:10}: {1}'.format('Children', str_row))
+                
             else:
                 child_string = ''
-                for key in ['SW','SE','NW','NE']:
+                for key in ['L','R']:
                     child = self.children[key]
-                    if child != None:
+                    if child is not None:
                         child_string += key + ': 1,  '
                     else:
                         child_string += key + ': 0,  '

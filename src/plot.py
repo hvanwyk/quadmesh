@@ -158,7 +158,6 @@ class Plot(object):
         #
         # Degrees of freedom
         # 
-        # FIXME: Something strange is going on with the flagged nodes.
         if dofs:
             assert element is not None, \
             'Require element information to plot dofs'
