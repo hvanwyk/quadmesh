@@ -30,7 +30,55 @@ def laplacian_precision(n, sparse=True):
     
 class TestGmrf(unittest.TestCase):
 
-
+    def test_distance(self):
+        """
+        Test distance function
+        """
+        # ---------------------------
+        # 1D
+        # ---------------------------
+        M = 2
+        box = (0,1)
+        x = np.array([0.5,0.75])
+        y = np.array([0.25,0.125])
+        d_xy = Gmrf.distance(x,y)
+        d_xMy = Gmrf.distance(x,y,M=M)
+        d_xy_tau = Gmrf.distance(x,y, periodic=True, box=box)
+        d_xMy_tau = Gmrf.distance(x, y, M=M, periodic=True, box=box)
+        self.assertTrue(np.allclose(d_xy, np.array([0.25,0.625])),\
+                        'Unweighted distance incorrect.')
+        self.assertTrue(np.allclose(d_xMy, np.sqrt(2)*np.array([0.25,0.625])),\
+                        'Weighted distance incorrect.')
+        self.assertTrue(np.allclose(d_xy_tau, np.array([0.25,0.375])),\
+                        'Unweighted toroidal distance incorrect.')
+        self.assertTrue(np.allclose(d_xMy_tau, np.sqrt(2)*np.array([0.25,0.375])),\
+                        'Weighted toroidal distance incorrect.') 
+        # --------------------------
+        # 2D
+        # ---------------------------
+        M = np.array([[3,1],[1,2]])
+        box = (0,1,0,1)
+        x = np.array([[0.5,0.5],[0.75, 0.75]])
+        y = np.array([[0.25,0.25],[0.125,0.5]])
+        d_xy = Gmrf.distance(x, y)
+        d_xMy = Gmrf.distance(x, y, M=M)
+        d_xy_tau = Gmrf.distance(x, y, periodic=True, box=box)
+        d_xMy_tau = Gmrf.distance(x, y, M=M, periodic=True, box=box)
+        self.assertTrue(np.allclose(d_xy, \
+                        np.array([np.sqrt(2)/4, np.sqrt(29)/8])), \
+                        'Distance incorrect')
+        
+        self.assertTrue(np.allclose(d_xMy, \
+                        np.array([np.sqrt(7)/4, np.sqrt(103)/8])),\
+                        'Weighted distance incorrect.')
+        self.assertTrue(np.allclose(d_xy_tau,\
+                        np.array([np.sqrt(2)/4, np.sqrt(13)/8])),\
+                        'Toroidal distance incorrect')
+        self.assertTrue(np.allclose(d_xMy_tau,\
+                        np.array([np.sqrt(7)/4, np.sqrt(47)/8])),\
+                        'Weighted toroidal distance incorrect')
+             
+        
     def test_constructor(self):
         """
         TODO: This test doesn't test any values as yet. 
@@ -71,6 +119,29 @@ class TestGmrf(unittest.TestCase):
                 #X_fe = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh, \
                 #                                   element=element)
                         
+    
+    def test_covariance_matrix(self):
+        """
+        
+        """ 
+        mesh = Mesh.newmesh(grid_size=(10,10))
+        element = QuadFE(2,'Q1')
+        dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+        #x = dofhandler.dof_vertices()
+        #n = dofhandler.n_dofs()
+        n = 11
+        x = np.linspace(0,1,n)
+        
+        i,j = np.triu_indices(n)
+        #M = np.array([[2,1],[1,2]])
+        M = 3
+        #X, Y = x[i,:], x[j,:]
+        X,Y = x[i], x[j]
+        cov_fn = Gmrf.linear_cov
+        cov_par = {'sgm':1}
+        S = cov_fn(X, Y, **cov_par, M=M)   
+        
         
         
     def test_Q(self):

@@ -5,7 +5,7 @@ Created on Feb 8, 2017
 '''
 from fem import System, QuadFE, DofHandler, GaussRule
 from mesh import Mesh
-from numbers import Number
+from numbers import Number, Real
 import scipy.sparse as sp
 from sksparse.cholmod import cholesky, cholesky_AAt, Factor  # @UnresolvedImport
 from scipy.special import kv, gamma
@@ -21,24 +21,6 @@ Commonly used covariance functions
 For each function, we assume the input is given by two d-dimensional
 vectors of length n. 
 """
-
-
-    
-
-
-
-    
-
-
-    
-
-
-
-
-             
-        
-     
-
 
          
 # =============================================================================
@@ -115,23 +97,44 @@ class Gmrf(object):
             M: double, positive definite anisotropy tensor 
          
         """
-        return sgm**2 + np.sum(x*y,axis=1)
+        if len(x.shape) == 1:
+            #
+            # 1D
+            # 
+            if M is None:
+                return sgm**2 + np.sum(x*y)
+            else:
+                assert isinstance(M,Real), 'Input "M" should be a scalar.'
+                My = M*y
+                return x*My
+        elif len(x.shape) == 2 and x.shape[1]==2:
+            #
+            # 2D
+            #  
+            if M is None:
+                return sgm**2 + np.sum(x*y, axis=1)
+            else:
+                assert M.shape == (2,2), 'Input "M" should be a 2x2 matrix.'
+                My = np.dot(M, y.T).T
+                return sgm**2 + np.sum(x*My, axis=1)
+        else: 
+            raise Exception('Only 1D and 2D supported.')
     
     
     @staticmethod
-    def gaussian_cov(x,y,sgm=1,l=1,M=None):
+    def gaussian_cov(x, y, sgm=1, l=1, M=None, periodic=False):
         """
         Squared exponential covariance function
         
             C(x,y) = exp(-|x-y|^2/(2l^2))
         
         """
-        d = Gmrf.distance(x,y,M)
+        d = Gmrf.distance(x, y, M, periodic=periodic)
         return sgm**2*np.exp(-d**2/(2*l**2))
  
  
     @staticmethod
-    def exponential_cov(x,y,sgm=1, l=0.1, M=None):
+    def exponential_cov(x, y, sgm=1, l=0.1, M=None, periodic=False):
         """
         Exponential covariance function
         
@@ -143,12 +146,12 @@ class Gmrf(object):
             
             l: range parameter
         """
-        d = Gmrf.distance(x,y,M)
+        d = Gmrf.distance(x, y, M, periodic=periodic)
         return sgm**2*np.exp(-d/l)
     
     
     @staticmethod    
-    def matern_cov(x,y,sgm,nu,l,M=None):
+    def matern_cov(x, y, sgm, nu, l, M=None, periodic=False):
         """
         Matern covariance function
         
@@ -164,7 +167,7 @@ class Gmrf(object):
             
         Source: 
         """
-        d = Gmrf.distance(x,y,M)
+        d = Gmrf.distance(x, y, M, periodic=periodic)
         K = sgm**2*2**(1-nu)/gamma(nu)*(np.sqrt(2*nu)*d/l)**nu*\
             kv(nu,np.sqrt(2*nu)*d/l)
         #
@@ -175,19 +178,19 @@ class Gmrf(object):
         
         
     @staticmethod    
-    def rational_cov(x,y,a,M):
+    def rational_cov(x, y, a, M, periodic=False):
         """
         Rational covariance
         
             C(x,y) = 1/(1 + |x-y|^2)^a
              
         """
-        d = Gmrf.distance(x, y, M)
+        d = Gmrf.distance(x, y, M, periodic=periodic)
         return (1/(1+d**2))**a   
     
     
     @staticmethod
-    def distance(x , y, M=None):
+    def distance(x, y, M=None, periodic=False, box=None):
         """
         Compute the Euclidean distance vector between rows in x and rows in y
         
@@ -195,30 +198,70 @@ class Gmrf(object):
         
             x,y: (n,dim) column vectors
             
-            M: double, (2,2) positive semidefinite matrix
+            M: double, positive semidefinite anistropy coefficient 
             
+            periodic: bool [False], indicates a toroidal domain
+            
+            box: double, tuple representing the bounding box, i.e. 
+                1D: box = (x_min, x_max)
+                2D: box = (x_min, x_max, y_min, y_max) 
+                If periodic is True, then box should be specified.
             
         Outputs: 
         
-            d: double, (n,1) vector |x[i]-y[i]| of Euclidean distances
+            d: double, (n,1) vector ||x[i]-y[i]||_M of (M-weighted) 
+                Euclidean distances
              
         """
-        #
-        # Check wether x and y have the same dimensions
-        # 
+        # Check wether x and y have the same dimensions 
         assert x.shape == y.shape, 'Vectors x and y have incompatible shapes.'
-        if M is None:
-            return np.sqrt(np.sum((x-y)**2,axis=1))
-        else:
-            assert all(np.linalg.eigvals(M)>=0) and np.allclose(M,M.transpose()),\
-            'M should be symmetric positive definite.'
+        
+        if len(x.shape) == 1:
+            #
+            # 1D
+            #
+            # Periodicity
+            if periodic:
+                assert box is not None, \
+                'If periodic, bounding box must be specified.'
+                
+                x_min, x_max = box
+                w  = x_max - x_min
+                dx = np.min(np.array([np.abs(x-y), w - np.abs(x-y)]),axis=0)
+            else:
+                dx = np.abs(x-y)
+            # "Anisotropy"    
+            if M is None:
+                return dx
+            else:
+                assert isinstance(M, Real) and M>=0, \
+                'For one dimensional covariance, input "M" '+\
+                'is a positive number.'
+                return np.sqrt(M)*dx
+        elif len(x.shape) == 2 and x.shape[1]==2:
+            #
+            # 2D
+            #   
+            dx = np.abs(x[:,0]-y[:,0])
+            dy = np.abs(x[:,1]-y[:,1])
+            if periodic:
+                assert box is not None, \
+                'If periodic, bounding box must be specified.'
+                x_min, x_max, y_min, y_max = box
+                dx = np.min(np.array([dx,(x_max-x_min)-dx]),axis=0)
+                dy = np.min(np.array([dy,(y_max-y_min)-dy]),axis=0)
             
-            n = x.shape[0]
-            d = np.empty(n)
-            xmy = x-y
-            for i in range(n):
-                d[i] = xmy[i,:].dot(M.dot(xmy[i,:].transpose()))
-            return np.sqrt(d)
+            if M is None:
+                return np.sqrt(dx**2 + dy**2)
+            else:
+                assert all(np.linalg.eigvals(M)>=0) and \
+                       np.allclose(M,M.transpose()),\
+                       'M should be symmetric positive definite.'
+                
+                ddx = np.array([dx,dy])
+                Mddx = np.dot(M, ddx).T
+                return np.sqrt(np.sum(ddx.T*Mddx, axis=1))
+            
     
     
     @staticmethod
@@ -266,25 +309,35 @@ class Gmrf(object):
             dofhandler.distribute_dofs()
             
         elif assembly_type=='finite_differences':
+            #
+            # Assemble by finite differences
+            # 
             dim = mesh.dim()
             element = QuadFE(dim, 'Q1')
             x = dofhandler.dof_vertices()
             n = dofhandler.n_dofs()
+            Sigma = np.empty((n,n))
+            i,j = np.triu_indices(n)
+            if dim == 1:
+                Sigma[i,j] = cov_fn(x[i],x[j], **cov_par, \
+                                    periodic=periodic, M=M)
             if dim == 2:
-                
-                X = (x[:,0],x[:,1])
-                if periodic:
-                    
-                    x_min, x_max, y_min, y_max = mesh.box()
-                else:
-                    pass
+                Sigma[i,j] = cov_fn(x[i,:],x[j,:], **cov_par, \
+                                    periodic=periodic, M=M)
+            #
+            # Reflect upper triangular part onto lower triangular part
+            # 
+            i,j = np.tril_indices(n,-1)
+            Sigma[i,j] = Sigma[j,i]
+            return Sigma
         else:
             raise Exception('Use "finite_elements" or '+\
                             ' "finite_differences" for input "assembly_type"')
     
+    
     @staticmethod
     def matern_precision(mesh, element, alpha, kappa, tau=None, 
-                     boundary_conditions=None):
+                         boundary_conditions=None):
         """
         Return the precision matrix for the Matern random field defined on the 
         spatial mesh. The field X satisfies

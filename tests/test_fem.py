@@ -1307,7 +1307,7 @@ class TestSystem(unittest.TestCase):
             #
             # f in functional form                   
             # 
-            f_loc = system.f_eval_loc(f, cell=cell,x=x_test)
+            f_loc = system.f_eval_loc(f, node=node,x=x_test)
             self.assertTrue(np.allclose(f_loc,f_test),\
                                    'Function not correctly interpolated.')
         
@@ -1318,7 +1318,7 @@ class TestSystem(unittest.TestCase):
             x = system.dof_vertices()
             x_loc = x[local_dofs,:]
             f_nodes = f(x_loc[:,0],x_loc[:,1])
-            f_loc = system.f_eval_loc(f_nodes,cell=cell,x=x_test)
+            f_loc = system.f_eval_loc(f_nodes,node=node,x=x_test)
             self.assertTrue(np.allclose(f_loc,f_test), \
                                    'Function not correctly interpolated.')
         
@@ -1327,14 +1327,14 @@ class TestSystem(unittest.TestCase):
             # -----------------------------------------------------------------
             cell_rule = system.cell_rule() 
             wg = cell_rule.weights()*cell_rule.jacobian(cell)
-            fg = system.f_eval_loc(f,cell=cell)
+            fg = system.f_eval_loc(f,node=node)
             self.assertAlmostEqual(np.sum(fg*wg), cell_integrals[etype],\
                                    8, 'Cell integral incorrect')
             
             n_edge = cell.get_edges('N')
             edge_rule = system.edge_rule()
             wg = edge_rule.weights()*edge_rule.jacobian(n_edge)
-            fg = system.f_eval_loc(f,cell=cell, edge_loc='N')
+            fg = system.f_eval_loc(f,node=node, edge_loc='N')
             self.assertAlmostEqual(np.sum(fg*wg), n_edge_integrals[etype],\
                                    8, 'Cell integral incorrect')
 

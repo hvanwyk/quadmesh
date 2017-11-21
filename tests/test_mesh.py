@@ -4,7 +4,7 @@ Created on Oct 23, 2016
 @author: hans-werner
 '''
 import unittest
-from mesh import Mesh, Node, QuadCell, TriCell, Edge, Vertex
+from mesh import Mesh, Node, Cell, QuadCell, TriCell, Edge, Vertex
 from plot import Plot
 import matplotlib.pyplot as plt
 import numpy as np
@@ -247,18 +247,7 @@ class TestMesh(unittest.TestCase):
             node.info()
         """
         
-            
-    def test_mesh_plot_quadmesh(self):        
-        """
-        TODO: moved this to Plot
-        mesh = Mesh.newmesh()
-        for _ in range(3):
-            for leaf in mesh.root_node().find_leaves():
-                leaf.mark()
-            mesh.refine()   
-        _, ax = plt.subplots() 
-        mesh.plot_quadmesh(ax, edge_numbers=True)
-        """
+
     
     def test_mesh_plot_trimesh(self):
         pass
@@ -824,7 +813,45 @@ class TestNode(unittest.TestCase):
         
     def test_plot(self):
         pass
+
+
+class TestCell(unittest.TestCase):
+    """
+    Test Cell Class
+    """   
+    def test_get_vertices(self):
+        pass
     
+    
+    def test_find_leaves(self):
+        pass
+    
+    
+    def test_cells_at_depth(self):
+        pass
+    
+    
+    def test_find_root(self):
+        pass
+    
+    
+    def test_has_children(self):
+        pass
+    
+    
+    def test_has_parent(self):
+        pass
+    
+    
+    def test_mark(self):
+        pass
+    
+    def test_unmark(self):
+        pass
+    
+    
+    
+  
     
 class TestQuadCell(unittest.TestCase):
     """

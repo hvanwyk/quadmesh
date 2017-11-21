@@ -1932,7 +1932,7 @@ class QuadNode(Node):
         Output: 
          
             neighboring cell
-         
+                        
         """
         if self.type == 'ROOT':
             #
@@ -2174,9 +2174,189 @@ class Cell(object):
     """
     Cell object
     """
-    pass
+    def __init__(self):
+        self._flags = set()
+        self._vertex_positions = []
+    
+    
+    def get_vertices(self, pos=None, as_array=True):
+        """
+        Returns the vertices of the current quadcell. 
+        
+        Inputs:
+        
+            pos: str, position of vertex within the cell: 
+                SW, S, SE, E, NE, N, NW, or W. If pos is not specified, return
+                all vertices.
+                
+            as_array: bool, if True, return vertices as a numpy array.
+                Otherwise return a list of Vertex objects. 
+             
+                
+        Outputs: 
+        
+            vertices: 
+            
+            
+        TODO: Make generic and delete special 
+        """            
+        if pos is None: 
+            #
+            # Return all vertices
+            # 
+            vertices = [v for v in self.vertices.values()]
+            if as_array:
+                #
+                # Convert to array
+                #  
+                v = [vertex.coordinate() for vertex in vertices]
+                return np.array(v)
+            else:
+                #
+                # Return as list of Vertex objects
+                #
+                return vertices
+        else:
+            assert pos in self._vertex_positions, \
+            'Valid inputs for pos are None, or %s' % self._vertex_positions
+            #
+            # Return specific vertex
+            # 
+            vertex = self.vertices[pos]
+            if as_array:
+                #
+                # Convert to array
+                # 
+                v = vertex.coordinate()
+                return np.array(v)
+            else:
+                #
+                # Return vertex object
+                # 
+                return vertex
 
 
+    def find_leaves(self, with_depth=False):
+        """
+        Returns a list of all 'LEAF' type sub-cells (and their depths) of a given cell 
+        
+        TODO: Make generic and delete special cases
+        """
+        leaves = []
+        if self.type == 'LEAF':
+            if with_depth:
+                leaves.append((self,self.depth))
+            else:
+                leaves.append(self)
+        elif self.has_children():
+            for child in self.children.values():
+                leaves.extend(child.find_leaves(with_depth))    
+        return leaves
+
+   
+    def find_cells_at_depth(self, depth):
+        """
+        Return a list of cells at a certain depth
+        
+        TODO: Is this necessary? 
+        TODO: Make generic and delete special 
+        """
+        cells = []
+        if self.depth == depth:
+            cells.append(self)
+        elif self.has_children():
+            for child in self.children[self._children_positions]:
+                cells.extend(child.find_cells_at_depth(depth))
+        return cells
+    
+    
+    def find_root(self):
+        """
+        Find the ROOT cell for a given cell
+        """
+        if self.type == 'ROOT' or self.type == 'MESH':
+            return self
+        else:
+            return self.parent.find_root()
+        
+        
+    def has_children(self):
+        """
+        Returns True if cell has any sub-cells, False otherwise
+        """    
+        return any([self.children[pos]!=None for pos in self.children.keys()])
+    
+    
+    def has_parent(self):
+        """
+        Returns True if cell has a parent cell, False otherwise
+        """
+        return not self.parent == None
+    
+    
+    def mark(self, flag=None):
+        """
+        Mark QuadCell
+        
+        Inputs:
+        
+            flag: int, optional label used to mark cell
+        """  
+        if flag is None:
+            self._flags.add(True)
+        else:
+            self._flags.add(flag)
+      
+    
+    def unmark(self, flag=None, recursive=False):
+        """
+        Unmark QuadCell
+        
+        Inputs: 
+        
+            flag: label to be removed
+        
+            recursive: bool, also unmark all subcells
+        """
+        #
+        # Remove label from own list
+        #
+        if flag is None:
+            # No flag specified -> delete all
+            self._flags.clear()
+        else:
+            # Remove specified flag (if present)
+            if flag in self._flags: self._flags.remove(flag)
+        
+        #
+        # Remove label from children if applicable   
+        # 
+        if recursive and self.has_children():
+            for child in self.children.values():
+                child.unmark(flag=flag, recursive=recursive)
+                
+ 
+         
+    def is_marked(self,flag=None):
+        """
+        Check whether quadcell is marked
+        
+        Input: flag, label for QuadCell: usually one of the following:
+            True (catchall), 'split' (split cell), 'count' (counting)
+            
+        TODO: Move to cell class
+        """ 
+        if flag is None:
+            # No flag -> check whether set is empty
+            if self._flags:
+                return True
+            else:
+                return False
+        else:
+            # Check wether given label is contained in quadcell's set
+            return flag in self._flags
+        
+           
 class BiCell(Cell):
     """
     Binary tree of sub-intervals in a 1d mesh
@@ -2229,6 +2409,7 @@ class BiCell(Cell):
             
             box: double, [x_min, x_max] interval endpoints
         """
+        super().__init__()
         # =====================================================================
         # Tree Attributes
         # =====================================================================
@@ -2273,8 +2454,571 @@ class BiCell(Cell):
         self.depth = cell_depth
         self.address = cell_address
         self.position = position
-        self.__flags = set()  
+        self._vertex_positions = ['L','R','M']
+        self._child_positions = ['L','R']
         
+        
+        # =====================================================================
+        # Vertices
+        # =====================================================================
+        if parent == None:
+            #
+            # ROOT Cell
+            # 
+            if box == None:
+                # Use default
+                box = [0,1]                
+
+            box_format = 'The box variable must be a list with 2 entries.'
+            assert (type(box) is list) and (len(box)==2), box_format 
+            
+            x0, x1 = box
+            if grid_size == None:
+                #
+                # 4 subcells
+                # 
+                xm = 0.5*(x0+x1)
+                vertices = {'L': Vertex((x0,)),
+                            'M': Vertex((xm,)), 
+                            'R': Vertex((x1,))}
+                                                      
+                edges = {('L','R') : Edge(vertices['L'],vertices['R']),
+                         ('L','M') : Edge(vertices['L'],vertices['M']),
+                         ('M','R') : Edge(vertices['M'],vertices['R'])}             
+            else:
+                #
+                # Grid of sub-cells
+                #
+                # TODO: The root cell's edges (there are only 2) are not the 
+                #       ones listed in the 'edges' attribute. However, they
+                #       are inherited by the subcells.
+                nx = grid_size                
+                x = np.linspace(x0,x1,nx+1)
+                vertices = {}
+                edges = {}
+                for i in range(nx+1):
+                        # Vertices
+                        vertices[i] = Vertex((x[i],))
+                        
+                        # Children
+                        if i < nx: 
+                            children[i] = None
+                        
+                        # Edges
+                        if i>0:
+                            # Horizontal edges
+                            edges[i-1,i] = Edge(vertices[i-1],vertices[i])
+                # Root Cell edges
+                edges[('L','R')] = Edge(vertices[0],vertices[nx-1])
+                
+        else: 
+            #
+            # LEAF Node
+            # 
+            vertex_keys = ['L','M','R']
+            vertices = dict.fromkeys(vertex_keys)
+            edge_keys = [('L','R'),('L','M'), ('M','R')] 
+            edges = dict.fromkeys(edge_keys)
+            #
+            # Inherited Vertices and Edges
+            # 
+            if parent.type == 'ROOT' and parent.grid_size is not None:
+                #
+                # Cell lies in grid
+                #
+                i = position
+                vertices['L'] = parent.vertices[i]
+                vertices['R'] = parent.vertices[i+1]
+                
+                x0, = vertices['L'].coordinate()
+                x1, = vertices['R'].coordinate()
+                xm = 0.5*(x0+x1)
+                     
+                vertices['M'] = Vertex((xm,))
+                edges[('L','R')] = parent.edges[(i,i+1)] 
+            else:
+                
+                #
+                # Parent not gridded
+                #
+                           
+                inherited_vertices = \
+                    {'L': {'L':'L', 'R':'M'},
+                     'R': {'L':'M', 'R':'R'}}
+                
+                for cv,pv in inherited_vertices[position].items():
+                    vertices[cv] = parent.vertices[pv]
+                
+                inherited_edges = \
+                    {'L': { ('L','R'):('L','M')}, 
+                     'R': { ('L','R'):('M','R')}} 
+                     
+                for ce,pe in inherited_edges[position].items():
+                    edges[ce] = parent.edges[pe]
+            
+            x0, = vertices['L'].coordinate()
+            x1, = vertices['R'].coordinate()
+            xm = 0.5*(x0+x1)
+            
+            vertices['M'] = Vertex((xm,))        
+            
+            #
+            # New interior edges
+            #             
+            edges[('L','M')] = Edge(vertices['L'],vertices['M'])
+            edges[('M','R')] = Edge(vertices['M'],vertices['R'])
+            
+        #
+        # Store vertices and edges
+        #  
+        self.vertices = vertices
+        self.edges = edges      
+        
+    
+    def box(self):
+        """
+        Return the cell's interval endpoints
+        """
+        if self.type == 'ROOT' and self.grid_size is not None:
+            nx = self.grid_size
+            x0, = self.vertices[0].coordinate()
+            x1, = self.vertices[nx].coordinate()
+        else:
+            x0, = self.vertices['L'].coordinate()
+            x1, = self.vertices['R'].coordinate()
+        return x0, x1
+    
+    
+    def get_vertices(self, pos=None, as_array=True):
+        """
+        Returns the vertices of the current quadcell. 
+        
+        Inputs:
+        
+            pos: str, position of vertex within the cell: L,R
+                If pos is not specified, return all vertices.
+                
+            as_array: bool, if True, return vertices as a numpy array.
+                Otherwise return a list of Vertex objects. 
+             
+                
+        Outputs: 
+        
+            vertices
+            
+        TODO: This can move up to Cell class
+        """
+        
+        assert pos in [None, 'L','R'],\
+            'Valid inputs for pos are "None", "L", or "R".'
+        
+        
+        if pos is None: 
+            #
+            # Return all vertices
+            # 
+            vertices = [v for v in self.vertices.values()]
+            if as_array:
+                #
+                # Convert to array
+                #  
+                v = [vertex.coordinate() for vertex in vertices]
+                return np.array(v)
+            else:
+                #
+                # Return as list of Vertex objects
+                #
+                return vertices
+        else:
+            #
+            # Return specific vertex
+            # 
+            vertex = self.vertices[pos]
+            if as_array:
+                #
+                # Convert to array
+                # 
+                v = vertex.coordinate()
+                return np.array(v)
+            else:
+                #
+                # Return vertex object
+                # 
+                return vertex
+        
+    
+    
+    def find_neighbor(self, direction):
+        """
+        Returns the deepest neighboring cell, whose depth is at most that of the
+        given cell, or 'None' if there aren't any neighbors.
+         
+        Inputs: 
+         
+            direction: char, 'N'(north), 'S'(south), 'E'(east), or 'W'(west)
+             
+        Output: 
+         
+            neighboring cell
+            
+        """
+        if self.parent == None:
+            return None
+        #
+        # For cell in a MESH, do a brute force search (comparing vertices)
+        #
+        elif self.parent.type == 'ROOT' and self.parent.grid_size != None:
+            m = self.parent
+            nx, ny = m.grid_size
+            i,j = self.position
+            if direction == 'N':
+                if j < ny-1:
+                    return m.children[i,j+1]
+                else:
+                    return None
+            elif direction == 'S':
+                if j > 0:
+                    return m.children[i,j-1]
+                else:
+                    return None
+            elif direction == 'E':
+                if i < nx-1:
+                    return m.children[i+1,j]
+                else:
+                    return None
+            elif direction == 'W':
+                if i > 0:
+                    return m.children[i-1,j]
+                else:
+                    return None 
+
+        #
+        # Non-ROOT cells 
+        # 
+        else:
+            #
+            # Check for neighbors interior to parent cell
+            # 
+            if direction == 'N':
+                interior_neighbors_dict = {'SW': 'NW', 'SE': 'NE'}
+            elif direction == 'S':
+                interior_neighbors_dict = {'NW': 'SW', 'NE': 'SE'}
+            elif direction == 'E':
+                interior_neighbors_dict = {'SW': 'SE', 'NW': 'NE'}
+            elif direction == 'W':
+                interior_neighbors_dict = {'SE': 'SW', 'NE': 'NW'}
+            else:
+                print("Invalid direction. Use 'N', 'S', 'E', or 'W'.")
+            
+            if self.position in interior_neighbors_dict:
+                neighbor_pos = interior_neighbors_dict[self.position]
+                return self.parent.children[neighbor_pos]
+            #
+            # Check for (children of) parental neighbors
+            #
+            else:
+                mu = self.parent.find_neighbor(direction)
+                if mu == None or mu.type == 'LEAF':
+                    return mu
+                else:
+                    #
+                    # Reverse dictionary to get exterior neighbors
+                    # 
+                    exterior_neighbors_dict = \
+                       {v: k for k, v in interior_neighbors_dict.items()}
+                        
+                    if self.position in exterior_neighbors_dict:
+                        neighbor_pos = exterior_neighbors_dict[self.position]
+                        return mu.children[neighbor_pos]                       
+
+
+    def find_leaves(self, with_depth=False):
+        """
+        Returns a list of all 'LEAF' type sub-cells (and their depths) of a given cell 
+        """
+        leaves = []
+        if self.type == 'LEAF':
+            if with_depth:
+                leaves.append((self,self.depth))
+            else:
+                leaves.append(self)
+        elif self.has_children():
+            for child in self.children.values():
+                leaves.extend(child.find_leaves(with_depth))    
+        return leaves
+
+   
+    def find_cells_at_depth(self, depth):
+        """
+        Return a list of cells at a certain depth
+        """
+        cells = []
+        if self.depth == depth:
+            cells.append(self)
+        elif self.has_children():
+            for child in self.children.values():
+                cells.extend(child.find_cells_at_depth(depth))
+        return cells
+    
+    
+    def find_root(self):
+        """
+        Find the ROOT cell for a given cell
+        """
+        if self.type == 'ROOT' or self.type == 'MESH':
+            return self
+        else:
+            return self.parent.find_root()
+        
+        
+    def has_children(self):
+        """
+        Returns True if cell has any sub-cells, False otherwise
+        """    
+        return any([self.children[pos]!=None for pos in self.children.keys()])
+    
+    
+    def has_parent(self):
+        """
+        Returns True if cell has a parent cell, False otherwise
+        
+        TODO: Move to Cell class
+        """
+        return not self.parent == None
+    
+    
+    def contains_point(self, points):
+        """
+        Determine whether the given cell contains a point
+        
+        Input: 
+        
+            point: tuple (x,y), list of tuples, or (n,2) array
+            
+        Output: 
+        
+            contains_point: boolean array, True if cell contains point, 
+            False otherwise
+        
+        
+        Note: Points on the boundary between cells belong to both adjoining
+            cells.
+        """          
+        xy = np.array(points)
+        x_min, x_max, y_min, y_max = self.box()
+        
+        in_box = (x_min <= xy[:,0]) & (xy[:,0] <= x_max) & \
+                 (y_min <= xy[:,1]) & (xy[:,1] <= y_max)
+        return in_box
+            
+
+    
+    def intersects_line_segment(self, line):
+        """
+        Determine whether cell intersects with a given line segment
+        
+        Input: 
+        
+            line: double, list of two tuples (x0,y0) and (x1,y1)
+            
+        Output:
+        
+            intersects: bool, true if line segment and quadcell intersect
+            
+        Modified: 06/04/2016
+        """               
+        #
+        # Check whether line is contained in rectangle
+        # 
+        if self.contains_point(line[0]) and self.contains_point(line[1]):
+            return True
+        
+        #
+        # Check whether line intersects with any cell edge
+        # 
+        for edge in self.edges.values():
+            if edge.intersects_line_segment(line):
+                return True
+            
+        #
+        # If function has not terminated yet, there is no intersection
+        #     
+        return False
+    
+               
+    def locate_point(self, point):
+        """
+        Returns the smallest cell containing a given point or None if current 
+        cell doesn't contain the point
+        
+        Input:
+            
+            point: tuple (x,y)
+            
+        Output:
+            
+            cell: smallest cell that contains (x,y)
+                
+        """
+        # TESTME: locate_point
+        
+        if self.contains_point(point):
+            if self.type == 'LEAF': 
+                return self
+            else:
+                #
+                # If cell has children, find the child containing the point and continue looking from there
+                # 
+                for child in self.children.values():
+                    if child.contains_point(point):
+                        return child.locate_point(point)                     
+        else:
+            return None    
+    
+    
+    def normal(self, edge):
+        """
+        Return the cell's outward normal vector along edge
+        """    
+        xm,ym = self.vertices['M'].coordinate()
+        v0,v1 = edge.vertices()
+        x0,y0 = v0.coordinate(); x1 = v1.coordinate()[0]
+        if np.abs(x0-x1) < 1e-12:
+            #
+            # Vertical 
+            # 
+            return np.sign(x0-xm)*np.array([1.,0.])
+        else:
+            #
+            # Horizontal
+            # 
+            return np.sign(y0-ym)*np.array([0.,1.])
+    
+    
+    def map_to_reference(self, x):
+        """
+        Map point to reference cell [0,1]^2
+        
+        Input:
+        
+            x: double, (n_points, dim) array of points in the physical cell
+            
+        Output:
+        
+            x_ref: double, (n_points, dim) array of points in the reference 
+                cell.
+        """            
+        x0,x1,y0,y1 = self.box()
+        x_ref = np.array([(x[:,0]-x0)/(x1-x0),
+                          (x[:,1]-y0)/(y1-y0)]).T
+        return x_ref
+    
+    
+    def map_from_reference(self, x_ref):
+        """
+        Map point from reference cell [0,1]^2 to physical cell
+        
+        Inputs: 
+        
+            x_ref: double, (n_points, dim) array of points in the reference
+                cell. 
+                
+        Output:
+        
+            x: double, (n_points, dim) array of points in the physical cell
+        """
+        x0,x1,y0,y1 = self.box()
+        x = np.array([x0 + (x1-x0)*x_ref[:,0], 
+                      y0 + (y1-y0)*x_ref[:,1]]).T
+        return x
+    
+    
+    def derivative_multiplier(self, derivative):
+        """
+        Deter
+        """
+        c = 1
+        if derivative[0] in {1,2}:
+            # 
+            # There's a map and we're taking derivatives
+            #
+            x0,x1,y0,y1 = self.box()
+            for i in derivative[1:]:
+                if i==0:
+                    c *= 1/(x1-x0)
+                elif i==1:
+                    c *= 1/(y1-y0)
+        return c
+     
+     
+    def mark(self, flag=None):
+        """
+        Mark QuadCell
+        
+        Inputs:
+        
+            flag: int, optional label used to mark cell
+        """  
+        if flag is None:
+            self.__flags.add(True)
+        else:
+            self.__flags.add(flag)
+            
+        
+    def unmark(self, flag=None, recursive=False):
+        """
+        Unmark QuadCell
+        
+        Inputs: 
+        
+            flag: label to be removed
+        
+            recursive: bool, also unmark all subcells
+        """
+        #
+        # Remove label from own list
+        #
+        if flag is None:
+            # No flag specified -> delete all
+            self.__flags.clear()
+        else:
+            # Remove specified flag (if present)
+            if flag in self.__flags: self.__flags.remove(flag)
+        
+        #
+        # Remove label from children if applicable   
+        # 
+        if recursive and self.has_children():
+            for child in self.children.values():
+                child.unmark(flag=flag, recursive=recursive)
+                
+ 
+         
+    def is_marked(self,flag=None):
+        """
+        Check whether quadcell is marked
+        
+        Input: flag, label for QuadCell: usually one of the following:
+            True (catchall), 'split' (split cell), 'count' (counting)
+        """ 
+        if flag is None:
+            # No flag -> check whether set is empty
+            if self.__flags:
+                return True
+            else:
+                return False
+        else:
+            # Check wether given label is contained in quadcell's set
+            return flag in self.__flags
+                    
+                                
+    def split(self):
+        """
+        Split cell into subcells
+        """
+        assert not self.has_children(), 'Cell is already split.'
+        for pos in self.children.keys():
+            self.children[pos] = QuadCell(parent=self, position=pos) 
         
     def pos2id(self, position):
         """
@@ -2458,7 +3202,7 @@ class TriCell(object):
             return flag in self.__flags
                     
         
-class QuadCell(object):
+class QuadCell(Cell):
     """
     (Tree of) Rectangular cell(s) in mesh
         
@@ -2635,6 +3379,8 @@ class QuadCell(object):
             
         Modified: 12/27/2016
         """
+        super().__init__()
+        
         # =====================================================================
         # Tree Attributes
         # =====================================================================
@@ -2680,7 +3426,8 @@ class QuadCell(object):
         self.depth = cell_depth
         self.address = cell_address
         self.position = position
-        self.__flags = set()  
+        self._child_positions = ['SW','SE','NW','NE']
+        self._vertex_positions = ['SW', 'S', 'SE', 'E', 'NE', 'N', 'NW', 'W','M']
         
         
         # =====================================================================
@@ -2922,7 +3669,7 @@ class QuadCell(object):
         """
         Returns the coordinates of the cell's bounding box [x0,x1,y0,y1]
         """
-        if self.type == 'ROOT' and self.grid_size != None:
+        if self.type == 'ROOT' and self.grid_size is not None:
             nx, ny = self.grid_size
             x0, y0 = self.vertices[0,0].coordinate()
             x1, y1 = self.vertices[nx,ny].coordinate()
@@ -2960,12 +3707,10 @@ class QuadCell(object):
         Outputs: 
         
             vertices: 
-        """
-        
-        assert pos in [None, 'SW', 'S', 'SE', 'E', 'NE', 'N', 'NW', 'W'],\
-            'Valid inputs for pos are None, SW, S, SE, E, NE, N, NW, or W'
-        
-        
+            
+            
+        TODO: Delete when finished with cell class
+        """            
         if pos is None: 
             #
             # Return all vertices
@@ -2983,6 +3728,8 @@ class QuadCell(object):
                 #
                 return vertices
         else:
+            assert pos in self.__vertex_positions, \
+            'Valid inputs for pos are None, or %s' % self.__vertex_positions
             #
             # Return specific vertex
             # 
@@ -3088,6 +3835,8 @@ class QuadCell(object):
     def find_leaves(self, with_depth=False):
         """
         Returns a list of all 'LEAF' type sub-cells (and their depths) of a given cell 
+        
+        TODO: Move to Cell class
         """
         leaves = []
         if self.type == 'LEAF':
@@ -3104,6 +3853,9 @@ class QuadCell(object):
     def find_cells_at_depth(self, depth):
         """
         Return a list of cells at a certain depth
+        
+        TODO: Is this necessary? 
+        TODO: Move to Cell class
         """
         cells = []
         if self.depth == depth:
@@ -3117,6 +3869,8 @@ class QuadCell(object):
     def find_root(self):
         """
         Find the ROOT cell for a given cell
+        
+        TODO: Move to Cell class
         """
         if self.type == 'ROOT' or self.type == 'MESH':
             return self
@@ -3127,6 +3881,8 @@ class QuadCell(object):
     def has_children(self):
         """
         Returns True if cell has any sub-cells, False otherwise
+        
+        TODO: Move to Cell class
         """    
         return any([self.children[pos]!=None for pos in self.children.keys()])
     
@@ -3134,6 +3890,8 @@ class QuadCell(object):
     def has_parent(self):
         """
         Returns True if cell has a parent cell, False otherwise
+        
+        TODO: Move to Cell class
         """
         return not self.parent == None
     
@@ -3301,7 +4059,7 @@ class QuadCell(object):
                     c *= 1/(y1-y0)
         return c
      
-     
+    ''' 
     def mark(self, flag=None):
         """
         Mark QuadCell
@@ -3314,7 +4072,7 @@ class QuadCell(object):
             self.__flags.add(True)
         else:
             self.__flags.add(flag)
-            
+           
         
     def unmark(self, flag=None, recursive=False):
         """
@@ -3325,6 +4083,8 @@ class QuadCell(object):
             flag: label to be removed
         
             recursive: bool, also unmark all subcells
+            
+        TODO: Move to Cell class
         """
         #
         # Remove label from own list
@@ -3351,6 +4111,8 @@ class QuadCell(object):
         
         Input: flag, label for QuadCell: usually one of the following:
             True (catchall), 'split' (split cell), 'count' (counting)
+            
+        TODO: Move to cell class
         """ 
         if flag is None:
             # No flag -> check whether set is empty
@@ -3361,7 +4123,7 @@ class QuadCell(object):
         else:
             # Check wether given label is contained in quadcell's set
             return flag in self.__flags
-                    
+    '''                 
                                 
     def split(self):
         """
@@ -3688,6 +4450,8 @@ class QuadCell(object):
     def plot(self, ax, show=True, recursive=True, set_axis=True, edges=False):
         """
         Plot the current cell with all of its sub-cells
+        
+        TODO: Remove
         """
         if set_axis:
             x0,x1,y0,y1 = self.box()                
