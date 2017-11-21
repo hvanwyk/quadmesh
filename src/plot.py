@@ -388,7 +388,7 @@ class Plot(object):
                     yy = (1-t)*y0 + t*y1
                     
                     # Evaluate function at edge points 
-                    zz = system.f_eval_loc(f_loc, cell, x=np.array([xx,yy]).T, \
+                    zz = system.f_eval_loc(f_loc, node, x=np.array([xx,yy]).T, \
                                            derivatives=derivatives)
                     if initialize_min_max:
                         z_min = zz.min()

@@ -1107,14 +1107,14 @@ class Node(object):
         return leaves
     '''
     
-    def find_root(self):
+    def get_root(self):
         """
         Return root node
         """
         if self.type == 'ROOT':
             return self
         else:
-            return self.parent.find_root()
+            return self.parent.get_root()
     
     
     def find_node(self, address):
@@ -1122,7 +1122,7 @@ class Node(object):
         Locate node by its address
         TODO: THIS DOESN'T LOOK LIKE IT WILL WORK
         """
-        node = self.find_root()
+        node = self.get_root()
         if address != []:
             #
             # Not the ROOT node
@@ -2196,15 +2196,13 @@ class Cell(object):
         Outputs: 
         
             vertices: 
-            
-            
-        TODO: Make generic and delete special 
+                    
         """            
         if pos is None: 
             #
             # Return all vertices
             # 
-            vertices = [v for v in self.vertices.values()]
+            vertices = [self.vertices[pos] for pos in self._vertex_positions]
             if as_array:
                 #
                 # Convert to array
@@ -2249,7 +2247,8 @@ class Cell(object):
             else:
                 leaves.append(self)
         elif self.has_children():
-            for child in self.children.values():
+            for pos in self._child_positions:
+                child = self.children[pos]
                 leaves.extend(child.find_leaves(with_depth))    
         return leaves
 
@@ -2270,22 +2269,28 @@ class Cell(object):
         return cells
     
     
-    def find_root(self):
+    def get_root(self):
         """
         Find the ROOT cell for a given cell
         """
         if self.type == 'ROOT' or self.type == 'MESH':
             return self
         else:
-            return self.parent.find_root()
+            return self.parent.get_root()
         
         
     def has_children(self):
         """
         Returns True if cell has any sub-cells, False otherwise
         """    
-        return any([self.children[pos]!=None for pos in self.children.keys()])
+        return any([self.children[pos]!=None for pos in self._child_vertices])
     
+    
+    def get_children(self):
+        """
+        Returns all child cells 
+        """
+        return 
     
     def has_parent(self):
         """
@@ -2589,63 +2594,6 @@ class BiCell(Cell):
         return x0, x1
     
     
-    def get_vertices(self, pos=None, as_array=True):
-        """
-        Returns the vertices of the current quadcell. 
-        
-        Inputs:
-        
-            pos: str, position of vertex within the cell: L,R
-                If pos is not specified, return all vertices.
-                
-            as_array: bool, if True, return vertices as a numpy array.
-                Otherwise return a list of Vertex objects. 
-             
-                
-        Outputs: 
-        
-            vertices
-            
-        TODO: This can move up to Cell class
-        """
-        
-        assert pos in [None, 'L','R'],\
-            'Valid inputs for pos are "None", "L", or "R".'
-        
-        
-        if pos is None: 
-            #
-            # Return all vertices
-            # 
-            vertices = [v for v in self.vertices.values()]
-            if as_array:
-                #
-                # Convert to array
-                #  
-                v = [vertex.coordinate() for vertex in vertices]
-                return np.array(v)
-            else:
-                #
-                # Return as list of Vertex objects
-                #
-                return vertices
-        else:
-            #
-            # Return specific vertex
-            # 
-            vertex = self.vertices[pos]
-            if as_array:
-                #
-                # Convert to array
-                # 
-                v = vertex.coordinate()
-                return np.array(v)
-            else:
-                #
-                # Return vertex object
-                # 
-                return vertex
-        
     
     
     def find_neighbor(self, direction):
@@ -2731,7 +2679,7 @@ class BiCell(Cell):
                         neighbor_pos = exterior_neighbors_dict[self.position]
                         return mu.children[neighbor_pos]                       
 
-
+    '''
     def find_leaves(self, with_depth=False):
         """
         Returns a list of all 'LEAF' type sub-cells (and their depths) of a given cell 
@@ -2746,8 +2694,8 @@ class BiCell(Cell):
             for child in self.children.values():
                 leaves.extend(child.find_leaves(with_depth))    
         return leaves
-
-   
+    
+    
     def find_cells_at_depth(self, depth):
         """
         Return a list of cells at a certain depth
@@ -2759,16 +2707,16 @@ class BiCell(Cell):
             for child in self.children.values():
                 cells.extend(child.find_cells_at_depth(depth))
         return cells
+    '''
     
-    
-    def find_root(self):
+    def get_root(self):
         """
         Find the ROOT cell for a given cell
         """
         if self.type == 'ROOT' or self.type == 'MESH':
             return self
         else:
-            return self.parent.find_root()
+            return self.parent.get_root()
         
         
     def has_children(self):
@@ -3688,64 +3636,6 @@ class QuadCell(Cell):
             return [self.edges[edge_dict[key]] for key in ['W','E','S','N']]
         else:
             return self.edges[edge_dict[pos]] 
-        
-    
-    def get_vertices(self, pos=None, as_array=True):
-        """
-        Returns the vertices of the current quadcell. 
-        
-        Inputs:
-        
-            pos: str, position of vertex within the cell: 
-                SW, S, SE, E, NE, N, NW, or W. If pos is not specified, return
-                all vertices.
-                
-            as_array: bool, if True, return vertices as a numpy array.
-                Otherwise return a list of Vertex objects. 
-             
-                
-        Outputs: 
-        
-            vertices: 
-            
-            
-        TODO: Delete when finished with cell class
-        """            
-        if pos is None: 
-            #
-            # Return all vertices
-            # 
-            vertices = [v for v in self.vertices.values()]
-            if as_array:
-                #
-                # Convert to array
-                #  
-                v = [vertex.coordinate() for vertex in vertices]
-                return np.array(v)
-            else:
-                #
-                # Return as list of Vertex objects
-                #
-                return vertices
-        else:
-            assert pos in self.__vertex_positions, \
-            'Valid inputs for pos are None, or %s' % self.__vertex_positions
-            #
-            # Return specific vertex
-            # 
-            vertex = self.vertices[pos]
-            if as_array:
-                #
-                # Convert to array
-                # 
-                v = vertex.coordinate()
-                return np.array(v)
-            else:
-                #
-                # Return vertex object
-                # 
-                return vertex
-        
     
     
     def find_neighbor(self, direction):
@@ -3831,7 +3721,7 @@ class QuadCell(Cell):
                         neighbor_pos = exterior_neighbors_dict[self.position]
                         return mu.children[neighbor_pos]                       
 
-
+    '''
     def find_leaves(self, with_depth=False):
         """
         Returns a list of all 'LEAF' type sub-cells (and their depths) of a given cell 
@@ -3848,7 +3738,7 @@ class QuadCell(Cell):
             for child in self.children.values():
                 leaves.extend(child.find_leaves(with_depth))    
         return leaves
-
+    '''
    
     def find_cells_at_depth(self, depth):
         """
@@ -3866,7 +3756,7 @@ class QuadCell(Cell):
         return cells
     
     
-    def find_root(self):
+    def get_root(self):
         """
         Find the ROOT cell for a given cell
         
@@ -3875,7 +3765,7 @@ class QuadCell(Cell):
         if self.type == 'ROOT' or self.type == 'MESH':
             return self
         else:
-            return self.parent.find_root()
+            return self.parent.get_root()
         
         
     def has_children(self):
@@ -4530,9 +4420,15 @@ class Edge(object):
         """
         self.__vertices = set([v1,v2])
         
-        x0,y0 = v1.coordinate()
-        x1,y1 = v2.coordinate()
-        nnorm = np.sqrt((y1-y0)**2+(x1-x0)**2)
+        dim = len(v1.coordinate())
+        if dim == 1:
+            x0, = v1.coordinate()
+            x1, = v2.coordinate()
+            nnorm = np.abs(x1-x0)
+        elif dim == 2:
+            x0,y0 = v1.coordinate()
+            x1,y1 = v2.coordinate()
+            nnorm = np.sqrt((y1-y0)**2+(x1-x0)**2)
         self.__length = nnorm
         self.__flags = set()
         self.__parent = parent 

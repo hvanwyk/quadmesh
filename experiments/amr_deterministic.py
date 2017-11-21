@@ -131,15 +131,15 @@ def example_1():
         # Interpolate z -> zh
         x_loc = system_u.x_loc(cell)
         z_dofs = system_z.get_global_dofs(node)
-        zh_loc = system_z.f_eval_loc(za[z_dofs], cell, x=x_loc)  # evaluate z at linear dof vertices
-        z_gauss = system_z.f_eval_loc(za[z_dofs], cell)
-        zh_gauss = system_u.f_eval_loc(zh_loc, cell)
+        zh_loc = system_z.f_eval_loc(za[z_dofs], node, x=x_loc)  # evaluate z at linear dof vertices
+        z_gauss = system_z.f_eval_loc(za[z_dofs], node)
+        zh_gauss = system_u.f_eval_loc(zh_loc, node)
         dz = z_gauss - zh_gauss
         
         u_dofs = system_u.get_global_dofs(node)
-        uxx_gauss = system_u.f_eval_loc(ua[u_dofs], cell, derivatives=(2,0,0))
-        uyy_gauss = system_u.f_eval_loc(ua[u_dofs], cell, derivatives=(2,1,1))
-        f_gauss = system_u.f_eval_loc(f, cell)
+        uxx_gauss = system_u.f_eval_loc(ua[u_dofs], node, derivatives=(2,0,0))
+        uyy_gauss = system_u.f_eval_loc(ua[u_dofs], node, derivatives=(2,1,1))
+        f_gauss = system_u.f_eval_loc(f, node)
         
         res_cell = system_z.form_eval(((f_gauss*dz,),), node) + \
                    system_z.form_eval(((uxx_gauss*dz,),), node) + \
@@ -150,9 +150,9 @@ def example_1():
             #
             # Compute gradient of u on cell
             # 
-            ux_cell = system_u.f_eval_loc(ua[u_dofs], cell, edge_loc=direction, \
+            ux_cell = system_u.f_eval_loc(ua[u_dofs], node, edge_loc=direction, \
                                         derivatives=(1,0))
-            uy_cell = system_u.f_eval_loc(ua[u_dofs], cell, edge_loc=direction, \
+            uy_cell = system_u.f_eval_loc(ua[u_dofs], node, edge_loc=direction, \
                                         derivatives=(1,1))
             nu = cell.normal(cell.get_edges(direction))
             
@@ -163,11 +163,11 @@ def example_1():
             if nbr is not None:
                 nbr_dofs = system_u.get_global_dofs(nbr)
                 nbr_cell = nbr.quadcell()
-                ux_nbr = system_u.f_eval_loc(ua[nbr_dofs], nbr_cell, \
+                ux_nbr = system_u.f_eval_loc(ua[nbr_dofs], nbr, \
                                            edge_loc=opposite[direction], \
                                            derivatives=(1,0))
                 
-                uy_nbr = system_u.f_eval_loc(ua[nbr_dofs], nbr_cell, \
+                uy_nbr = system_u.f_eval_loc(ua[nbr_dofs], nbr, \
                                            edge_loc=opposite[direction], \
                                            derivatives=(1,1))
                 jump = 0.5*nu[0]*(ux_cell-ux_nbr)+0.5*nu[1]*(uy_cell-uy_nbr)
@@ -175,8 +175,8 @@ def example_1():
                 #
                 # z-zh at the edge
                 # 
-                z_gauss = system_z.f_eval_loc(za[z_dofs], cell, edge_loc=direction)
-                zh_gauss = system_u.f_eval_loc(zh_loc, cell, edge_loc=direction) 
+                z_gauss = system_z.f_eval_loc(za[z_dofs], node, edge_loc=direction)
+                zh_gauss = system_u.f_eval_loc(zh_loc, node, edge_loc=direction) 
                 res_edge += system_z.form_eval(((jump*(z_gauss-zh_gauss),),),\
                                                 node, edge_loc=direction)
         

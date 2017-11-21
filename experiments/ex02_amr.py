@@ -109,9 +109,9 @@ for i_refinement in range(6):
         #
         x_loc = system_u.x_loc(cell)
         z_dofs = system_z.get_global_dofs(node)
-        zh_loc = system_z.f_eval_loc(za[z_dofs], cell, x=x_loc)  # evaluate z at linear dof vertices
-        z_gauss = system_z.f_eval_loc(za[z_dofs], cell)
-        zh_gauss = system_u.f_eval_loc(zh_loc, cell)
+        zh_loc = system_z.f_eval_loc(za[z_dofs], node, x=x_loc)  # evaluate z at linear dof vertices
+        z_gauss = system_z.f_eval_loc(za[z_dofs], node)
+        zh_gauss = system_u.f_eval_loc(zh_loc, node)
         dz = z_gauss - zh_gauss
         
         #
@@ -119,10 +119,10 @@ for i_refinement in range(6):
         # 
         u_dofs = system_u.get_global_dofs(node)
         u_loc = ua[u_dofs]
-        uxx_gauss = system_u.f_eval_loc(u_loc, cell, derivatives=(2,0,0))
-        uyy_gauss = system_u.f_eval_loc(u_loc, cell, derivatives=(2,1,1))
-        ux_gauss = system_u.f_eval_loc(u_loc, cell, derivatives=(1,0))
-        f_gauss = system_u.f_eval_loc(0, cell)
+        uxx_gauss = system_u.f_eval_loc(u_loc, node, derivatives=(2,0,0))
+        uyy_gauss = system_u.f_eval_loc(u_loc, node, derivatives=(2,1,1))
+        ux_gauss = system_u.f_eval_loc(u_loc, node, derivatives=(1,0))
+        f_gauss = system_u.f_eval_loc(0, node)
         
         res_cell = system_z.form_eval(((f_gauss*dz,),), node) + \
                    k*system_z.form_eval(((uxx_gauss*dz,),), node) + \
@@ -159,21 +159,21 @@ for i_refinement in range(6):
                         
                         # Compute ux and uy at Gauss nodes 
                         ux_cell = \
-                            system_u.f_eval_loc(u_loc, cell, \
+                            system_u.f_eval_loc(u_loc, node, \
                                                 derivatives=(1,0), x=x_gauss) 
                         
                         uy_cell = \
-                            system_u.f_eval_loc(u_loc, cell, \
+                            system_u.f_eval_loc(u_loc, node, \
                                                 derivatives=(1,1), x=x_gauss)
                             
                         nbr_dofs = system_u.get_global_dofs(child)
                         u_nbr = ua[nbr_dofs]
                         ux_nbr = \
-                            system_u.f_eval_loc(u_nbr, nbr.quadcell(), \
+                            system_u.f_eval_loc(u_nbr, nbr, \
                                                 derivatives=(1,0), x=x_gauss)
                             
                         uy_nbr = \
-                            system_u.f_eval_loc(u_nbr, nbr.quadcell(), \
+                            system_u.f_eval_loc(u_nbr, nbr, \
                                                 derivatives=(1,1), x=x_gauss)
                             
                         jump = 0.5*nu[0]*k*(ux_cell-ux_nbr) + \
@@ -181,10 +181,10 @@ for i_refinement in range(6):
                         
                         # Compute z-zh at the Gauss points
                         z_gauss = \
-                            system_z.f_eval_loc(za[z_dofs], cell, x=x_gauss)
+                            system_z.f_eval_loc(za[z_dofs], node, x=x_gauss)
                             
                         zh_gauss = \
-                            system_u.f_eval_loc(zh_loc, cell, x=x_gauss)
+                            system_u.f_eval_loc(zh_loc, node, x=x_gauss)
                             
                         # Update edge residual
                         res_edge += np.sum(w_gauss*jump*(z_gauss-zh_gauss))
@@ -200,21 +200,21 @@ for i_refinement in range(6):
                     
                     # Compute ux and uy at Gauss nodes 
                     ux_cell = \
-                        system_u.f_eval_loc(u_loc, cell, \
+                        system_u.f_eval_loc(u_loc, node, \
                                             derivatives=(1,0), x=x_gauss) 
                     
                     uy_cell = \
-                        system_u.f_eval_loc(u_loc, cell, \
+                        system_u.f_eval_loc(u_loc, node, \
                                             derivatives=(1,1), x=x_gauss)
                         
                     nbr_dofs = system_u.get_global_dofs(nbr)
                     u_nbr = ua[nbr_dofs]
                     ux_nbr = \
-                        system_u.f_eval_loc(u_nbr, nbr.quadcell(), \
+                        system_u.f_eval_loc(u_nbr, nbr, \
                                             derivatives=(1,0), x=x_gauss)
                         
                     uy_nbr = \
-                        system_u.f_eval_loc(u_nbr, nbr.quadcell(), \
+                        system_u.f_eval_loc(u_nbr, nbr, \
                                             derivatives=(1,1), x=x_gauss)
                         
                     jump = 0.5*nu[0]*k*(ux_cell-ux_nbr) + \
@@ -222,10 +222,10 @@ for i_refinement in range(6):
                     
                     # Compute z-zh at the Gauss points
                     z_gauss = \
-                        system_z.f_eval_loc(za[z_dofs], cell, x=x_gauss)
+                        system_z.f_eval_loc(za[z_dofs], node, x=x_gauss)
                         
                     zh_gauss = \
-                        system_u.f_eval_loc(zh_loc, cell, x=x_gauss)
+                        system_u.f_eval_loc(zh_loc, node, x=x_gauss)
                         
                     # Update edge residual
                     res_edge += np.sum(w_gauss*jump*(z_gauss-zh_gauss))
@@ -239,21 +239,21 @@ for i_refinement in range(6):
                     
                     # Compute ux and uy at Gauss nodes 
                     ux_cell = \
-                        system_u.f_eval_loc(u_loc, cell, \
+                        system_u.f_eval_loc(u_loc, node, \
                                             derivatives=(1,0), x=x_gauss) 
                     
                     uy_cell = \
-                        system_u.f_eval_loc(u_loc, cell, \
+                        system_u.f_eval_loc(u_loc, node, \
                                             derivatives=(1,1), x=x_gauss)
                         
                     nbr_dofs = system_u.get_global_dofs(nbr)
                     u_nbr = ua[nbr_dofs]
                     ux_nbr = \
-                        system_u.f_eval_loc(u_nbr, nbr.quadcell(), \
+                        system_u.f_eval_loc(u_nbr, nbr, \
                                             derivatives=(1,0), x=x_gauss)
                         
                     uy_nbr = \
-                        system_u.f_eval_loc(u_nbr, nbr.quadcell(), \
+                        system_u.f_eval_loc(u_nbr, nbr, \
                                             derivatives=(1,1), x=x_gauss)
                         
                     jump = 0.5*nu[0]*k*(ux_cell-ux_nbr) + \
@@ -261,10 +261,10 @@ for i_refinement in range(6):
                     
                     # Compute z-zh at the Gauss points
                     z_gauss = \
-                        system_z.f_eval_loc(za[z_dofs], cell, x=x_gauss)
+                        system_z.f_eval_loc(za[z_dofs], node, x=x_gauss)
                         
                     zh_gauss = \
-                        system_u.f_eval_loc(zh_loc, cell, x=x_gauss)
+                        system_u.f_eval_loc(zh_loc, node, x=x_gauss)
                         
                     # Update edge residual
                     res_edge += np.sum(w_gauss*jump*(z_gauss-zh_gauss))

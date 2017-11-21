@@ -4,7 +4,7 @@ Created on Oct 23, 2016
 @author: hans-werner
 '''
 import unittest
-from mesh import Mesh, Node, Cell, QuadCell, TriCell, Edge, Vertex
+from mesh import Mesh, Node, BiCell, QuadCell, TriCell, Edge, Vertex
 from plot import Plot
 import matplotlib.pyplot as plt
 import numpy as np
@@ -444,11 +444,11 @@ class TestNode(unittest.TestCase):
         
     def test_node_find_root(self):
         node = Node()
-        self.assertEqual(node.find_root(), node, 'Node is its own root.')
+        self.assertEqual(node.get_root(), node, 'Node is its own root.')
         
         node.split()
         sw_child = node.children['SW']
-        self.assertEqual(sw_child.find_root(), node, 'Node is its childs root.')
+        self.assertEqual(sw_child.get_root(), node, 'Node is its childs root.')
     
     
     def test_node_find_node(self):
@@ -820,12 +820,59 @@ class TestCell(unittest.TestCase):
     Test Cell Class
     """   
     def test_get_vertices(self):
-        pass
+        # 1D 
+        cell1d = BiCell()
+        cell1d_vertices = np.array([[0],[1],[0.5]])
+        self.assertTrue(np.allclose(cell1d.get_vertices(),cell1d_vertices),\
+                        'BiCell vertices not correct.')
+        self.assertTrue(np.allclose(cell1d.get_vertices('L'), np.array([[0]])),\
+                        'BiCell get specific vertex not correct.')
+        
+        # 2D 
+        cell2d = QuadCell()
+        cell2d_vertices = np.array([[0,0],[0.5,0],[1,0],[1,0.5],[1,1],\
+                                  [0.5,1],[0,1],[0,0.5],[0.5,0.5]])
+        self.assertTrue(np.allclose(cell2d.get_vertices(),cell2d_vertices),\
+                        'QuadCell vertices not correct.')
+        self.assertTrue(np.allclose(cell2d.get_vertices('M'), np.array([[0.5,0.5]])),\
+                        'QuadCell get specific vertex not correct.')
     
     
     def test_find_leaves(self):
-        pass
-    
+        #
+        # 1D
+        # 
+        cell = BiCell()
+        leaves = cell.find_leaves()
+        #self.assertEqual(leaves, [cell], 'Cell should be its own leaf.')
+        '''
+        #
+        # Split cell and SW child - find leaves
+        # 
+        node.split()
+        sw_child = node.children['SW']
+        sw_child.split()
+        leaves = node.find_leaves()
+        self.assertEqual(len(leaves), 7, 'Node should have 7 leaves.')
+        
+        #
+        # Nested traversal
+        #
+        leaves = node.find_leaves(nested=True)
+        self.assertEqual(leaves[0].address,[1], \
+            'The first leaf in the nested enumeration should have address [1]')
+        
+        leaves = node.find_leaves()
+        self.assertEqual(leaves[0].address, [0,0], \
+                         'First leaf in un-nested enumeration should be [0,0].')
+        
+        #
+        # Merge SW child - find leaves
+        # 
+        sw_child.merge()
+        leaves = node.find_leaves()
+        self.assertEqual(len(leaves), 4, 'Node should have 4 leaves.')
+        '''
     
     def test_cells_at_depth(self):
         pass
@@ -946,7 +993,7 @@ class TestQuadCell(unittest.TestCase):
         #
         # Unmark all 
         # 
-        sw_child.find_root().unmark(recursive=True)
+        sw_child.get_root().unmark(recursive=True)
         self.assertFalse(qcell.is_marked(),'Quadcell should not be marked.')
         self.assertFalse(sw_child.is_marked(), 'SW child should not be marked.')
         self.assertFalse(sw_sw_child.is_marked(), 'SW-SW child should not be marked')
@@ -968,19 +1015,7 @@ class TestQuadCell(unittest.TestCase):
         self.assertEqual(np.sum(np.array([0.,1.])-qc.normal(en)),0.0, 
                          'Unit normal should be [0,1].')
 
-    def test_vertices(self):
-        """
-        Return vertices of quadcell
-        
-        TODO: Finish
-        """
-        '''
-        box = [0,1,0,1]
-        q = QuadCell()
-        
-        vertex_west = q.vertices('W', as_array=False)
-        self.assertTrue(vertex_west==q.vertices['W'], 'Incorrect vertex.')
-        '''
+
           
 class TestTriCell(unittest.TestCase):
     """
