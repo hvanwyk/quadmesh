@@ -837,7 +837,51 @@ class TestCell(unittest.TestCase):
         self.assertTrue(np.allclose(cell2d.get_vertices('M'), np.array([[0.5,0.5]])),\
                         'QuadCell get specific vertex not correct.')
     
-    
+    def test_traverse(self):
+        #
+        # 1D
+        #  
+        # Standard
+        cell = BiCell()
+        cell.split()
+        cell.children['L'].split()
+        cell.children['L'].children['R'].remove()
+        addresses_bf = []
+        addresses_df = [] 
+        for c in cell.traverse(mode='depth-first'):
+            pass
+        '''
+        #
+        # Standard Node
+        # 
+        node = Node()
+        node.split()
+        node.children['SE'].split()
+        node.children['SE'].children['NW'].remove()
+        addresses = [[],[0],[1],[2],[3],[1,0],[1,1],[1,3]]
+        count = 0
+        for n in node.traverse_depthwise():
+            self.assertEqual(n.address, addresses[count],\
+                             'Incorrect address.')
+            count += 1
+         
+        #
+        # Gridded Node
+        #     
+        node = Node(grid_size=(3,3))
+        node.split()
+        addresses = [[]]
+        for j in range(3):
+            for i in range(3):
+                addresses.append([(i,j)])
+        count = 0
+        for n in node.traverse_depthwise():
+            self.assertEqual(n.address, addresses[count],\
+                             'Incorrect address.')
+            count += 1
+            
+        '''
+        
     def test_find_leaves(self):
         #
         # 1D
