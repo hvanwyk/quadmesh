@@ -3,11 +3,12 @@ Created on Feb 8, 2017
 
 @author: hans-werner
 '''
-from fem import System, QuadFE, DofHandler, GaussRule
+from fem import System, QuadFE, DofHandler, GaussRule, Function
 from mesh import Mesh
 from numbers import Number, Real
 import scipy.sparse as sp
 from sksparse.cholmod import cholesky, cholesky_AAt, Factor  # @UnresolvedImport
+from scipy import linalg
 from scipy.special import kv, gamma
 from scipy.sparse import linalg as spla
 import numpy as np
@@ -266,7 +267,7 @@ class Gmrf(object):
     
     @staticmethod
     def covariance_matrix(cov_name, cov_par, mesh, element=None, M=None, 
-                          assembly_type='finite_differences', 
+                          assembly_type='finite_differences', n_gauss=9, 
                           lumped=False, periodic=False):
         """
         Construct a covariance matrix from the specified covariance kernel
@@ -277,11 +278,25 @@ class Gmrf(object):
                 'constant', 'linear', 'gaussian', 
                 'exponential', 'matern', or 'rational'
             
-            cov_par: dict, parameter name/value pairs
+            cov_par: dict, parameter name/value pairs 
             
             mesh: Mesh, object denoting physical mesh
             
-            element: [optional] QuadFE, finite element 
+            element: [optional] QuadFE, finite element
+                necessary if assembly_type='finite_elements'
+                
+            assembly_type: str, specifies type of approximation
+                [finite_differences] or finite_elements
+                
+            n_gauss [9]: int, number of gauss quadrature points.
+                (only relevant for assembly_type='finite_elements')
+                
+            lumped [False]: bool, should the mass matrix be lumped? 
+                (applies only to assembly_type='finite_elements')
+            
+            periodic [False]: Is the domain a torus? Currently only
+                implemented for assembly_type='finite_differences'
+                         
         """
         #
         # Determine covariance kernel
@@ -301,12 +316,102 @@ class Gmrf(object):
         
         
         if assembly_type=='finite_elements':
+            #
+            # Finite element discretization of the kernel
+            #
             assert element is not None, \
             'Specify "element" if "assembly_type" is '+\
             '"finite_elements" is used.'
             
             dofhandler = DofHandler(mesh, element)
             dofhandler.distribute_dofs()
+                 
+            #
+            # Assemble double integral
+            #
+            #  C(pi,pj) = II pi(xi) pj(xj) cov(xi,xj) dx 
+            
+            # Initialize 
+            n_dofs = dofhandler.n_dofs()
+            Sigma = np.zeros((n_dofs,n_dofs))
+            m_row = []
+            m_col = []
+            m_val = []
+            
+            # Gauss rule on reference domain
+            rule = GaussRule(9, element=element)
+            xg_ref = rule.nodes()
+            w_xg_ref = rule.weights()
+            n_gauss = rule.n_nodes()
+            
+            # Iterate over mesh nodes: outer loop
+            leaves = mesh.root_node().find_leaves()
+            n_nodes = len(leaves)
+            for i in range(n_nodes):
+                # Local Gauss nodes and weights
+                xnode = leaves[i]
+                xcell = xnode.quadcell()
+                xdofs = dofhandler.get_global_dofs(xnode)
+                n_dofs_loc = len(xdofs)
+                xg = xcell.map(xg_ref) 
+                w_xg = rule.jacobian(xcell)*w_xg_ref
+                
+                # Evaluate shape functions and local mass matrix 
+                xphi = element.shape(xg_ref)
+                w_xphi = np.diag(w_xg).dot(xphi)
+                m_loc = np.dot(xphi.T, np.dot(w_xphi))
+                
+                # Iterate over mesh nodes: inner loop
+                for j in range(i,n_nodes):
+                    ynode = leaves[j]
+                    ycell = ynode.quadcell()
+                    ydofs = dofhandler.get_global_dofs(ynode)
+                    yg = xcell.map(xg_ref)
+                    w_yg = rule.jacobian(ycell)*w_xg_ref
+                    if i == j: 
+                        yphi = xphi
+                    else:
+                        yphi = element.shape(xg_ref)
+                    w_yphi = np.diag(w_yg).dot(yphi)
+                    
+                #
+                # Evaluate covariance function at the local Gauss points
+                # 
+                ii,jj = np.meshgrid(np.arange(n_gauss),np.arange(n_gauss))
+                if mesh.dim == 1:
+                    x1, x2 = xg[ii.ravel()], yg[jj.ravel()]
+                elif mesh.dim == 2:
+                    x1, x2 = xg[ii.ravel(),:],yg[jj.ravel(),:]
+                    
+                C_loc = cov_fn(x1,x2,**cov_par).reshape(n_gauss,n_gauss)
+                CC_loc = np.dot(w_yphi.T,C_loc.dot(w_xphi))
+                    
+            # Local to global mapping     
+            for ii in range(n_dofs_loc):
+                for jj in range(n_dofs_loc):
+                    # Covariance 
+                    Sigma[xdofs[ii],ydofs[jj]] += CC_loc[i,j]
+                    Sigma[ydofs[jj],xdofs[ii]] += CC_loc[i,j]
+                    
+                    # Mass Matrix
+                    m_row.append(ii)
+                    m_col.append(jj)
+                    m_val.append(m_loc[i,j])
+                    
+            
+            # Define global mass matrix
+            M = sp.coo_matrix((m_val,(m_row,m_col)))
+            
+            if lumped: 
+                M_lumped = np.array(M.tocsr().sum(axis=1)).squeeze()
+                #
+                # Adjust covariance
+                #
+                Sigma = sp.diags(1/M_lumped)*Sigma
+                return Sigma
+            else:
+                return Sigma, M
+            
             
         elif assembly_type=='finite_differences':
             #
@@ -797,7 +902,10 @@ class Gmrf(object):
         if n_copies is not None:
             assert type(n_copies) is np.int, \
                 'Number of copies should be an integer.'
-            return np.tile(self.__mu, (n_copies,1)).transpose()
+            if n_copies == 1:
+                return self.__mu
+            else:
+                return np.tile(self.__mu, (n_copies,1)).transpose()
         else:
             return self.__mu
         
@@ -908,7 +1016,7 @@ class Gmrf(object):
             raise Exception('For mode, use "precision" or "covariance".')
     
     
-    def kl_expansion(self, kernel, k=None):
+    def KL(self, precision=None, k=None):
         """
         Inputs:
         
@@ -1000,7 +1108,7 @@ class Gmrf(object):
             
     
     def condition(self, constraint=None, constraint_type='pointwise',
-                  mode='precision'):
+                  mode='precision', output='gmrf', n_samples=1, z=None):
         """
         
         Inputs:
@@ -1010,7 +1118,8 @@ class Gmrf(object):
                 
                 'pointwise': (dof_indices, constraint_values) 
                 
-                'hard': (A, b) 
+                'hard': (A, b), where A is the (k,n) constraint matrix and 
+                    b is the (k,m) array of realizations (usually m is None).
                 
                 'soft': (A, Q)
         
@@ -1018,6 +1127,7 @@ class Gmrf(object):
             
             mode: str, 'precision' (default), or 'covariance', or 'svd'.
             
+            output: str, type of output 'gmrf', 'sample', 'log_pdf' 
             
         Output:
         
@@ -1036,10 +1146,68 @@ class Gmrf(object):
             # Conditional random field
             # 
             mu_agb = mu_a - spla.spsolve(Q_aa, Q_ab.dot(x_b-mu_b))
-            return Gmrf(mu=mu_agb, precision=Q_aa)
+            if n_samples is None:
+                return Gmrf(mu=mu_agb, precision=Q_aa)
+            else: 
+                pass
             
         elif constraint_type == 'hard':
-            pass
+            A, e  = constraint
+            assert self.mode_supported(mode), 'Mode not supported.'
+            if output == 'gmrf':
+                if mode == 'precision':
+                    pass
+                elif mode == 'covariance':
+                    mu = self.mu()
+                    S  = self.Sigma()
+                    c =  A.dot(mu) - e
+                    V = S.dot(A.T.dot(linalg.solve(A.dot(S.dot(A.T)),c)))
+                    mu_gAx = self.mu() - V 
+                     
+            elif output == 'sample':
+                #
+                # Generate samples directly via Kriging
+                # 
+                if z is None:
+                    # Z is not specified -> generate samples
+                    z = self.iid_standard_normal(n_samples)
+                if mode == 'precision':
+                    #
+                    # Use precision matrix
+                    #
+                    # Sample from unconstrained gmrf
+                    v = self.Lt_solve(z)
+                    x = self.mu(n_samples) + v
+                    
+                    # Compute [Sgm*A'*(A*Sgm*A')^(-1)]'
+                    V = self.Q_solve(A.T)
+                    W = A.dot(V)
+                    U = linalg.solve(W, V.T)
+                    
+                    # Compute x|{Ax=e} = x - Sgm*A'*(A*Sgm*A')^(-1)(Ax-e)
+                    if n_samples > 1:
+                        e = np.tile(e, (n_samples,1)).transpose()
+                    c = A.dot(x)-e
+                    return x-np.dot(U.T,c) 
+                           
+                elif mode == 'covariance':
+                    #
+                    # Use covariance matrix
+                    #
+                    x = self.sample(n_samples=n_samples, z=z, 
+                                    mode='covariance')
+                    if n_samples > 1:
+                        e = np.tile(e, (n_samples,1)).transpose()
+                    c = A.dot(x)-e
+                    
+                    # Compute Sgm*A'*(A*Sgm*A')^(-1)
+                    S = self.Sigma()
+                    return x - S.dot(A.T.dot(linalg.solve(A.dot(S.dot(A.T)),c)))
+            elif output == 'log_pdf':
+                pass
+            else:
+                raise Exception('Variable "output" should be: '+\
+                                '"gmrf","sample",or "log_pdf".')
         elif constraint_type == 'soft':
             pass
         else:
@@ -1047,3 +1215,12 @@ class Gmrf(object):
                             ' "pointwise", "hard", or "soft"')
     
     
+    def iid_standard_normal(self, n_samples):
+        """
+        Returns a matrix whose columns are N(0,I) vectors of length n 
+        """
+        if n_samples == 1:
+            return np.random.normal(self.n())
+        elif n_samples > 1:
+            return np.random.normal(size=(self.n(),n_samples)) 
+        

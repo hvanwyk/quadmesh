@@ -331,7 +331,6 @@ class TestFunction(unittest.TestCase):
         etype_list = ['DQ0','Q1','Q2','Q3']
         for i in range(4):
             etype = etype_list[i]
-            print(etype)
             element = QuadFE(2,etype)
             fn_interp = fn.interpolate(mesh, element)
             
@@ -345,7 +344,7 @@ class TestFunction(unittest.TestCase):
         plt.tight_layout(pad=1, w_pad=2, h_pad=2)
         
             
-        plt.show()    
+        #plt.show()    
         
         
         plot = Plot()
@@ -357,7 +356,7 @@ class TestFunction(unittest.TestCase):
         ax = plot.mesh(ax, mesh, node_flag=1, color_marked=[1])
         ax = fig.add_subplot(1,3,3)
         ax = plot.mesh(ax, mesh, node_flag=2, color_marked=[2])
-        
+    
         """
                
         fig, ax = plt.subplots(2,4)
@@ -401,11 +400,66 @@ class TestFunction(unittest.TestCase):
         
         # Nodal discontinuous function
         
+    def test_assign(self):
+        #
+        # New nodal function
+        #  
+        # Define Mesh and elements
+        mesh = Mesh.newmesh(grid_size=(2,2))
+        mesh.refine()
+        element = QuadFE(2,'DQ0')
+        
+        # Initialize
+        vf = np.empty(4,)
+        f = Function(vf, 'nodal', mesh=mesh, element=element)
+        
+        # Assign new value to function (vector) 
+        f.assign(np.arange(1,5))
+        
+        # Assign random sample to function
+        f_rand = np.random.rand(4,10)
+        f.assign(f_rand) 
+        
+        # Get cell midpoints
+        cell_midpoints = []
+        for leaf in mesh.root_node().find_leaves():
+            cell = leaf.quadcell()
+            cell_midpoints.append(cell.get_vertices(pos='M'))
+        x_mpt = np.array(cell_midpoints)
+        self.assertTrue(np.allclose(f.eval(x_mpt),f_rand),\
+                        'Function value assignment incorrect.')
+        
+        
+        # Now assign in specific position
+        n_samples = f.n_samples()
+        f.assign(np.arange(1,5),pos=0)
+        
+        
+    def test_global_dofs(self):
+        pass
+    
+    def test_flag(self):
+        pass
+    
+    def test_input_dim(self):
+        pass
+    
+    def test_n_samples(self):
+        pass
+    
+    def test_fn_type(self):
+        pass
+    
+    def test_fn(self):
+        pass
     
     def test_interpolate(self):
         pass
     
-    def test_grad(self):
+    def test_derivative(self):
+        pass
+    
+    def test_times(self):
         pass
         
 
@@ -1256,6 +1310,7 @@ class TestSystem(unittest.TestCase):
     def test_f_eval(self):
         """
         TODO: Finish, mesh function and derivatives
+        TODO: Superfluous with Function class
         """
         test_functions = {'Q1': lambda x,y: (2+x)*(y-3),
                           'Q2': lambda x,y: (2+x**2+x)*(y-2)**2,

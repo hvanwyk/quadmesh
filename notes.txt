@@ -24,8 +24,8 @@ Current Wishlist:
 
 	TODO: 
 
-	a. initialize function [done
-	b. evaluate function and its derivatives
+	a. initialize function [done]
+	b. evaluate function and its derivatives  [done]
 		i. move shape_eval from 'System' to 'Elements' class [done] 
 		ii. allow for samples of functions (i.e. multiple columns) [done].
 		iii. introduce piecewise constant elements. [done]

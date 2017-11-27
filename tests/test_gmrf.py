@@ -415,7 +415,7 @@ class TestGmrf(unittest.TestCase):
             #X = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh,\
             #                               element=element)
             
-
+    
     def test_matern_precision(self):
         
         #

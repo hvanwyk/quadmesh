@@ -998,7 +998,17 @@ class Function(object):
             if pos is not None:
                 self.__f[:,pos] = v
             else:
+                # No position specified: overwrite values
                 self.__f = v   
+                
+                # Update sample size
+                if len(v.shape) == 1:
+                    # 1d vector -> no samples
+                    n_samples = None
+                elif len(v.shape) == 2:
+                    _, n_samples = v.shape
+                    self.__n_samples = n_samples
+                    
         elif self.fn_type() == 'constant':
             #
             # Constant function
