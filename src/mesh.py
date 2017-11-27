@@ -2434,8 +2434,10 @@ class Cell(object):
         
             flag: [None], optional marker
         
-        Note: Only returns children that are not None 
+        Note: Only returns children that are not None
+              Use this to obtain a consistent iteration of children
         """
+    
         if self.has_children(flag=flag):
             for pos in self._child_positions:
                 child = self.children[pos]
@@ -2580,11 +2582,12 @@ class BiCell(Cell):
         # =====================================================================
         # Tree Attributes
         # =====================================================================
-        if parent == None:
+        self.parent = parent
+        if parent is None:
             #
             # ROOT Node
             # 
-            cell_type = 'ROOT'
+            self.type = 'ROOT'
             cell_depth = 0
             cell_address = []
             
@@ -2603,9 +2606,9 @@ class BiCell(Cell):
             # LEAF Node
             #  
             position_missing = 'Position within parent cell must be specified.'
-            assert position != None, position_missing
+            assert position is not None, position_missing
         
-            cell_type = 'LEAF'
+            self.type = 'LEAF'
             # Change parent type (from LEAF)
             if parent.type == 'LEAF':
                 parent.type = 'BRANCH'
@@ -2617,8 +2620,7 @@ class BiCell(Cell):
         #
         # Set attributes
         # 
-        self.type = cell_type
-        self.parent = parent
+        
         self.children = children
         self.depth = cell_depth
         self.address = cell_address
@@ -2639,12 +2641,13 @@ class BiCell(Cell):
                 box = [0,1]                
 
             box_format = 'The box variable must be a list with 2 entries.'
+            box_order  = 'The interval endpoints must be strictly increasing.'
             assert (type(box) is list) and (len(box)==2), box_format 
-            
+            assert box[0] < box[1], box_order 
             x0, x1 = box
             if grid_size == None:
                 #
-                # 4 subcells
+                # 2 subcells
                 # 
                 xm = 0.5*(x0+x1)
                 vertices = {'L': Vertex((x0,)),
@@ -2780,7 +2783,7 @@ class BiCell(Cell):
         #
         elif self.parent.type == 'ROOT' and self.parent.grid_size is not None:
             m = self.parent
-            nx, = m.grid_size
+            nx = m.grid_size
             i = self.position
             if direction == 'L':
                 if i > 0:
@@ -2888,11 +2891,10 @@ class BiCell(Cell):
         Note: Points on the boundary between cells belong to both adjoining
             cells.
         """          
-        xy = np.array(points)
-        x_min, x_max, y_min, y_max = self.box()
+        x = np.array(points)
+        x_min, x_max = self.box()
         
-        in_box = (x_min <= xy[:,0]) & (xy[:,0] <= x_max) & \
-                 (y_min <= xy[:,1]) & (xy[:,1] <= y_max)
+        in_box = (x_min <= x) & (x <= x_max)
         return in_box
             
                
@@ -2932,15 +2934,16 @@ class BiCell(Cell):
         
         Input:
         
-            x: double, (n_points, dim) array of points in the physical cell
+            x: double, n_points array of points in the physical cell
             
         Output:
         
             x_ref: double, (n_points, dim) array of points in the reference 
                 cell.
-        """            
+        """
+        x = np.array(x)      
         x0,x1 = self.box()
-        x_ref = np.array([(x-x0)/(x1-x0)]).T
+        x_ref = (x-x0)/(x1-x0)
         return x_ref
     
     
@@ -2957,26 +2960,26 @@ class BiCell(Cell):
         
             x: double, (n_points, dim) array of points in the physical cell
         """
+        x_ref = np.array(x_ref)
         x0,x1 = self.box()
-        x = np.array([x0 + (x1-x0)*x_ref]).T
+        x = np.array([x0 + (x1-x0)*x_ref])
         return x
     
     
     def derivative_multiplier(self, derivative):
         """
-        Determine the 
+        Let y = l(x) be the mapping from the physical to the reference element.
+        Then, if a (shape) function f(x) = g(l(x)), its derivative f'(x) = g'(x)l'(x)
+        This method returns the constant l'(x) = 1/(b-a).   
         """
         c = 1
         if derivative[0] in {1,2}:
             # 
             # There's a map and we're taking derivatives
             #
-            x0,x1,y0,y1 = self.box()
-            for i in derivative[1:]:
-                if i==0:
-                    c *= 1/(x1-x0)
-                elif i==1:
-                    c *= 1/(y1-y0)
+            x0,x1 = self.box()
+            for _ in range(derivative[0]):
+                c *= 1/(x1-x0)
         return c
                     
                                 
@@ -3001,10 +3004,19 @@ class BiCell(Cell):
         
             position: int, 0 (for 'L') or 1 (for 'R')
         """
-        if position in [0,1]:
-            return position
+        if type(position) is int:
+            grid_size = self.get_root().grid_size
+            if grid_size is None:
+                assert position in [0,1],\
+                'Input "position" passed as integer must be 0/1.'
+            else:
+                assert position < self.get_root().grid_size, \
+                'Input "position"=%d exceeds grid_size=%d.' \
+                %(position, grid_size)  
+            return position 
         else:
-            assert position in ['L','R'], 'Use "R" or "L" for position'
+            assert position in ['L','R'], \
+            'Position is %s. Use "R" or "L" for position' % position
             if position == 'L':
                 return 0
             else:

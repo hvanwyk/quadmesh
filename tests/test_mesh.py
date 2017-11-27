@@ -941,9 +941,135 @@ class TestCell(unittest.TestCase):
         pass
     
     
+class TestBiCell(unittest.TestCase):
+    """
+    Test the BiCell Clas
+    """    
+    def test_constructor(self):
+        pass
     
-  
+    def test_box(self):
+        bicell = BiCell()
+        self.assertEqual((0,1),bicell.box(), \
+                        'box incorrect: default bicell')
     
+        bicell = BiCell(box=[-10,2])
+        self.assertEqual((-10,2), bicell.box(), \
+                         'box incorrect: box specified')
+        
+        self.assertRaises(AssertionError, BiCell, box =[2,-1])
+        
+        
+    def test_find_neighbor(self):
+        bicell = BiCell()
+        self.assertIsNone(bicell.find_neighbor('L'), \
+                          'neighbor should be None.')
+        
+        bicell.split()
+        l_child = bicell.children['L']
+        self.assertEqual(l_child.find_neighbor('R'), bicell.children['R'],\
+                         'neighbor interior to parent cell not identified.')
+        
+        l_child.split()
+        lr_grandchild = l_child.children['R']
+        self.assertEqual(lr_grandchild.find_neighbor('R'), 
+                         bicell.children['R'], 
+                         'neighbor exterior to parent cell not identified.')
+        
+        bicell.children['R'].split()
+        self.assertEqual(lr_grandchild.find_neighbor('R'),\
+                         bicell.children['R'].children['L'],\
+                         'neighbor exterior to parent cell not identified.')
+        
+        bicell = BiCell(grid_size=3)
+        bicell.split()
+        lchild = bicell.children[0]
+        self.assertEqual(lchild.find_neighbor('L'),None,
+                         'neighbor of gridded cell not identified as None.')
+        
+        self.assertEqual(lchild.find_neighbor('R'),bicell.children[1],
+                         'neighbor of gridded cell not identified.')
+        
+        
+    def test_get_root(self):
+        bicell = BiCell()
+        cell = bicell
+        for _ in range(10):
+            cell.split()
+            cell = cell.children['L']
+        self.assertEqual(bicell, cell.get_root(),\
+                         'Root cell incorrectly identified.') 
+        
+    
+    def test_contains_point(self):
+        bicell = BiCell()
+        self.assertFalse(bicell.contains_point(3))
+        self.assertTrue(all(bicell.contains_point(np.array([1,2]))==\
+                         np.array([True,False],dtype=np.bool)), 
+                         'Inclusion of vector in cell incorrectly determined')
+    
+            
+    def test_locate_point(self):
+        bicell = BiCell()
+        cell = bicell
+        for _ in range(5):
+            cell.split()
+            cell = cell.children['L']
+        self.assertEqual(bicell.locate_point(1/64),cell,
+                         'Smallest cell containing point incorrectly detrmnd')
+    
+    
+    def test_map_to_reference(self):
+        bicell = BiCell(box=[-2,10])
+        self.assertTrue(np.allclose(bicell.map_to_reference([-2,10]),\
+                                    np.array([0,1])), \
+                        'Points incorrectly mapped to reference.')
+    
+    def test_map_from_reference(self):
+        bicell = BiCell(box=[-2,10])
+        self.assertTrue(np.allclose(bicell.map_from_reference([0,1]),\
+                                    np.array([-2,10])),
+                        'Points incorrectly mapped from reference.')
+                        
+    
+    def test_derivative_multiplier(self):
+        bicell = BiCell(box=[-2,10])
+        self.assertEqual(bicell.derivative_multiplier(derivative=(2,)),
+                         (1/12)**2,
+                         'Derivative multiplier incorrect.')
+    
+    
+    def test_split(self):
+        
+        # Ungridded
+        bicell = BiCell()
+        self.assertFalse(bicell.has_children(), 
+                         'Bicell should not have children')
+        bicell.split()
+        self.assertTrue(bicell.has_children(),
+                        'Bicell should have children.')
+        self.assertEqual(bicell.children['L'].box(), (0,0.5),
+                         'Bicell left child incorrect bounds.')
+
+        
+        # gridded
+        bicell = BiCell(grid_size=3)
+        self.assertFalse(bicell.has_children(), 
+                         'Bicell should not have children')
+        bicell.split()
+        count = 0
+        for _ in bicell.get_children():
+            count += 1
+        self.assertEqual(count, 3, 'Bicell should have 3 children.')
+    
+    
+    def test_pos2id(self):
+        bicell = BiCell(grid_size=3)
+        bicell.split()
+        self.assertEqual(bicell.pos2id(0), 0, 
+                         'Position in grid incorrectly converted.')
+    
+        
 class TestQuadCell(unittest.TestCase):
     """
     Test QuadCell Class
