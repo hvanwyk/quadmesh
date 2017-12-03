@@ -433,7 +433,12 @@ class TestFunction(unittest.TestCase):
         # Now assign in specific position
         n_samples = f.n_samples()
         f.assign(np.arange(1,5),pos=0)
-        
+        self.assertTrue(np.allclose(f.eval(x_mpt)[:,1:],f_rand[:,1:]),\
+                        'Function value assignment incorrect.')
+        print(f.eval(x_mpt, samples=0))
+        self.assertTrue(np.allclose(f.eval(x_mpt, samples=0),\
+                                    np.arange(1,5)),\
+                        'Function value assignment incorrect.')
         
     def test_global_dofs(self):
         pass

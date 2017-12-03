@@ -1159,16 +1159,19 @@ class Function(object):
         # Parse sample size
         # ---------------------------------------------------------------------
         if samples != 'all':
-            assert type(samples) is np.ndarray, \
-            'vector specifying samples should be an array'
-            
-            assert len(samples.shape) == 1, \
-            'sample indexing vector should have dimension 1'
-            
-            assert self.__n_samples > samples.max(), \
-            'Sample paths not stored in function.'
-            
-            sample_size = len(samples)  
+            if type(samples) is int:
+                sample_size = 1
+            else:
+                assert type(samples) is np.ndarray, \
+                'vector specifying samples should be an array'
+                
+                assert len(samples.shape) == 1, \
+                'sample indexing vector should have dimension 1'
+                
+                assert self.__n_samples > samples.max(), \
+                'Sample paths not stored in function.'
+                
+                sample_size = len(samples)  
         
         # ---------------------------------------------------------------------
         # Parse function type
@@ -1226,7 +1229,7 @@ class Function(object):
                 elif samples == 'all':
                     f_loc = self.__f[idx_node,:]
                 else:
-                    f_loc = self.__[idx_node, samples]
+                    f_loc = self.__f[idx_node, samples]
     
                 #
                 # Evaluate shape function at x-values

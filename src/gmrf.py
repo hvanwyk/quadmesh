@@ -626,7 +626,7 @@ class Gmrf(object):
                         # Rank deficient covariance
                         # 
                         # TODO: Pivoted Cholesky
-                        self.__svd = np.linalg.svd(covariance)  
+                        self.__svd = linalg.svd(covariance)  
                     else:
                         raise Exception('I give up.')
         #
@@ -1082,7 +1082,12 @@ class Gmrf(object):
         if mode in ['precision','canonical']:
             v = self.Lt_solve(z, mode='precision')
         elif mode == 'covariance':
-            v = self.L(z, mode='covariance')    
+            if self.__f_cov is None:
+                U, d,  = self.__svd
+                sqrtD = np.diag(np.sqrt(d))
+                v = np.dot(U, np.dot(sqrtD.dot(z)))
+            else:
+                v = self.L(z, mode='covariance')    
         #
         # Add mean
         # 
