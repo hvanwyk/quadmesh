@@ -64,9 +64,11 @@ Current Wishlist:
 	QuadNode
 		is_balanced
 		balance
+		find_neighbor
 	
 	BiNode
 		no hanging nodes -> no need to balance tree.
+		find_neighbor
 		
 		
 

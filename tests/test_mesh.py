@@ -811,9 +811,24 @@ class TestNode(unittest.TestCase):
         self.assertEqual(node.id2pos((0,0)),(0,0),'(0,0) -> (0,0).')       
         self.assertRaises(Exception, node.id2pos, [0,0])
 
-        
-    def test_plot(self):
+
+class TestBiNode(unittest.TestCase):
+    """
+    Test the BiNode subclass of Node
+    """
+    pass
+
+    
+class TestQuadNode(unittest.TestCase):
+    """
+    Test the QuadNode class/a subclass of Node
+    """
+    def test_is_balanced(self):
         pass
+    
+    def test_balance(self):
+        pass
+
 
 
 class TestCell(unittest.TestCase):
