@@ -2292,26 +2292,7 @@ class Cell(object):
                     yield cell
             else:
                 yield cell             
-        
-    
-    '''
-    def traverse_depthwise(self, flag=None):
-        """
-        Iterate node and all sub-nodes, ordered by depth
-        """
-        queue = deque([self]) 
-        while len(queue) != 0:
-            node = queue.popleft()
-            if node.has_children():
-                for child in node.get_children():
-                    if child is not None:
-                        queue.append(child)
-            if flag is not None:
-                if node.is_marked(flag):
-                    yield node
-            else:
-                yield node
-    '''           
+                 
                 
     def find_leaves(self, flag=None, nested=False):
         """
@@ -3757,24 +3738,7 @@ class QuadCell(Cell):
                         neighbor_pos = exterior_neighbors_dict[self.position]
                         return mu.children[neighbor_pos]                       
 
-    '''
-    def find_leaves(self, with_depth=False):
-        """
-        Returns a list of all 'LEAF' type sub-cells (and their depths) of a given cell 
-        
-        TODO: Move to Cell class
-        """
-        leaves = []
-        if self.type == 'LEAF':
-            if with_depth:
-                leaves.append((self,self.depth))
-            else:
-                leaves.append(self)
-        elif self.has_children():
-            for child in self.children.values():
-                leaves.extend(child.find_leaves(with_depth))    
-        return leaves
-    '''
+    
    
     def find_cells_at_depth(self, depth):
         """
