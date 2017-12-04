@@ -60,7 +60,7 @@ class Gmrf(object):
     
     """
     @staticmethod
-    def constant_cov(x,y,sgm=1):
+    def constant_cov(x,y,sgm=1, M=None, periodic=False):
         """
         Constant covariance kernel
         
@@ -83,7 +83,7 @@ class Gmrf(object):
  
     
     @staticmethod
-    def linear_cov(x,y,sgm=1, M=None):
+    def linear_cov(x,y,sgm=1, M=None, periodic=False):
         """
         Linear covariance
         
@@ -419,6 +419,8 @@ class Gmrf(object):
             # 
             dim = mesh.dim()
             element = QuadFE(dim, 'Q1')
+            dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
             x = dofhandler.dof_vertices()
             n = dofhandler.n_dofs()
             Sigma = np.empty((n,n))
@@ -626,6 +628,7 @@ class Gmrf(object):
                         # Rank deficient covariance
                         # 
                         # TODO: Pivoted Cholesky
+                        self.__f_cov = None
                         self.__svd = np.linalg.svd(covariance)  
                     else:
                         raise Exception('I give up.')
@@ -1082,7 +1085,11 @@ class Gmrf(object):
         if mode in ['precision','canonical']:
             v = self.Lt_solve(z, mode='precision')
         elif mode == 'covariance':
-            v = self.L(z, mode='covariance')    
+            if self.__f_cov is not None:
+                v = self.L(z, mode='covariance')
+            elif self.__svd is not None:
+                U,s,_ = self.__svd
+                v = U.dot(np.dot(np.sqrt(np.diag(s)), z))      
         #
         # Add mean
         # 
