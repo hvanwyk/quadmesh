@@ -37,7 +37,8 @@ from plot import Plot
 import numpy as np
 from scipy.sparse import linalg as spla
 import matplotlib.pyplot as plt
-
+from matplotlib import animation
+ 
 # =============================================================================
 # Parameters
 # =============================================================================
@@ -57,8 +58,8 @@ K   = Function(1, 'constant')  # permeability
 mesh = Mesh.newmesh(grid_size=(20,20))
 mesh.refine()
  
-p_element = QuadFE(2,'Q1')  # element for pressure
-c_element = QuadFE(2,'Q1')  # element for concentration
+p_element = QuadFE(2,'Q2')  # element for pressure
+c_element = QuadFE(2,'Q2')  # element for concentration
 
 p_system = System(mesh, p_element)
 c_system = System(mesh, c_element)
@@ -114,7 +115,7 @@ vy_fn = p_fn.derivative((1,1))
 
 
 dt = Function(0.01, 'constant')
-T  = 2
+T  = 0.5
 n_time = np.int(T/0.01)
 c0 = Function(1, 'constant').interpolate(mesh=mesh, element=c_element)
 
@@ -141,7 +142,41 @@ for i in range(n_time-1):
     c0.assign(c)
     
 # ============================================================================
-# 
+# Plot flow
 # ============================================================================
+def update_contour_plot(i, data,  ax, fig, xi, yi):
+    ax.cla()
+    im = ax.contourf(xi, yi, data[:,i].reshape(xi.shape), 200, cmap='viridis')
+    plt.title(str(i))
+    return im,
 
+x0,x1,y0,y1 = mesh.box()
+x = np.linspace(x0,x1,100)
+y = np.linspace(y0,y1,100)
+X, Y = np.meshgrid(x,y)
+xy = np.array([X.ravel(),Y.ravel()]).T
+c_data = c_fn.eval(xy)
+
+fig = plt.figure()
+im = plt.contourf(X, Y, c_data[:,0].reshape(X.shape), 200, cmap='viridis')
+numframes = c_data.shape[1]
+ax = fig.gca()
+ani = animation.FuncAnimation(fig, update_contour_plot, frames=range(numframes), fargs=(c_data, ax, fig, X, Y))
+plt.colorbar(im)
+plt.show()
+
+
+
+
+
+print(c_data.shape)
+'''
+def update_contour_plot(c_fn, pos, ax_c, fig, mesh, element):
+    ax_c.cla()
+    
+    fig, ax_c, cm = plot.contour(ax_c, fig, c_fn, mesh, element=None, derivative=(0,), \
+                                 colorbar=True, resolution=(100,100), flag=None) 
+    
+    return im,
+'''
 print('done')
