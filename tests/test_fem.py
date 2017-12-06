@@ -432,25 +432,95 @@ class TestFunction(unittest.TestCase):
         
         # Now assign in specific position
         n_samples = f.n_samples()
-        f.assign(np.arange(1,5),pos=0)
+        f.assign(np.arange(1,5), pos=0)
         
-        
+        f_eval_0 = f.eval(x_mpt, samples=np.array([0]))
+        f_eval_1ton = f.eval(x_mpt, samples=np.arange(1,n_samples))
+        self.assertTrue(np.allclose(f_eval_0.ravel(), f_det.T), 
+                        'Function value assignment incorrect.')
+        self.assertTrue(np.allclose(f_eval_1ton, f_rand[:,1:]), \
+                        'Function value assignment incorrect.')
+                                    
     def test_global_dofs(self):
-        pass
+        #
+        # Check that global dofs are returned
+        # 
+        # Define mesh
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        element = QuadFE(2,'Q1')
+        
+        # Initialize nodal function
+        vf = np.empty(9,)
+        f = Function(vf, 'nodal', mesh=mesh, element=element)
+        self.assertTrue(np.allclose(f.global_dofs(), np.arange(9)), \
+                        'Incorrect global dofs returned')
+    
+        # Initialize explicit function
+        vf = lambda x,y: x+y
+        f = Function(vf, 'explicit', mesh=mesh, element=element)
+        self.assertRaises(Exception, f.global_dofs, f)
+    
     
     def test_flag(self):
-        pass
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        node = mesh.root_node()
+        for pos in ['SW','SE']:
+            node.children[pos].mark('1')
+        element = QuadFE(2,'Q1')
+        fn = lambda x,y: x+y
+        f = Function(fn, 'nodal', mesh=mesh, element=element, flag='1')
+        self.assertEqual(f.flag(),'1', 'Flag incorrect.')
     
     def test_input_dim(self):
-        pass
+        # Explicit
+        f = Function(lambda x:x**2, 'explicit')
+        self.assertEqual(f.input_dim(), 1, \
+                         'The function should have one input.')
+        
+        f = Function(lambda x,y: x+y, 'explicit')
+        self.assertEqual(f.input_dim(), 2, \
+                         'The function should have two inputs.')
+        
+        # Nodal 
+        #2D 
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        element = QuadFE(2,'Q1')
+        vf = np.empty(9,)
+        f = Function(vf, 'nodal', mesh=mesh, element=element)
+        self.assertEqual(f.input_dim(),2,\
+                         'Function should have two inputs.')
+        
+        # TODO: 1D
     
-    def test_n_samples(self):
-        pass
-    
+    def test_n_samples(self): 
+        mesh = Mesh.newmesh()
+        mesh.refine()
+        element = QuadFE(2, 'Q1')
+        # Assign 1d vector to function values -> sample size should be None
+        vf = np.empty(9,)
+        f = Function(vf, 'nodal', mesh=mesh, element=element)
+        self.assertEqual(f.n_samples(),None, \
+                         'Number of samples should be None.')
+        # Assign column vector to function values -> sample size should be 1
+        f = Function(vf[:,np.newaxis], 'nodal', mesh=mesh, element=element)
+        self.assertEqual(f.n_samples(),1, \
+                         'Number of samples should be 1.')
+        
+        # Assign (9,10) array to function values -> sample size should be 10 
+        f = Function(np.empty((9,10)), 'nodal', mesh=mesh, element=element)
+        self.assertEqual(f.n_samples(), 10, \
+                         'Number of samples should be 10.')
+        
+        
     def test_fn_type(self):
+        # Simple
         pass
     
     def test_fn(self):
+        # Simple
         pass
     
     def test_interpolate(self):
