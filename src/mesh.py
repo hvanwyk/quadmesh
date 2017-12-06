@@ -2296,26 +2296,7 @@ class Cell(object):
                     yield cell
             else:
                 yield cell             
-        
-    
-    '''
-    def traverse_depthwise(self, flag=None):
-        """
-        Iterate node and all sub-nodes, ordered by depth
-        """
-        queue = deque([self]) 
-        while len(queue) != 0:
-            node = queue.popleft()
-            if node.has_children():
-                for child in node.get_children():
-                    if child is not None:
-                        queue.append(child)
-            if flag is not None:
-                if node.is_marked(flag):
-                    yield node
-            else:
-                yield node
-    '''           
+                 
                 
     def find_leaves(self, flag=None, nested=False):
         """
@@ -3796,6 +3777,8 @@ class QuadCell(Cell):
             for child in self.children.values():
                 leaves.extend(child.find_leaves(with_depth))    
         return leaves
+=======
+>>>>>>> branch 'branch1' of https://github.com/hvanwyk/quadmesh.git
     
    
     def find_cells_at_depth(self, depth):
