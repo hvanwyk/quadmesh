@@ -37,12 +37,40 @@ Current Wishlist:
 	
 	TODO:
 	
-	a. define the BiCell class (lots of functions!)
-	a.1. define BiNode class 
+	a. define the BiCell class (lots of functions!) [done]
+	a.1. define BiNode class [done]
 	b. change Mesh class to be dimensionally aware
-	c. add 1D shape functions. 
-	d. modify plot function
+	c. add 1D shape functions. [done]
+	d. modify plot function 
 	
+	Node Class:
+		copy
+		grid_size
+		max_depth
+		traverse
+		find_leaves (get_leaves)
+		get_root 
+		search_by_address (prev find_node) 
+		has_children
+		get_children
+		has_parent
+		get_parent
+		mark
+		unmark
+		is_marked
+		is_linked
+		cell (change from quadcell)
+		
+	QuadNode
+		is_balanced
+		balance
+		find_neighbor
+	
+	BiNode
+		no hanging nodes -> no need to balance tree.
+		find_neighbor
+		
+		
 
 4. Generalized 2D Mesh: 
 

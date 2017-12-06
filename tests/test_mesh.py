@@ -8,6 +8,7 @@ from mesh import Mesh, Node, BiCell, QuadCell, TriCell, Edge, Vertex
 from plot import Plot
 import matplotlib.pyplot as plt
 import numpy as np
+from collections import deque
 
 class TestMesh(unittest.TestCase):
     """
@@ -810,9 +811,24 @@ class TestNode(unittest.TestCase):
         self.assertEqual(node.id2pos((0,0)),(0,0),'(0,0) -> (0,0).')       
         self.assertRaises(Exception, node.id2pos, [0,0])
 
-        
-    def test_plot(self):
+
+class TestBiNode(unittest.TestCase):
+    """
+    Test the BiNode subclass of Node
+    """
+    pass
+
+    
+class TestQuadNode(unittest.TestCase):
+    """
+    Test the QuadNode class/a subclass of Node
+    """
+    def test_is_balanced(self):
         pass
+    
+    def test_balance(self):
+        pass
+
 
 
 class TestCell(unittest.TestCase):
@@ -846,21 +862,27 @@ class TestCell(unittest.TestCase):
         cell.split()
         cell.children['L'].split()
         cell.children['L'].children['R'].remove()
-        addresses_bf = []
-        addresses_df = [] 
-        for c in cell.traverse(mode='depth-first'):
-            pass
-        '''
+        addresses = {'breadth-first': [[],[0],[1],[0,0]], 
+                     'depth-first': [[],[0],[0,0],[1]]}
+ 
+        for mode in ['depth-first','breadth-first']:
+            count = 0
+            for leaf in cell.traverse(mode=mode):
+                self.assertEqual(leaf.address, addresses[mode][count],
+                                 'Bicell traversal incorrect.')
+                count += 1
+        
+        
         #
         # Standard Node
         # 
-        node = Node()
-        node.split()
-        node.children['SE'].split()
-        node.children['SE'].children['NW'].remove()
+        cell = QuadCell()
+        cell.split()
+        cell.children['SE'].split()
+        cell.children['SE'].children['NW'].remove()
         addresses = [[],[0],[1],[2],[3],[1,0],[1,1],[1,3]]
         count = 0
-        for n in node.traverse_depthwise():
+        for n in cell.traverse(mode='breadth-first'):
             self.assertEqual(n.address, addresses[count],\
                              'Incorrect address.')
             count += 1
@@ -868,19 +890,19 @@ class TestCell(unittest.TestCase):
         #
         # Gridded Node
         #     
-        node = Node(grid_size=(3,3))
-        node.split()
+        cell = QuadCell(grid_size=(3,3))
+        cell.split()
         addresses = [[]]
         for j in range(3):
             for i in range(3):
                 addresses.append([(i,j)])
         count = 0
-        for n in node.traverse_depthwise():
+        for n in cell.traverse(mode='breadth-first'):
             self.assertEqual(n.address, addresses[count],\
                              'Incorrect address.')
             count += 1
             
-        '''
+    
         
     def test_find_leaves(self):
         #
@@ -888,57 +910,137 @@ class TestCell(unittest.TestCase):
         # 
         cell = BiCell()
         leaves = cell.find_leaves()
-        #self.assertEqual(leaves, [cell], 'Cell should be its own leaf.')
-        '''
+        self.assertEqual(leaves, [cell], 'Cell should be its own leaf.')
+        
+        #
+        # Split cell and L child - find leaves
+        # 
+        cell.split()
+        l_child = cell.children['L']
+        l_child.split()
+        leaves = cell.find_leaves()
+        self.assertEqual(len(leaves),3, 'Cell should have 3 leaves.')
+        
+        #
+        # Depth first order
+        # 
+        addresses_depth_first = [[0,0],[0,1],[1]]
+        leaves = cell.find_leaves(nested=False)
+        for i in range(len(leaves)):
+            leaf = leaves[i]
+            self.assertEqual(leaf.address, addresses_depth_first[i],
+                             'Incorrect order, depth first search.')
+        #
+        # Breadth first order
+        # 
+        addresses_breadth_first = [[1],[0,0],[0,1]]
+        leaves = cell.find_leaves(nested=True)
+        for i in range(len(leaves)):
+            leaf = leaves[i]
+            self.assertEqual(leaf.address, addresses_breadth_first[i],
+                             'Incorrect order, breadth first search.')
+        
+        
+        cell.children['L'].children['L'].mark('1')
+        cell.children['R'].mark('1')
+        leaves = cell.find_leaves(flag='1', nested='True')
+        self.assertEqual(len(leaves),2, \
+                         'There should only be 2 flagged leaves')
+    
+        #
+        # 2D
+        # 
+        cell = QuadCell()
+        
         #
         # Split cell and SW child - find leaves
         # 
-        node.split()
-        sw_child = node.children['SW']
+        cell.split()
+        sw_child = cell.children['SW']
         sw_child.split()
-        leaves = node.find_leaves()
+        leaves = cell.find_leaves()
         self.assertEqual(len(leaves), 7, 'Node should have 7 leaves.')
         
         #
         # Nested traversal
         #
-        leaves = node.find_leaves(nested=True)
+        leaves = cell.find_leaves(nested=True)
         self.assertEqual(leaves[0].address,[1], \
             'The first leaf in the nested enumeration should have address [1]')
         
-        leaves = node.find_leaves()
+        leaves = cell.find_leaves()
         self.assertEqual(leaves[0].address, [0,0], \
                          'First leaf in un-nested enumeration should be [0,0].')
         
         #
         # Merge SW child - find leaves
         # 
-        sw_child.merge()
-        leaves = node.find_leaves()
+        for child in sw_child.get_children():
+            child.remove()
+        leaves = cell.find_leaves()
         self.assertEqual(len(leaves), 4, 'Node should have 4 leaves.')
-        '''
+        
     
     def test_cells_at_depth(self):
         pass
     
     
     def test_find_root(self):
-        pass
+        for rootcell in [BiCell(), QuadCell()]:
+            cell = rootcell
+            for _ in range(10):
+                cell.split()
+                i = np.random.randint(0,2)
+                pos = cell._child_positions[i]
+                cell = cell.children[pos]
+            
+            self.assertEqual(cell.get_root(), rootcell, \
+                             'Root cell not found')
     
     
     def test_has_children(self):
-        pass
-    
+        marked_children = ['L','SW']
+        count = 0
+        for cell in [BiCell(), QuadCell()]:
+            self.assertFalse(cell.has_children(), 
+                             'Cell should not have children')
+            cell.split()
+            self.assertTrue(cell.has_children(),
+                            'Cell should have children')
+            self.assertFalse(cell.has_children(flag='1'),
+                             'Cell should not have marked children')
+            cell.children[marked_children[count]].mark('1')
+            self.assertTrue(cell.has_children(flag='1'),
+                            'Cell should have a child marked "1".')
+            count += 1
+   
     
     def test_has_parent(self):
-        pass
+        for cell in [BiCell(), QuadCell()]:
+            self.assertFalse(cell.has_parent(),
+                             'Root cell should not have a parent')
+            cell.split()
+            for child in cell.get_children():
+                self.assertTrue(child.has_parent(),
+                                'Child cell should have a parent.')
+            
     
     
-    def test_mark(self):
-        pass
-    
-    def test_unmark(self):
-        pass
+    def test_marking(self):
+        for cell in [BiCell(), QuadCell()]:
+            cell.mark()
+            self.assertTrue(cell.is_marked(),'Cell should be marked.')
+            
+            cell.unmark()
+            self.assertFalse(cell.is_marked(),'Cell should not be marked.')
+
+            cell.mark('66')
+            self.assertTrue(cell.is_marked(), 
+                            'Cell should be marked.')
+            self.assertFalse(cell.is_marked('o'), 
+                             'Cell should not be marked "o".')
+            self.assertTrue(cell.is_marked('66'), 
+                            'Cell should be marked 66.')
     
     
 class TestBiCell(unittest.TestCase):

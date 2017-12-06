@@ -87,7 +87,7 @@ class Mesh(object):
         """
         Return the maximum refinement level
         """    
-        return self.__root_node.max_depth()
+        return self.__root_node.tree_depth()
     
         
     def n_cells(self, flag=None):
@@ -706,7 +706,7 @@ class Node(object):
         """
         Display essential information about Node
         
-        TODO: move to subclass
+        TODO: Delete
         """
         print('-'*11)
         print('Node Info')
@@ -914,14 +914,14 @@ class Node(object):
                             return mu.children[neighbor_pos] 
     
     
-    def max_depth(self, flag=None):
+    def tree_depth(self, flag=None):
         """
         Return the maximum depth of sub-nodes 
         """
         depth = self.depth
         if self.has_children():
             for child in self.get_children(flag=flag):
-                d = child.max_depth()
+                d = child.tree_depth()
                 if d > depth:
                     depth = d 
         return depth
@@ -1560,6 +1560,8 @@ class Node(object):
     def remove_supports(self):
         """
         Remove the supporting nodes. This is useful after coarsening
+        
+        TODO: Move to subclass
         """    
         leaves = self.find_leaves()
         while len(leaves) > 0:
@@ -2323,9 +2325,11 @@ class Cell(object):
                 raise Exception('Input "mode" must be "depth-first"'+\
                                 ' or "breadth-first".')
             if cell.has_children():
-                for child in cell.get_children():
+                reverse = True if mode=='depth-first' else False    
+                for child in cell.get_children(reverse=reverse):
                     if child is not None:
                         queue.append(child)
+            
             if flag is not None: 
                 if cell.is_marked(flag):
                     yield cell
@@ -2362,7 +2366,7 @@ class Cell(object):
             # Nested traversal
             # 
             leaves = []
-            for cell in self.traverse(flag=flag, mode='depthwise'):
+            for cell in self.traverse(flag=flag, mode='breadth-first'):
                 if not cell.has_children(flag=flag):
                     leaves.append(cell)
             return leaves
@@ -2446,27 +2450,45 @@ class Cell(object):
                         self.children[position].is_marked(flag) 
     
     
-    def get_children(self, flag=None):
+    def get_children(self, flag=None, reverse=False):
         """
         Returns (flagged) children, ordered 
         
         Inputs: 
         
             flag: [None], optional marker
+            
+            reverse: [False], option to list children in reverse order 
+                (useful for the 'traverse' function).
         
         Note: Only returns children that are not None
               Use this to obtain a consistent iteration of children
         """
     
         if self.has_children(flag=flag):
-            for pos in self._child_positions:
-                child = self.children[pos]
-                if child is not None:
-                    if flag is None:
-                        yield child
-                    elif child.is_marked(flag):
-                        yield child
-    
+            if not reverse:
+                #
+                # Go in usual order
+                # 
+                for pos in self._child_positions:
+                    child = self.children[pos]
+                    if child is not None:
+                        if flag is None:
+                            yield child
+                        elif child.is_marked(flag):
+                            yield child
+            else: 
+                #
+                # Go in reverse order
+                # 
+                for pos in reversed(self._child_positions):
+                    child = self.children[pos]
+                    if child is not None:
+                        if flag is None:
+                            yield child
+                        elif child.is_marked(flag):
+                            yield child
+                            
     
     def has_parent(self):
         """
@@ -2843,6 +2865,7 @@ class BiCell(Cell):
                     return mu.children['L']
                
     '''
+    TODO: Remove 
     def find_leaves(self, with_depth=False):
         """
         Returns a list of all 'LEAF' type sub-cells (and their depths) of a given cell 
@@ -2870,7 +2893,7 @@ class BiCell(Cell):
             for child in self.children.values():
                 cells.extend(child.find_cells_at_depth(depth))
         return cells
-    '''
+  
     
     def get_root(self):
         """
@@ -2880,8 +2903,7 @@ class BiCell(Cell):
             return self
         else:
             return self.parent.get_root()
-        
-    '''    
+      
     def has_children(self):
         """
         Returns True if cell has any sub-cells, False otherwise
@@ -3400,8 +3422,8 @@ class QuadCell(Cell):
                 child_positions = []
                 nx, ny = grid_size
                 children = {}
-                for i in range(nx):
-                    for j in range(ny):
+                for j in range(ny):
+                    for i in range(nx):
                         children[i,j] = None
                         child_positions.append((i,j))
             self.grid_size = grid_size
@@ -3419,7 +3441,7 @@ class QuadCell(Cell):
             
             cell_depth = parent.depth + 1
             cell_address = parent.address + [self.pos2id(position)]    
-            children = {'SW': None, 'SE': None, 'NE':None, 'NW':None}
+            children = {'SW': None, 'SE': None, 'NW':None, 'NE':None}
             child_positions = ['SW','SE','NW','NE']
         #
         # Set attributes
@@ -3777,6 +3799,25 @@ class QuadCell(Cell):
                         neighbor_pos = exterior_neighbors_dict[self.position]
                         return mu.children[neighbor_pos]                       
 
+    '''
+    def find_leaves(self, with_depth=False):
+        """
+        Returns a list of all 'LEAF' type sub-cells (and their depths) of a given cell 
+        
+        TODO: Move to Cell class
+        """
+        leaves = []
+        if self.type == 'LEAF':
+            if with_depth:
+                leaves.append((self,self.depth))
+            else:
+                leaves.append(self)
+        elif self.has_children():
+            for child in self.children.values():
+                leaves.extend(child.find_leaves(with_depth))    
+        return leaves
+=======
+>>>>>>> branch 'branch1' of https://github.com/hvanwyk/quadmesh.git
     
    
     def find_cells_at_depth(self, depth):
@@ -3793,7 +3834,7 @@ class QuadCell(Cell):
             for child in self.children.values():
                 cells.extend(child.find_cells_at_depth(depth))
         return cells
-           
+    '''       
         
 
     
@@ -4309,15 +4350,15 @@ class QuadCell(Cell):
         
     def pos2id(self, pos):
         """ 
-        Convert position to index: 'SW' -> 0, 'SE' -> 1, 'NE' -> 2, 'NW' -> 3 
+        Convert position to index: 'SW' -> 0, 'SE' -> 1, 'NW' -> 2, 'NE' -> 3 
         """
         if type(pos) is tuple:
             assert len(pos) == 2, 'Expecting a tuple of integers.'
             return pos 
         elif type(pos) is int and 0 <= pos and pos <= 3:
             return pos
-        elif pos in ['SW','SE','NE','NW']:
-            pos_to_id = {'SW': 0, 'SE': 1, 'NE': 2, 'NW': 3}
+        elif pos in ['SW','SE','NW','NE']:
+            pos_to_id = {'SW': 0, 'SE': 1, 'NW': 2, 'NE': 3}
             return pos_to_id[pos]
         else:
             raise Exception('Unidentified format for position.')
@@ -4325,7 +4366,7 @@ class QuadCell(Cell):
     
     def id2pos(self, idx):
         """
-        Convert index to position: 0 -> 'SW', 1 -> 'SE', 2 -> 'NE', 3 -> 'NW'
+        Convert index to position: 0 -> 'SW', 1 -> 'SE', 2 -> 'NW', 3 -> 'NE'
         """
         if type(idx) is tuple:
             #
@@ -4334,7 +4375,7 @@ class QuadCell(Cell):
             assert len(idx) == 2, 'Expecting a tuple of integers.'
             return idx
         
-        elif idx in ['SW', 'SE', 'NE', 'NW']:
+        elif idx in ['SW', 'SE', 'NW', 'NE']:
             #
             # Input is already a position
             # 
@@ -4343,7 +4384,7 @@ class QuadCell(Cell):
             #
             # Convert
             # 
-            id_to_pos = {0: 'SW', 1: 'SE', 2: 'NE', 3: 'NW'}
+            id_to_pos = {0: 'SW', 1: 'SE', 2: 'NW', 3: 'NE'}
             return id_to_pos[idx]
         else:
             raise Exception('Unrecognized format.')

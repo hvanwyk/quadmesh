@@ -8,7 +8,7 @@ import unittest
 
 from gmrf import Gmrf
 from mesh import Mesh
-from fem import QuadFE, DofHandler, System, Function
+from fem import QuadFE, DofHandler, System
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
@@ -94,37 +94,20 @@ class TestGmrf(unittest.TestCase):
         #
         # From covariance kernel
         #
-        
-        cov_names = ['constant', 'linear', 'gaussian', 
-                     'exponential', 'matern', 'rational']
+        cov_names = ['linear', 'sqr_exponential', 'exponential', 
+                     'matern', 'rational']
         anisotropy = [None, np.diag([2,1])]
-        
-        mesh = Mesh.newmesh(grid_size=(20,20))
+        mesh = Mesh.newmesh()
         mesh.refine()
         element = QuadFE(2,'Q1')
-        fig = plt.figure()
-        plot = Plot()
         for M in anisotropy:
-            cov_pars = {'constant': {'sgm':1},   
-                        'linear': {'sgm': 1}, 
-                        'gaussian': {'sgm': 1, 'l': 0.1}, 
-                        'exponential': {'l': 0.1}, 
-                        'matern': {'sgm': 1, 'nu': 2, 'l': 0.5}, 
-                        'rational': {'a': 3}}
-            count = 1
+            cov_pars = {'linear': {'sgm': 1, 'M': M}, 
+                        'sqr_exponential': {'sgm': 1, 'l': 0.1 ,'M': M}, 
+                        'exponential': {'l': 0.1, 'M': M}, 
+                        'matern': {'sgm': 1, 'nu': 2, 'l': 0.5, 'M': M}, 
+                        'rational': {'a': 3, 'M': M}}
             for cov_name in cov_names:
-                
-                S = Gmrf.covariance_matrix(cov_name, cov_pars[cov_name], mesh=mesh, M=M)                
-                X = Gmrf(mesh=mesh, covariance=S, discretization='finite_differences')
-                
-                
-                Xi = X.sample(n_samples=1, mode='covariance')
-                print(Xi.shape)
-                ax = fig.add_subplot(2,3,count)
-                plot.contour(ax, fig, Xi, mesh, element)
-                count += 1
-                #Xi = Function(Xi, 'nodal', mesh=mesh, element=element)            
-                
+                cov_par = cov_pars[cov_name]
                 #
                 # Finite Difference
                 # 
@@ -135,7 +118,7 @@ class TestGmrf(unittest.TestCase):
                 # 
                 #X_fe = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh, \
                 #                                   element=element)
-            plt.show()
+                        
     
     def test_covariance_matrix(self):
         """
@@ -155,7 +138,6 @@ class TestGmrf(unittest.TestCase):
         M = 3
         #X, Y = x[i,:], x[j,:]
         X,Y = x[i], x[j]
-        
         cov_fn = Gmrf.linear_cov
         cov_par = {'sgm':1}
         S = cov_fn(X, Y, **cov_par, M=M)   

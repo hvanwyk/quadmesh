@@ -271,7 +271,7 @@ class Plot(object):
         if colorbar:
             fig.colorbar(cm, ax=ax, format='%g')
             
-        return fig, ax, cm
+        return fig, ax
     
     
     def surface(self, ax, f, mesh=None, element=None, derivatives=(0,), 
