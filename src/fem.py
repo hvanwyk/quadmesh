@@ -906,6 +906,13 @@ class Function(object):
             # Explicit function
             # ---------------------------
             dim = f.__code__.co_argcount
+            if mesh is not None:
+                assert dim == mesh.dim(), \
+                'Number of inputs and mesh dimension do not match.'
+            elif dofhandler is not None:
+                assert dim == dofhandler.mesh.dim(), \
+                'Number of inputs and mesh dimension do not match.'
+                  
             n_samples = None               
             fn = f
             
@@ -917,25 +924,39 @@ class Function(object):
             'If function_type is "nodal", dofhandler '\
             '(or mesh and element required).' 
 
-            assert type(f) is np.ndarray, \
-            'Variable "f" must be an array when fn_type" is "nodal".'
-            
-            # 
-            # Function passed as an array
-            # 
-            # Determine number of samples
-            if len(f.shape)==1:
-                n_samples = None
-                nf = f.shape[0]
-                fn = f
-            else:
-                nf, n_samples = f.shape
-                fn = f
+            if callable(f):
+                #
+                # Function passed explicitly
+                #
+                dim = f.__code__.co_argcount
+                assert dim == dofhandler.mesh.dim(), \
+                'Number of inputs and mesh dimension do not match.'
                 
-            assert nf == self.dofhandler.n_dofs(flag=flag),\
-                'The number of entries of f does not equal'+\
-                ' the number of dofs.' 
-            dim = self.dofhandler.mesh.dim() 
+                x = dofhandler.dof_vertices(flag=flag)
+                nf = dofhandler.n_dofs(flag=flag)
+                n_samples = None
+                if dim == 1:
+                    fn = f(x)
+                elif dim == 2: 
+                    fn = f(x[:,0],x[:,1])
+                    
+            elif type(f) is np.ndarray:
+                # 
+                # Function passed as an array
+                # 
+                # Determine number of samples
+                if len(f.shape)==1:
+                    n_samples = None
+                    nf = f.shape[0]
+                    fn = f
+                else:
+                    nf, n_samples = f.shape
+                    fn = f
+                
+                assert nf == self.dofhandler.n_dofs(flag=flag),\
+                    'The number of entries of f does not equal'+\
+                    ' the number of dofs.' 
+                dim = self.dofhandler.mesh.dim() 
             
                 
         elif fn_type == 'constant':
@@ -974,7 +995,6 @@ class Function(object):
             
             pos: int, array or constant (indicating position)
             
-        TODO: Test
         """
         assert self.fn_type() != 'explicit', \
         'Only nodal or constant Functions can be assigned function values'
@@ -1025,7 +1045,7 @@ class Function(object):
         Returns the global dofs associated with the function values. 
         (Only appropriate for nodal type functions).
         """    
-        if self.__fn_type == 'nodal':
+        if self.__type == 'nodal':
             return self.__global_dofs
         else:
             raise Exception('Function must be of type "nodal".')
@@ -1052,7 +1072,7 @@ class Function(object):
         
         TODO: Implement this 
         """
-        pass
+        return 1
     
     def n_samples(self):
         """
@@ -1158,7 +1178,7 @@ class Function(object):
         # ---------------------------------------------------------------------
         # Parse sample size
         # ---------------------------------------------------------------------
-        if samples != 'all':
+        if samples is not 'all':
             assert type(samples) is np.ndarray, \
             'vector specifying samples should be an array'
             
@@ -1198,7 +1218,7 @@ class Function(object):
             n_samples = self.n_samples()
             if n_samples is None:
                 f_vec = np.empty(x.shape[0])
-            elif samples == 'all':
+            elif samples is 'all':
                 f_vec = np.empty((x.shape[0],n_samples))
             else:
                 f_vec = np.empty((x.shape[0],sample_size))    
@@ -1223,10 +1243,10 @@ class Function(object):
                             self.dofhandler.get_global_dofs(node)]  
                 if self.n_samples() is None:
                     f_loc = self.__f[idx_node]
-                elif samples == 'all':
+                elif samples is 'all':
                     f_loc = self.__f[idx_node,:]
                 else:
-                    f_loc = self.__[idx_node, samples]
+                    f_loc = self.__f[np.ix_(idx_node, samples)]
     
                 #
                 # Evaluate shape function at x-values
@@ -1967,6 +1987,8 @@ class DofHandler(object):
     def dof_vertices(self, node=None, flag=None):
         """
         Return the mesh vertices (or vertices corresponding to node).
+        
+        TODO: Not dimension aware
         """
         assert hasattr(self, '_DofHandler__dof_count'), \
             'First distribute dofs.'
@@ -1984,6 +2006,7 @@ class DofHandler(object):
             # 
             x = np.empty((self.n_dofs(),2))
             x.fill(np.nan)
+            
             for leaf in self.mesh.root_node().find_leaves(flag=flag):
                 g_dofs = self.get_global_dofs(leaf)
                 x[g_dofs,:] = rule.map(leaf.quadcell(),x=x_ref)
