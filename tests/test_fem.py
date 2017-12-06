@@ -356,7 +356,6 @@ class TestFunction(unittest.TestCase):
         ax = plot.mesh(ax, mesh, node_flag=1, color_marked=[1])
         ax = fig.add_subplot(1,3,3)
         ax = plot.mesh(ax, mesh, node_flag=2, color_marked=[2])
-    
         """
                
         fig, ax = plt.subplots(2,4)
@@ -413,8 +412,9 @@ class TestFunction(unittest.TestCase):
         vf = np.empty(4,)
         f = Function(vf, 'nodal', mesh=mesh, element=element)
         
-        # Assign new value to function (vector) 
-        f.assign(np.arange(1,5))
+        # Assign new value to function (vector)
+        f_det = np.arange(1,5)
+        f.assign(f_det)
         
         # Assign random sample to function
         f_rand = np.random.rand(4,10)

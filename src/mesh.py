@@ -927,6 +927,45 @@ class Node(object):
         return depth
              
     
+    def traverse(self, flag=None, mode='depth-first'):
+        """
+        Iterator: Return current node and all its flagged sub-nodes         
+        
+        Inputs: 
+        
+            flag [None]: node flag
+            
+            mode: str, type of traversal 
+                'depth-first' [default]: Each cell's progeny is visited before 
+                    proceeding to next cell.
+                 
+                'breadth-first': All cells at a given depth are returned before
+                    proceeding to the next level.
+        
+        Output:
+        
+            all_nodes: list, of all nodes in tree (marked with flag).
+        """
+        queue = deque([self])
+        while len(queue) != 0:
+            if mode == 'depth-first':
+                cell = queue.pop()
+            elif mode == 'breadth-first':
+                cell = queue.popleft()
+            else:
+                raise Exception('Input "mode" must be "depth-first"'+\
+                                ' or "breadth-first".')
+            if cell.has_children():
+                for child in cell.get_children():
+                    if child is not None:
+                        queue.append(child)
+            if flag is not None: 
+                if cell.is_marked(flag):
+                    yield cell
+            else:
+                yield cell        
+                
+                
     def traverse_tree(self, flag=None):
         """
         Return list of current node and ALL of its sub-nodes         
