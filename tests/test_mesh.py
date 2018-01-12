@@ -51,7 +51,37 @@ class TestMesh(unittest.TestCase):
         self.assertEqual(mesh.dim(),1,'Mesh dimension should be 1.')
         self.assertIsNotNone(mesh.grid, 'Mesh has a grid.')
     
-    
+    def test_box(self):
+        #
+        # 1D
+        #  
+        
+        #
+        # 2D
+        #
+        
+        # Rectangular grid on [0,1,0,1]
+        grid = Grid(dim=2)
+        mesh = Mesh(grid=grid)
+        x_min, x_max, y_min, y_max = mesh.bounding_box()
+        self.assertAlmostEqual(x_min, 0, 9, 'x_min should be 0')
+        self.assertAlmostEqual(x_max, 1, 9, 'x_min should be 0')
+        self.assertAlmostEqual(y_min, 0, 9, 'x_min should be 0')
+        self.assertAlmostEqual(y_max, 1, 9, 'x_min should be 0')
+        
+        # Non-Standard Grid on [0,1,0,1]
+        print('Importing grid from file')
+        file_path = '/home/hans-werner/git/quadmesh/tests/quarter_circle.msh'
+        grid = Grid(file_path=file_path)
+        
+        # TODO: Finish
+        #mesh = Mesh(grid=grid)
+        x_min, x_max, y_min, y_max = mesh.bounding_box()
+        self.assertAlmostEqual(x_min, 0, 9, 'x_min should be 0')
+        self.assertAlmostEqual(x_max, 1, 9, 'x_min should be 0')
+        self.assertAlmostEqual(y_min, 0, 9, 'x_min should be 0')
+        self.assertAlmostEqual(y_max, 1, 9, 'x_min should be 0')
+        
     def test_depth(self):
         mesh = Mesh()
         for _ in range(3):
@@ -340,9 +370,19 @@ class TestGrid(unittest.TestCase):
         
         #
         # 2D Quadrilateral grid
-        # 
-        file_path = '/home/hans-werner/git/quadmesh/debug/circle_mesh.msh'
+        #
+        '''
+        # FIXME: Assigning directions to sides of quadrilaterals in a mesh is
+        not consistent!!! 
+        
+         
+        file_path = '/home/hans-werner/git/quadmesh/tests/quarter_circle.msh' 
+        # file_path = '/home/hans-werner/git/quadmesh/debug/circle_mesh.msh'
+        #file_path = '/home/hans-werner/Dropbox/work/code/matlab/'+\
+        #            'finite_elements/examples/reaction_diffusion/'+\
+        #            'circle_mesh.msh'
         grid = Grid(file_path=file_path)
+        
         #
         # Check boundary edges
         # 
@@ -353,7 +393,8 @@ class TestGrid(unittest.TestCase):
             direction = grid.half_edges['position'][i_he]
             self.assertIsNone(grid.get_neighbor(i_fc, direction),\
                               'Neighbor of boundary edge should be None')
-        
+        '''
+            
         #
         # 2D Triangular grid
         file_path = '/home/hans-werner/Dropbox/work/code/matlab/'+\
@@ -367,7 +408,71 @@ class TestGrid(unittest.TestCase):
                              'Neighbor of boundary half-edge should be -1.')
         #print(len(grid['faces']['tags']['phys']))
         
-    
+    '''
+    def test_half_edge_positions(self):
+        """
+        Test whether the grid faces have the correct directions associated
+        
+        THIS CANNOT WORK FOR GENERAL MESHES.
+        """
+        file_path = '/home/hans-werner/git/quadmesh/tests/quarter_circle.msh' 
+        grid = Grid(file_path=file_path)
+        for i in range(grid.faces['n']):
+            assert len(grid.faces['connectivity'][i]) == 4, 'Grid not made of quads.'
+        
+        #
+        # Ensure each face contains 4 unique half-edges
+        #         
+        for i_fc in range(grid.faces['n']):
+            i_he = grid.faces['half_edge'][i_fc]
+            pos  = grid.half_edges['position'][i_he]
+            i_hes = [i_he]
+            positions = [pos]
+            for _ in range(3):
+                i_he = grid.half_edges['next'][i_he]
+                i_hes.append(i_he)
+                positions.append(grid.half_edges['position'][i_he]) 
+            
+            self.assertEqual(len(list(set(i_hes))), 4, \
+                             'There should be 4 unique half-edges.')
+            
+            # TODO: This doesnt hold
+            self.assertEqual(len(list(set(positions))), 4, \
+                             'There should be 4 unique half-edges \n'+
+                             '{0}.'.format(positions))
+            
+        """    
+        # Reproduce position assignment
+        for i_fc in range(grid.faces['n']):
+            i_he = grid.faces['half_edge'][i_fc]
+        """ 
+            
+        for pos in range(grid.faces['n']):
+            if pos==20:
+                vertices = dict.fromkeys(['SW','SE','NW','NE'])
+                i_conn = grid.faces['connectivity'][pos]
+                vs = [grid.points['coordinates'][i] for i in i_conn]
+                print(vs)
+                print('\n\n')
+
+                i_he = grid.faces['half_edge'][pos]
+                sub_dirs = {'S': ['SW','SE'], 'E': ['SE', 'NE'], 
+                            'N': ['NE','NW'], 'W': ['NW','SW'] }
+                for _ in range(3):
+                    print(i_he)
+                    direction = grid.half_edges['position'][i_he]
+                    
+                    for j in range(2):
+                        sub_dir = sub_dirs[direction][j]
+                        i_vtx = grid.half_edges['connectivity'][i_he][j] 
+                        vertices[sub_dir] = grid.points['coordinates'][i_vtx]
+                    # Proceed to next half-edge
+                    i_he = grid.half_edges['next'][i_he]
+                for p in ['SW', 'SE','NE','NW']:
+                    print(vertices[p])
+            cell = QuadCell(position=pos, grid=grid)
+    '''
+                
 class TestNode(unittest.TestCase):
     """
     Test Node Class

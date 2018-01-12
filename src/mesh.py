@@ -312,10 +312,56 @@ class Mesh(object):
                     if entity=='vertices':
                         for v in edge.vertices():
                             boundary.add(np.array(v.coordinate()))
-            print(len(boundary))
         return boundary
                         
         
+    def bounding_box(self):
+        """
+        Returns the mesh's bounding box
+        
+        Output:
+        
+            box: double,  [x_min, x_max, y_min, y_max] if mesh is 2d
+                and [x_min, x_max] if mesh is 1d. 
+        """
+        root = self.root_node()
+        if root.grid is not None:
+            #
+            # Grid on coarsest level
+            # 
+            grid = root.grid
+            if self.dim() == 1:
+                x_min, x_max = grid.points['coordinates'][[0,-1]]
+                return [x_min, x_max]
+            elif self.dim() == 2:
+                #
+                # Determine bounding box from boundary points
+                # 
+                i_vbnd = grid.get_boundary_points()
+                v_bnd = []
+                for k in i_vbnd:
+                    v_bnd.append( \
+                        grid.points['coordinates'][i_vbnd[k]].coordinate())
+                v_bnd = np.array(v_bnd) 
+                x_min, x_max = v_bnd[:,0].min(), v_bnd[:,0].max()
+                y_min, y_max = v_bnd[:,1].min(), v_bnd[:,1].max()
+                return [x_min, x_max, y_min, y_max] 
+        else:
+            #
+            # No Grid: Use Cell
+            # 
+            cell = root.cell()
+            if cell.dim()==1:
+                x_min, x_max = cell.get_vertices(pos='corners', as_array=True)
+                return [x_min, x_max]
+            elif cell.dim()==2:
+                vbnd = cell.get_vertices(pos='corners', as_array=True)
+                x_min, x_max = vbnd[:,0].min(), vbnd[:,0].max()
+                y_min, y_max = vbnd[:,1].min(), vbnd[:,1].max()
+                return [x_min, x_max, y_min, y_max]
+            else:
+                raise Exception('Only 1D and 2D supported.')
+                    
         
     def unmark_all(self, flag=None, nodes=False, cells=False, edges=False, 
                    vertices=False, all_entities=False):
@@ -748,7 +794,7 @@ class Grid(object):
                     resolution = (1,)
                 elif dim==2:
                     resolution = (1,1)
-                      
+            self.__dim = dim          
             self.is_rectangular = True
             self.regular_grid(box=box, resolution=resolution)
         else:
@@ -790,7 +836,6 @@ class Grid(object):
         #
         # Initialize Nodes, and Cells
         # 
-        self.__dim = dim
         self.faces['Cell'] = [None]*self.faces['n']       
                
                         
@@ -948,7 +993,6 @@ class Grid(object):
                         subregions['tags'].append(int(words[1]))
                         line = infile.readline()
                 # TODO: Is this necessary? 
-                #self.subregions = subregions
                         
                 # 
                 # Cell Vertices
@@ -972,7 +1016,6 @@ class Grid(object):
                         vtx = Vertex((float(words[1]),float(words[2])))
                         points['coordinates'].append(vtx)
                         line = infile.readline()
-                #self.points = points
                 
                 # --------------------------------------------------------------
                 #  Faces
@@ -1173,7 +1216,7 @@ class Grid(object):
         #    
         if n_faces > 0:
             self.__dim = 2
-    
+            
     
     def doubly_connected_edge_list(self):
         """
@@ -1215,9 +1258,11 @@ class Grid(object):
         # 
         n_faces = self.faces['n']
         self.faces['half_edge'] = np.full((n_faces,), -1, dtype=np.int)
-             
-        half_edge_count = 0
         
+        #
+        # Initialize 
+        # 
+        half_edge_count = 0
         for i_fce in range(self.faces['n']):
             fc = self.faces['connectivity'][i_fce]
             #
@@ -1225,16 +1270,15 @@ class Grid(object):
             # 
             fhe = [half_edge_count + j for j in range(n_sides)]
             
-            #------------------------------------------------------------------
+            #
             # Update face information 
-            # -----------------------------------------------------------------
+            # 
             self.faces['half_edge'][i_fce] = fhe[0]
             
             for i in range(n_sides):
-                # -------------------------------------------------------------
+                # .............................................................
                 # Update half-edge information
-                # -------------------------------------------------------------
-                #
+                # .............................................................
                 # Connectivity
                 #
                 hec = [fc[i%n_sides], fc[(i+1)%n_sides]]
@@ -1336,22 +1380,21 @@ class Grid(object):
         # ---------------------------------------------------------------------
         # Assign Directions to half-edges (only for quadrilaterals)
         # ---------------------------------------------------------------------
+        first_half_edge = True
+        directions = ['S','E','N','W']
+        opposite  = {'S':'N', 'N':'S', 'W':'E', 'E':'W'}
+        he_dirs = [None]*n_he
+        faces_visited = set()
+        faces_to_do = deque([0])
         if n_sides == 4:
             #
             # Ensure grid consists of quadrilaterals
             #
-            directions = ['S','E','N','W']
-            opposite  = {'S':'N', 'N':'S', 'W':'E', 'E':'W'}
-            he_dirs = [None]*n_he
-            faces_visited = set()
-            faces_to_do = deque([0])
-            first_half_edge = True
             while len(faces_to_do) > 0:
                 #
                 # Assign directions to all half-edges in current face
                 #
                 i_f  = faces_to_do.popleft() 
-                
                 i_he = self.faces['half_edge'][i_f]
                 if first_half_edge:
                     #
@@ -1398,6 +1441,9 @@ class Grid(object):
                         # 
                         if he_dirs[i_the] is None:
                             he_dirs[i_the] = opposite[he_dirs[i_he]]
+                        else:
+                            assert he_dirs[i_the] == opposite[he_dirs[i_he]],\
+                            'Twin half edge should have opposite direction.'
                     i_he = self.half_edges['next'][i_he]
             self.half_edges['position'] = he_dirs
                  
@@ -1495,7 +1541,7 @@ class Grid(object):
     
     def get_boundary_edges(self):
         """
-        Returns a list of the boundary edges
+        Returns a list of the boundary edge indices
         """
         if self.dim == 1:
             raise Exception('Boundary edges only present in 2D grids.')
@@ -1528,7 +1574,7 @@ class Grid(object):
                     break
             bnd_hes_sorted.append(i_he) 
         #
-        # Extract boundary nodes
+        # Extract boundary edges
         # 
         bnd_edges = [self.half_edges['edge'][i] for i in bnd_hes_sorted]
         return bnd_edges
@@ -1536,14 +1582,14 @@ class Grid(object):
     
     def get_boundary_points(self):
         """
-        Returns a list of boundary points
+        Returns a list of boundary point indices
         """
-        if self.dim == 1:
+        if self.dim() == 1:
             #
             # One dimensional grid (assume sorted)
             # 
             bnd_points = [0, self.points['n']-1]
-        elif self.dim == 2:
+        elif self.dim() == 2:
             #
             # Two dimensional grid
             # 
@@ -1554,7 +1600,8 @@ class Grid(object):
                 # Add initial point of each boundary half edge
                 # 
                 bnd_points.append(self.half_edges['connectivity'][i_he][0])
-        
+        else: 
+            raise Exception('Only dimensions 1 and 2 supported.')
         return bnd_points
     
     
@@ -3337,7 +3384,8 @@ class Cell(object):
         
             pos: str, position of vertex within the cell: 
                 SW, S, SE, E, NE, N, NW, or W. 
-                If pos='corners', return 'SW', 'SE', 'NE', 'NW'
+                If pos='corners', return vertices ['L','R'] 1d, 
+                    or ['SW', 'SE', 'NE', 'NW'] 2d
                 If pos is not specified, return all vertices.
                 
             as_array: bool, if True, return vertices as a numpy array.

@@ -58,7 +58,15 @@ class Plot(object):
         """
         node = mesh.root_node()
         
-        x0, x1, y0, y1 = node.cell().box()          
+        if mesh.dim() == 2:
+            #
+            # Two dimensional mesh
+            # 
+            v_cnr = node.cell().get_vertices(pos='corners', as_array=True)            
+            x0, x1 = v_cnr[:,0].min(), v_cnr[:,0].max()
+            y0, y1 = v_cnr[:,0].min(), v_cnr[:,0].max()
+        
+            
         hx = x1 - x0
         hy = y1 - y0
         ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
