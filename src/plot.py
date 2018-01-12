@@ -58,7 +58,7 @@ class Plot(object):
         """
         node = mesh.root_node()
         
-        x0, x1, y0, y1 = node.quadcell().box()          
+        x0, x1, y0, y1 = node.cell().box()          
         hx = x1 - x0
         hy = y1 - y0
         ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
@@ -72,9 +72,9 @@ class Plot(object):
         # Plot QuadCells
         # 
         color_list = ['gold', 'darkorange','r']                      
-        for node in mesh.root_node().find_leaves(flag=node_flag, \
+        for node in mesh.root_node().get_leaves(flag=node_flag, \
                                                  nested=nested):
-            cell = node.quadcell()
+            cell = node.cell()
             x0, x1, y0, y1 = cell.box()
             points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
             if color_marked is not None:
@@ -165,9 +165,9 @@ class Plot(object):
             n_dofs = element.n_dofs()
             dofhandler = DofHandler(mesh, element)
             dofhandler.distribute_dofs(nested=nested)
-            for node in mesh.root_node().find_leaves(nested=nested,\
+            for node in mesh.root_node().get_leaves(nested=nested,\
                                                      flag=node_flag):
-                cell = node.quadcell()
+                cell = node.cell()
                 x0,x1,y0,y1 = cell.box()
                 x_pos = x0 + x_ref[:,0]*(x1-x0)
                 y_pos = y0 + x_ref[:,1]*(y1-y0)
@@ -242,13 +242,13 @@ class Plot(object):
             #
             # A vector
             #
-            if len(f)==mesh.n_cells():
+            if len(f)==mesh.n_nodes():
                 #
                 # Mesh function 
                 #
                 patches = []
-                for node in mesh.root_node().find_leaves(flag=flag):
-                    cell = node.quadcell()
+                for node in mesh.root_node().get_leaves(flag=flag):
+                    cell = node.cell()
                     x0,x1,y0,y1 = cell.box()
                     rectangle = Rectangle((x0,y0), x1-x0, y1-y0)
                     patches.append(rectangle)
@@ -349,7 +349,7 @@ class Plot(object):
             lines = []
             node_count = 0
             initialize_min_max = True
-            for node in mesh.root_node().find_leaves():                
+            for node in mesh.root_node().get_leaves():                
                 #
                 # Function type  
                 # 
@@ -371,13 +371,13 @@ class Plot(object):
                     #
                     f_loc = f[system.get_global_dofs(node)]
             
-                elif len(f)==mesh.n_cells():
+                elif len(f)==mesh.n_nodes():
                     #
                     # Mesh function
                     #
                     f_loc = f[node_count] 
                 
-                cell = node.quadcell()
+                cell = node.cell()
                 for edge in cell.get_edges():
                     # Points on edges
                     v = edge.vertex_coordinates()

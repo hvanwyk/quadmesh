@@ -7,7 +7,7 @@ Created 11/22/2016
 # =============================================================================
 import unittest
 from fem import QuadFE, Function, DofHandler, GaussRule, System
-from mesh import Mesh, Edge, Vertex
+from mesh import Mesh, Edge, Vertex, Grid
 #import scipy.sparse as sp
 import numpy as np
 import numpy.linalg as la
@@ -188,7 +188,7 @@ class TestQuadFE(unittest.TestCase):
     
     def test_d2phi(self):
         """
-        Define piecewise linear, quadratic, and cubi polynomials on the
+        Define piecewise linear, quadratic, and cubic polynomials on the
         reference triangle, compute their first partial derivatives and 
         compare with that of the nodal interpolant.
         """
@@ -261,7 +261,7 @@ class TestFunction(unittest.TestCase):
         """ 
         
     
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.record(0)
         mesh.refine()
         mesh.record(1)
@@ -274,20 +274,25 @@ class TestFunction(unittest.TestCase):
         
         #
         # Mesh points at which to plot function
-        # 
-        x0,x1,y0,y1 = mesh.box()
+        #
+        vtcs = mesh.root_node().cell().get_vertices(pos='corners', \
+                                                    as_array=True) 
+        x0, y0 = vtcs[0,:]
+        x1, y1 = vtcs[2,:] 
         nx, ny = 30,30
         x,y = np.linspace(x0,x1,nx), np.linspace(y0,y1,ny)
         xx, yy = np.meshgrid(x,y)
         xy = np.array([xx.ravel(),yy.ravel()]).transpose()
         
         #
-        # Test interpolate and eval
+        # Test interpolant and eval
         #
         fn = Function(f,'explicit')
         ax = fig.add_subplot(3,4,1, projection='3d')
-        zz = fn.eval(xy)
-        
+        #for node in mesh.root_node().get_leaves():
+        #    cell = node.cell()
+        #    print(cell.contains_point(xy).shape)
+        zz = fn.eval(xy)  
         ax.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
                         linewidth=0, antialiased=True)
         ax.set_title('f')
@@ -298,7 +303,7 @@ class TestFunction(unittest.TestCase):
         for i in range(3):
             etype = continuous_etype[i]
             element = QuadFE(2,etype)
-            fn_interp = fn.interpolate(mesh, element)
+            fn_interp = fn.interpolant(mesh, element)
             
             ax = fig.add_subplot(3,4,2+i, projection='3d')
             zz = fn_interp.eval(xy)
@@ -316,7 +321,7 @@ class TestFunction(unittest.TestCase):
         for i in range(4):
             etype = discontinuous_etype[i]
             element = QuadFE(2,etype)
-            fn_interp = fn.interpolate(mesh, element)
+            fn_interp = fn.interpolant(mesh, element)
             
             ax = fig.add_subplot(3,4,5+i, projection='3d')
             zz = fn_interp.eval(xy)
@@ -332,7 +337,7 @@ class TestFunction(unittest.TestCase):
         for i in range(4):
             etype = etype_list[i]
             element = QuadFE(2,etype)
-            fn_interp = fn.interpolate(mesh, element)
+            fn_interp = fn.interpolant(mesh, element)
             
             ax = fig.add_subplot(3,4,9+i, projection='3d')
             df_dx = fn_interp.derivative((1,1))
@@ -349,7 +354,7 @@ class TestFunction(unittest.TestCase):
         
         plot = Plot()
         element = QuadFE(2,'DQ0')
-        fn.interpolate(mesh, element)
+        fn.interpolant(mesh, element)
         ax = fig.add_subplot(1,3,1)
         ax = plot.mesh(ax, mesh, node_flag=0, color_marked=[0])
         ax = fig.add_subplot(1,3,2)
@@ -404,12 +409,14 @@ class TestFunction(unittest.TestCase):
         # New nodal function
         #  
         # Define Mesh and elements
-        mesh = Mesh.newmesh(grid_size=(2,2))
-        mesh.refine()
+        mesh = Mesh(grid=Grid(resolution=(2,2)))
+        #mesh.refine()
         element = QuadFE(2,'DQ0')
         
         # Initialize
         vf = np.empty(4,)
+        dh = DofHandler(mesh, element)
+        dh.distribute_dofs()
         f = Function(vf, 'nodal', mesh=mesh, element=element)
         
         # Assign new value to function (vector)
@@ -422,8 +429,8 @@ class TestFunction(unittest.TestCase):
         
         # Get cell midpoints
         cell_midpoints = []
-        for leaf in mesh.root_node().find_leaves():
-            cell = leaf.quadcell()
+        for leaf in mesh.root_node().get_leaves():
+            cell = leaf.cell()
             cell_midpoints.append(cell.get_vertices(pos='M'))
         x_mpt = np.array(cell_midpoints)
         self.assertTrue(np.allclose(f.eval(x_mpt),f_rand),\
@@ -445,8 +452,7 @@ class TestFunction(unittest.TestCase):
         f.assign(np.arange(1,5),pos=0)
         self.assertTrue(np.allclose(f.eval(x_mpt)[:,1:],f_rand[:,1:]),\
                         'Function value assignment incorrect.')
-        print(f.eval(x_mpt, samples=0))
-        self.assertTrue(np.allclose(f.eval(x_mpt, samples=0),\
+        self.assertTrue(np.allclose(f.eval(x_mpt, samples=0).ravel(),\
                                     np.arange(1,5)),\
                         'Function value assignment incorrect.')
         
@@ -456,7 +462,7 @@ class TestFunction(unittest.TestCase):
         # Check that global dofs are returned
         # 
         # Define mesh
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.refine()
         element = QuadFE(2,'Q1')
         
@@ -473,7 +479,7 @@ class TestFunction(unittest.TestCase):
     
     
     def test_flag(self):
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.refine()
         node = mesh.root_node()
         for pos in ['SW','SE']:
@@ -495,7 +501,7 @@ class TestFunction(unittest.TestCase):
         
         # Nodal 
         #2D 
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.refine()
         element = QuadFE(2,'Q1')
         vf = np.empty(9,)
@@ -506,7 +512,7 @@ class TestFunction(unittest.TestCase):
         # TODO: 1D
     
     def test_n_samples(self): 
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.refine()
         element = QuadFE(2, 'Q1')
         # Assign 1d vector to function values -> sample size should be None
@@ -552,7 +558,7 @@ class TestDofHandler(unittest.TestCase):
         #
         # Mesh
         # 
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.refine()
         mesh.root_node().children['SE'].mark(1)
         mesh.refine(1)
@@ -566,7 +572,7 @@ class TestDofHandler(unittest.TestCase):
                       [6,8,9,10],[2,3,11,12],[3,10,12,13]]
         
         count = 0
-        for leaf in mesh.root_node().find_leaves():
+        for leaf in mesh.root_node().get_leaves():
             cell_dofs = dofhandler.get_global_dofs(leaf)
             self.assertEqual(cell_dofs, exact_dofs[count],\
                              'Cell %d dofs do not match given dofs.'%(count))
@@ -593,7 +599,7 @@ class TestDofHandler(unittest.TestCase):
         
         
     def test_share_dofs_with_children(self):
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.refine()
         # Expected dofs 
         sw_child_dofs = {'Q1': [0,None,None,None],\
@@ -659,7 +665,7 @@ class TestDofHandler(unittest.TestCase):
         #
         # Mesh
         # 
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.refine()
         mesh.root_node().children['SE'].mark(1)
         mesh.refine(1) 
@@ -668,9 +674,9 @@ class TestDofHandler(unittest.TestCase):
         # Nodes
         #
         node = mesh.root_node().children['SW']
-        n_nbr = node.find_neighbor('N')
-        ne_nbr = node.find_neighbor('NE')
-        e_nw_nbr = node.find_neighbor('E').children['NW']
+        n_nbr = node.get_neighbor('N')
+        ne_nbr = node.get_neighbor('NE')
+        e_nw_nbr = node.get_neighbor('E').children['NW']
         
         dofs_to_check = {'Q1': {'N': [2,3,None,None], 
                                 'NE':[3,None,None,None], 
@@ -701,7 +707,7 @@ class TestDofHandler(unittest.TestCase):
                 self.assertEqual(nbr_dofs, dofs_to_check[etype][direction],\
                              'Dofs shared incorrectly %s:'%(direction))
             
-        mesh = Mesh.newmesh(grid_size=(2,2))
+        mesh = Mesh(grid=Grid(resolution=(2,2)))
         mesh.refine()
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh,element)
@@ -717,7 +723,7 @@ class TestDofHandler(unittest.TestCase):
             
             
     def test_fill_dofs(self):
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
             dpe = element.n_dofs()
@@ -748,18 +754,19 @@ class TestDofHandler(unittest.TestCase):
         #
         # Check dof count 
         # 
-        mesh = Mesh.newmesh(grid_size=(2,2))
+        mesh = Mesh(grid=Grid(resolution=(2,2)))
+        mesh.refine()
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh,element)
         count = 0
-        for leaf in mesh.root_node().find_leaves():
+        for leaf in mesh.root_node().get_leaves():
             dofhandler.fill_dofs(leaf)
             self.assertEqual(dofhandler.n_dofs(),count+element.n_dofs(),\
                              'Dof count is adjusted incorrectly.')
-        
+            count += 4
     
     def test_assign_dofs(self):
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         element = QuadFE(2,'Q2')
         dofhandler = DofHandler(mesh,element)
         count_1 = dofhandler.n_dofs()
@@ -811,7 +818,7 @@ class TestDofHandler(unittest.TestCase):
     
     def test_get_global_dofs(self):
         # TODO: finish
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         for i in range(2):
             mesh.refine()
             mesh.record(i)
@@ -820,7 +827,7 @@ class TestDofHandler(unittest.TestCase):
         dofhandler.distribute_dofs(nested=True)
         
         dofs_1 = dofhandler.get_global_dofs(flag=1)
-        for leaf in mesh.root_node().find_leaves(flag=0):
+        for leaf in mesh.root_node().get_leaves(flag=0):
             leaf_dofs = dofhandler.get_global_dofs(node=leaf)
         
         
@@ -882,7 +889,7 @@ class TestGaussRule(unittest.TestCase):
         self.assertAlmostEqual(np.sum(w)*jac, np.sqrt(2), places=10,\
                                msg='Failed to integrate 1.')
         
-        
+                
 class TestSystem(unittest.TestCase):
     """
     Test System class
@@ -893,7 +900,7 @@ class TestSystem(unittest.TestCase):
         # =====================================================================
         # One Cell
         # =====================================================================
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         # ---------------------------------------------------------------------
         # Piecewise Linear
         # ---------------------------------------------------------------------
@@ -995,7 +1002,7 @@ class TestSystem(unittest.TestCase):
         f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))+u(x,y)  # forcing term
         bf = [(1,'ux','vx'),(1,'uy','vy'),(1,'u','v')]  # bilinear forms
         lf = [(f,'v')]  # linear forms
-        cell = mesh.root_node().quadcell()
+        cell = mesh.root_node().cell()
         node = mesh.root_node()
         for etype in ['Q2','Q3']:
             element = QuadFE(2,etype)
@@ -1114,7 +1121,7 @@ class TestSystem(unittest.TestCase):
         #
         # Test by integration
         # 
-        mesh = Mesh.newmesh(grid_size=(2,2))
+        mesh = Mesh(grid=Grid(resolution=(2,2)))
         mesh.refine()        
         
         trial_functions = {'Q1': lambda x,y: (x-1),
@@ -1140,7 +1147,7 @@ class TestSystem(unittest.TestCase):
             for i in range(3):
                 A = s.assemble(bilinear_forms=[bf_list[i]])
                 AA = np.zeros((n_nodes,n_nodes))
-                for node in mesh.root_node().find_leaves():
+                for node in mesh.root_node().get_leaves():
                     cell_dofs = s.get_global_dofs(node)
                     AA_loc = s.form_eval(bf_list[i], node)
                     block = np.ix_(cell_dofs,cell_dofs)
@@ -1158,7 +1165,7 @@ class TestSystem(unittest.TestCase):
         #
         # 10x10 grid     
         # 
-        mesh = Mesh.newmesh(grid_size=(10,10))
+        mesh = Mesh(grid=Grid(resolution=(10,10)))
         mesh.refine()
         u = lambda x,y: x*(1-x)*y*(1-y)  # exact solution
         f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))+u(x,y)  # forcing term 
@@ -1180,7 +1187,7 @@ class TestSystem(unittest.TestCase):
         # =====================================================================
         # Test hanging nodes
         # =====================================================================
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.root_node().mark(1)
         mesh.refine(1)
         mesh.root_node().children['SW'].mark(2)
@@ -1275,8 +1282,8 @@ class TestSystem(unittest.TestCase):
                                'Q2': [-1.0,0.0,0.0],
                                'Q3': [-0.25,0.0,-1.0]} 
         derivatives = [(0,),(1,0),(1,1)]
-        mesh = Mesh.newmesh()
-        cell = mesh.root_node().quadcell() 
+        mesh = Mesh()
+        cell = mesh.root_node().cell() 
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
             system = System(mesh,element)
@@ -1347,8 +1354,8 @@ class TestSystem(unittest.TestCase):
         #
         # Over arbitrary cell
         #
-        mesh = Mesh.newmesh(box=[1,4,1,3])
-        cell = mesh.root_node().quadcell()
+        mesh = Mesh(grid=Grid(box=[1,4,1,3]))
+        cell = mesh.root_node().cell()
         y = np.random.rand(5,2)
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
@@ -1365,8 +1372,8 @@ class TestSystem(unittest.TestCase):
                 f_vals = test_functions[etype][i](y_phys[:,0],y_phys[:,1])
                 self.assertTrue(np.allclose(np.dot(phi,f_nodes),f_vals),\
                                 'Shape function interpolation failed.')
-        mesh = Mesh.newmesh(box=[0,0.5,0,0.5])
-        cell = mesh.root_node().quadcell()
+        mesh = Mesh(grid=Grid(box=[0,0.5,0,0.5]))
+        cell = mesh.root_node().cell()
         node = mesh.root_node()
         u = lambda x,y: x*y**2
         v = lambda x,y: x**2*y
@@ -1395,7 +1402,7 @@ class TestSystem(unittest.TestCase):
         test_functions = {'Q1': lambda x,y: (2+x)*(y-3),
                           'Q2': lambda x,y: (2+x**2+x)*(y-2)**2,
                           'Q3': lambda x,y: (2*x**3-3*x)*(y**2-2*y)}
-        mesh = Mesh.newmesh(grid_size=(5,5))
+        mesh = Mesh(grid=Grid(resolution=(5,5)))
         mesh.refine()
         x_test = np.random.rand(10,2)
         for etype in ['Q1','Q2','Q3']:
@@ -1421,8 +1428,8 @@ class TestSystem(unittest.TestCase):
             # 
             
     def test_f_eval_loc(self):
-        mesh = Mesh.newmesh()
-        cell = mesh.root_node().quadcell()
+        mesh = Mesh()
+        cell = mesh.root_node().cell()
         node = mesh.root_node()
         test_functions = {'Q1': lambda x,y: (2+x)*(y-3),
                           'Q2': lambda x,y: (2+x**2+x)*(y-2)**2,
@@ -1475,7 +1482,7 @@ class TestSystem(unittest.TestCase):
 
             
     def test_form_eval(self):
-        mesh = Mesh.newmesh(box=[1,2,1,2])
+        mesh = Mesh(grid=Grid(box=[1,2,1,2]))
         trial_functions = {'Q1': lambda x,y: (x-1),
                            'Q2': lambda x,y: x*y**2,
                            'Q3': lambda x,y: x**3*y}
@@ -1491,7 +1498,7 @@ class TestSystem(unittest.TestCase):
         edge_integrals = {'Q1': [3,3/2], 
                           'Q2': [30,30], 
                           'Q3': [240,360]}
-        cell = mesh.root_node().quadcell() 
+        cell = mesh.root_node().cell() 
         node = mesh.root_node()
         f = lambda x,y: (x-1)*(y-1)**2
         for etype in ['Q1','Q2','Q3']:
@@ -1563,10 +1570,10 @@ class TestSystem(unittest.TestCase):
         #
         # A general cell        
         # 
-        mesh = Mesh.newmesh(box=[1,4,1,3])
+        mesh = Mesh(grid=Grid(box=[1,4,1,3]))
         element = QuadFE(2,'Q1')
         system = System(mesh,element)
-        cell = mesh.root_node().quadcell()
+        cell = mesh.root_node().cell()
         node = mesh.root_node()
         A = system.form_eval((1,'ux','vx'),node)
         #
@@ -1587,12 +1594,12 @@ class TestSystem(unittest.TestCase):
     def test_edge_rule(self):
         pass
     
-    '''            
+    '''          
     def test_make_generic(self):
         mesh = Mesh.newmesh()
         element = QuadFE(2,'Q1')
         system = System(mesh, element)
-        cell = mesh.root_node().quadcell()
+        cell = mesh.root_node().cell()
         self.assertEqual(system.make_generic(cell), 'cell', \
                          'Cannot convert cell to "cell"')
         for direction in ['W','E','S','N']:
@@ -1601,9 +1608,10 @@ class TestSystem(unittest.TestCase):
                              ('edge',direction),\
                              'Cannot convert edge to generic edge')
     '''
+    
             
     def test_parse_derivative_info(self):
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         element = QuadFE(2,'Q2')
         system = System(mesh,element)
         self.assertEqual(system.parse_derivative_info('u'), (0,),\
@@ -1615,7 +1623,7 @@ class TestSystem(unittest.TestCase):
     
         
     def test_interpolate(self):
-        mesh = Mesh.newmesh()
+        mesh = Mesh()
         mesh.refine()
         mesh.record()  # label 0
         
@@ -1660,3 +1668,4 @@ class TestSystem(unittest.TestCase):
             # 
             R = system.restrict(0, 1)
             self.assertTrue(np.allclose(np.dot(R,u_fine),u_coarse,1e-9))
+            

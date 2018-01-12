@@ -2,6 +2,7 @@ import numpy as np
 from scipy import sparse, linalg
 import numbers
 from mesh import QuadCell, Edge, Vertex
+from mesh import convert_to_array
 from bisect import bisect_left       
 from _operator import index
 from itertools import count
@@ -464,6 +465,7 @@ class QuadFE(FiniteElement):
         """
         assert n < self.n_dofs(), 'Basis index exceeds n_dofs.'
         assert all(var) < 2, 'Use tuple of 0s for x or 1s for y.'
+        
         #
         # 1D 
         #
@@ -493,7 +495,7 @@ class QuadFE(FiniteElement):
                 return self.__p[i1](x[:,0])*self.__pxx[i2](x[:,1])
          
     
-    def shape(self, x, derivatives=(0,), local_dofs='all'):
+    def shape(self, x, cell=None, derivatives=[(0,)], local_dofs='all'):
         """
         Evaluate all shape functions at a given 
         
@@ -501,17 +503,30 @@ class QuadFE(FiniteElement):
         
             x: double, points at which shape functions are to be evaluated. 
                 forms
-                    - (n_points, n_dim) array, or
-                    - list of n_points n_dim-tuples,
-                    - list of n_points vertices
+                
+                1. (n_points, n_dim) array, or
+                
+                2. list of n_points n_dim-tuples,
+                
+                3. list of n_points vertices  
             
             
+            cell [None]: Cell, optionally specify cell in which case:
+                
+                1. the input x is first mapped to the reference, 
+                
+                2. when computing derivatives, shape functions are modified to
+                   account for the coordinate mapping.
+             
+             
             derivatives: tuple, (order,i,j) where 
-                - order specifies the order of the derivative,
-                - i,j specify the variable wrt which we differentiate
-                e.g. (2,0,0) computes d^2p/dx^2 = p_xx,
-                     (2,1,0) computes d^2p/dxdy = p_yx
- 
+                
+                1. order specifies the order of the derivative,
+                
+                2. i,j specify the variable wrt which we differentiate
+                    e.g. (2,0,0) computes d^2p/dx^2 = p_xx,
+                         (2,1,0) computes d^2p/dxdy = p_yx
+                      
                         
             local_dofs: int, list of local dof indices whose entries in
                 range(self.n_dofs).
@@ -519,48 +534,72 @@ class QuadFE(FiniteElement):
                 
         Output: 
         
-        phi: double, (n_points, len(local_dofs)) array of shape functions,
-            evaluated at the given points.
+            phi: double, list of (n_points, len(local_dofs)) arrays of 
+                 (derivatives of ) shape functions, evaluated at the given 
+                 points.
+                 
+                 
+
         """
         #
         # Convert x to array
         #
-        if type(x) is np.ndarray:
-            x_ref = x
-            n_points, n_dim = x_ref.shape 
-        elif type(x) is list:
-            n_points = len(list)
-            if type(x[0]) is tuple:
-                #
-                # Convert tuples to array
-                # 
-                assert all(type(xi) is tuple for xi in x), \
-                    'List entries should all be tuples.'
-                x_ref = np.array(x)
-            elif isinstance(x[0], Vertex):
-                #
-                # Convert Vertex objects to array
-                #
-                assert all(isinstance(xi,Vertex) for xi in x),\
-                    'List entries should all be Vertex class' 
-                n_dim = len(x[0].coordinate())
-                x_ref = np.empty((n_points,n_dim))
-                for i in range(n_points):
-                    x_ref[i,:] = x[i].coordinate()
-            else:        
-                raise Exception('Only lists of tuples or ' + \
-                                'Vertex objects allowed')
+        x = convert_to_array(x)      
+        n_points, dim = x.shape
+        
+        #
+        # Only one derivative specified
+        # 
+        if not type(derivatives) is list:
+            derivatives = [derivatives]
+            is_singleton = True
         else:
-            raise Exception('Only arrays, or lists of tuples'+ \
-                            'or Vertex objects allowed.')
-        
-        
+            is_singleton = False
         #
-        # Check whether points lie in reference domain. 
-        #
-        assert all(x_ref.ravel() >= 0), 'All entries should be nonnegative.'
-        assert all(x_ref.ravel() <= 1), 'All entries should be at most 1.'
-        
+        # Check whether points are valid.
+        # 
+        if cell is None:
+            #
+            # Points should lie in the reference domain 
+            #
+            assert all(x.ravel() >= 0), 'All entries should be nonnegative.'
+            assert all(x.ravel() <= 1), 'All entries should be at most 1.'
+            x_ref = x
+            
+        elif cell is not None:
+            #
+            # Points should lie in the physical domain
+            # 
+            assert all(cell.contains_point(x)), \
+                'Not all points contained in the cell'
+                
+            #
+            # Map points to reference cell
+            # 
+            
+            # Analyze derivative to determine whether to include 
+            # the hessian and/or jacobian.
+            jacobian = any(der[0]==1 or der[0]==2 for der in derivatives)
+            hessian  = any(der[0]==2 for der in derivatives)
+            if hessian:
+                #
+                # Return jacobian and hessian
+                # 
+                x_ref, J, H = \
+                    cell.reference_map(x, jacobian=jacobian, hessian=hessian,\
+                                       mapsto='reference')
+            elif jacobian:
+                #
+                # Return only jacobian
+                # 
+                x_ref, J = \
+                    cell.reference_map(x, jacobian=jacobian,\
+                                       mapsto='reference')
+            else: 
+                #
+                # Return only point
+                # 
+                x_ref = cell.reference_map(x, mapsto='reference')
         #
         # Check local_dof numbers
         # 
@@ -579,29 +618,101 @@ class QuadFE(FiniteElement):
             
             all((i>=0) and (i<=n_dofs) for i in local_dofs),
             'Local dofs not in range.'
-            
-        phi = np.zeros((n_points,n_dofs))
-        if derivatives[0] == 0:
-            #
-            # No derivatives
-            #
-            for i in range(n_dofs):
-                phi[:,i] = self.phi(i,x_ref)  
-        elif derivatives[0] == 1:
-            # 
-            # First derivatives
-            #
-            i_var = derivatives[1]
-            for i in range(n_dofs):
-                phi[:,i] = self.dphi(i,x_ref,var=i_var)
-        elif derivatives[0]==2:
-            #
-            # Second derivatives
-            #         
-            for i in range(n_dofs):
-                phi[:,i] = self.d2phi(i,x_ref,derivatives[1:])
         
-        return phi
+        phi = []    
+        for der in derivatives:
+            p = np.zeros((n_points,n_dofs))
+            if der[0] == 0:
+                #
+                # No derivatives
+                #
+                for i in range(n_dofs):
+                    p[:,i] = self.phi(i, x_ref)  
+            elif der[0] == 1:
+                i_var = der[1]
+                # 
+                # First derivatives
+                #
+                if cell is not None:
+                    if cell.is_rectangle():
+                        #
+                        # Rectangular cells are simpler
+                        # 
+                        dst_dxy = np.array([Ji[i_var,i_var] for Ji in J])
+                        for i in range(n_dofs):
+                            p[:,i] = self.dphi(i, x_ref, var=i_var)
+                            p[:,i] = dst_dxy*p[:,i]
+                    else:
+                        #
+                        # Quadrilateral cells
+                        # 
+                        ds_dxy = np.array([Ji[0,i_var] for Ji in J])
+                        dt_dxy = np.array([Ji[1,i_var] for Ji in J])
+                        for i in range(n_dofs):
+                            dN_ds = self.dphi(i, x_ref, var=0)
+                            dN_dt = self.dphi(i, x_ref, var=1)
+                            p[:,i] = dN_ds*ds_dxy + dN_dt*dt_dxy                            
+                else:
+                    for i in range(n_dofs):
+                        p[:,i] = self.dphi(i, x_ref, var=i_var)
+            elif der[0]==2:
+                #
+                # Second derivatives
+                #
+                i_var, j_var = der[1:]
+                if cell is not None:
+                    if cell.is_rectangle():
+                        #
+                        # Rectangular cell: mixed derivatives 0
+                        # 
+                        dri_dxi = np.array([Ji[i_var,i_var] for Ji in J])
+                        drj_dxj = np.array([Ji[j_var,j_var] for Ji in J])
+                        for i in range(n_dofs):
+                            p[:,i] = \
+                                dri_dxi*drj_dxj*self.d2phi(i, x_ref, der[1:])
+                        
+                    else:
+                        #
+                        # General quadrilateral
+                        # 
+                        # First partial dertivatives of (s,t) wrt xi, xj
+                        s_xi = np.array([Ji[0,i_var] for Ji in J]) 
+                        s_xj = np.array([Ji[0,j_var] for Ji in J])
+                        t_xi = np.array([Ji[1,i_var] for Ji in J])
+                        t_xj = np.array([Ji[1,j_var] for Ji in J])
+                        
+                        # Second mixed partial derivatives of (s,t) wrt xi, xj
+                        s_xixj = np.array([Hi[i_var,j_var,0] for Hi in H])
+                        t_xixj = np.array([Hi[i_var,j_var,1] for Hi in H])
+                        
+                        for i in range(n_dofs):
+                            #
+                            # Reference partial derivatives
+                            # 
+                            N_s = self.dphi(i, x_ref, var=0)
+                            N_t = self.dphi(i, x_ref, var=1)
+                            N_ss = self.d2phi(i, x_ref, (0,0))
+                            N_st = self.d2phi(i, x_ref, (0,1))
+                            N_tt = self.d2phi(i, x_ref, (1,1))
+                            #
+                            # Mapped second derivative
+                            # 
+                            p[:,i] = N_ss*s_xj*s_xi + N_st*t_xj*s_xi +\
+                                     N_s*s_xixj + \
+                                     N_st*s_xj*t_xi + N_tt*t_xj*t_xi +\
+                                     N_t*t_xixj
+                else:
+                    #
+                    # No mapping
+                    # 
+                    for i in range(n_dofs):
+                        p[:,i] = self.d2phi(i, x_ref, der[1:])
+            phi.append(p)
+            
+        if is_singleton:
+            return phi[0]
+        else:
+            return phi
             
             
     def constraint_coefficients(self):
@@ -844,7 +955,7 @@ class Function(object):
         
         eval: Evaluate the function at given set of points
         
-        interpolate: Interpolate a Function on a (different) mesh, element
+        interpolant: Interpolate a Function on a (different) mesh, element
         
         project: Project a Function onto a finite element space defined by
             a mesh, element pair.
@@ -1066,14 +1177,6 @@ class Function(object):
         return self.__dim
     
     
-    def output_dim(self):
-        """
-        Returns the dimensions of the function's output
-        
-        TODO: Implement this 
-        """
-        return 1
-    
     def n_samples(self):
         """
         Returns the number of realizations stored by the function
@@ -1122,9 +1225,11 @@ class Function(object):
         """
         flag = self.__flag
         dim = self.__dim
-        # ---------------------------------------------------------------------
+        
+        # =====================================================================
         # Parse Input
-        # ---------------------------------------------------------------------
+        # =====================================================================
+        
         # Deal with singletons 
         if type(x) is tuple \
         or isinstance(x, Vertex) \
@@ -1137,50 +1242,17 @@ class Function(object):
         #
         # Convert input to array
         # 
-        if type(x) is list:
-            # Points in list
-            if all(isinstance(xi, Vertex) for xi in x):
-                #
-                # All points are of type vertex
-                #
-                assert all(xi.dim==dim for xi in x), \
-                'Dimension of Vertex incompatible with that of Function.'
-                
-                x = [xi.coordinate() for xi in x]
-                x = np.array(x)
-                
-            elif all(type(xi) is tuple for xi in x):
-                #
-                # All points are tuples
-                #
-                assert all(len(xi)==dim for xi in x), \
-                'Dimensions of tuples incompatible with that of Function.'
-                
-                x = np.array(x)
-                
-            else:
-                raise Exception(['For x, use arrays or lists'+\
-                                 'of tuples or vertices.'])
-        
-        elif type(x) is np.ndarray:
-            #
-            # Points in numpy array
-            # 
-            if dim is not None:
-                if len(x.shape)==1:
-                    assert dim==1, 'Input 1D but Function is not univariate.'
-                elif len(x.shape)==2:
-                    assert x.shape[1]==dim,\
-                    'Dimension of array incompatible with that of Function.'
-                else:
-                    raise Exception('Only 1- or 2 dimensional arrays allowed.')  
+        x = convert_to_array(x)
+        assert x.shape[1]==dim, \
+        'Input dimension incompatible with dimension of function.'
             
-        # ---------------------------------------------------------------------
+        # =====================================================================
         # Parse sample size
-        # ---------------------------------------------------------------------
+        # =====================================================================
         if samples is not 'all':
             if type(samples) is int:
                 sample_size = 1
+                samples = [samples]
             else:
                 assert type(samples) is np.ndarray, \
                 'vector specifying samples should be an array'
@@ -1193,9 +1265,9 @@ class Function(object):
                 
                 sample_size = len(samples)  
         
-        # ---------------------------------------------------------------------
+        # =====================================================================
         # Parse function type
-        # ---------------------------------------------------------------------
+        # =====================================================================
         if self.fn_type() == 'explicit':
             #
             # Explicit function
@@ -1230,9 +1302,15 @@ class Function(object):
             # Determine tree nodes to traverse
             # 
             if node is None:
-                node_list = self.dofhandler.mesh.root_node().find_leaves(flag=flag)
+                #
+                # Node not specified
+                # 
+                node_list = self.dofhandler.mesh.root_node().get_leaves(flag=flag)
             else:
-                assert all(node.quadcell().contains_point(x)), \
+                #
+                # Node given
+                # 
+                assert all(node.cell().contains_point(x)), \
                 'Node specified, but not all points contained in node.'
                 node_list = [node]
             #
@@ -1254,11 +1332,11 @@ class Function(object):
                 #
                 # Evaluate shape function at x-values
                 #   
-                cell = node.quadcell()  # TODO: Only works in 2d
+                cell = node.cell()  
                 in_cell = cell.contains_point(x)
                 x_loc = x[in_cell,:]
-                x_ref = cell.map_to_reference(x_loc)
-                phi = self.dofhandler.element.shape(x_ref, derivatives=derivative)
+                phi = self.dofhandler.element.shape(x_loc, cell=cell, \
+                                                    derivatives=derivative)
                 #
                 # Update output vector
                 # 
@@ -1266,12 +1344,7 @@ class Function(object):
                     f_vec[in_cell] = np.dot(phi, f_loc)
                 else:
                     f_vec[in_cell,:] = np.dot(phi, f_loc)
-                                                                     
-            #
-            # Determine multiplier for derivatives (chain rule)
-            # 
-            c = cell.derivative_multiplier(derivative)
-            f_vec *= c
+                                                        
         elif self.fn_type() == 'constant':
             n_samples = self.n_samples()
             
@@ -1294,7 +1367,7 @@ class Function(object):
             return f_vec
         
         
-    def interpolate(self, mesh=None, element=None, flag=None):
+    def interpolant(self, mesh=None, element=None, flag=None):
         """
         Return the interpolant of the function on a (new) mesh/element pair 
         
@@ -1425,19 +1498,25 @@ class Function(object):
         
         if ftype == 'explicit':
             if gtype == 'explicit':
+                #
                 # fg is explicit
+                #
                 if dim == 1:
                     fg_fn = lambda x: self.fn()(x)*g.fn()(x)
                 elif dim == 2:
                     fg_fn = lambda x,y: self.fn()(x,y)*g.fn()(x,y)
                 fg = Function(fg_fn, 'explicit')
             elif gtype == 'nodal':
+                #
                 # fg nodal
+                #
                 x = g.dofhandler.dof_vertices()
                 fg_fn = self.eval(x)*g.fn()
                 fg = Function(fg_fn, 'nodal', dofhandler=g.dofhandler)
             elif gtype == 'constant':
+                #
                 # fg explicit
+                #
                 if dim == 1:
                     fg_fn = lambda x: g.fn()*self.eval(x)
                 elif dim == 2:
@@ -1445,31 +1524,43 @@ class Function(object):
                     
         elif ftype == 'nodal':
             if gtype == 'explicit':
+                #
                 # fg nodal
+                #
                 x = self.dofhandler.dof_vertices()
                 fg_fn = self.fn()*g.eval(x)
                 fg = Function(fg_fn, 'nodal', dofhandler=self.dofhandler)
             elif gtype == 'nodal':
+                #
                 # fg nodal 
-                # TODO: finish
+                # TODO: finish (whose dofs?)
                 pass
             elif gtype == 'constant':
+                #
+                # fg nodal
+                # 
                 fg_fn = g.fn()*self.fn()
                 fg = Function(fg_fn, 'nodal', dofhandler=self.dofhandler)
         elif ftype == 'constant':
             if gtype == 'explicit':
+                #
                 # fg explicit
+                #
                 if g.input_dim() == 1:
                     fg_fn = lambda x: self.fn()*g.fn()(x)
                 elif g.input_dim() == 2:
                     fg_fn = lambda x, y: self.fn()*g.fn()(x,y)
                 fg = Function(fg_fn, 'explicit')
             elif gtype == 'nodal':
+                #
                 # fg nodal
+                #
                 fg_fn = self.fn()*g.fn()
                 fg = Function(fg_fn, 'nodal', dofhandler=g.dofhandler)
             elif gtype == 'constant':
+                #
                 # fg constant
+                #
                 fg_fn = self.fn()*g.fn()
                 fg = Function(fg_fn, 'constant')
         return fg
@@ -1510,11 +1601,14 @@ class DofHandler(object):
         #
         # Ensure the mesh is balanced
         # 
-        assert self.mesh.is_balanced(), \
+        assert self.mesh.root_node().is_balanced(), \
             'Mesh must be balanced before dofs can be distributed.'
             
         if not nested:
-            for node in self.mesh.root_node().find_leaves():
+            #
+            # Only LEAF nodes get dofs
+            # 
+            for node in self.mesh.root_node().get_leaves():
                 # 
                 # Fill in own nodes
                 # 
@@ -1530,8 +1624,11 @@ class DofHandler(object):
                     self.share_dofs_with_neighbors(node)
                     
         else:
-            for node in self.mesh.root_node().traverse_depthwise():
-                if node.type == 'ROOT' and node.grid_size() is not None:
+            #
+            # ALL nodes get dofs
+            # 
+            for node in self.mesh.root_node().traverse(mode='breadth-first'):
+                if node.type == 'ROOT' and node.grid is not None:
                     pass
                 else:       
                     #
@@ -1563,6 +1660,7 @@ class DofHandler(object):
             node: Node, whose global dofs are known
          
         Note: Cannot share dofs with children when children are in a grid
+        TODO: Extend to 1D
         """
         if self.element.element_type() == 'DQ0':
                 # Piecewise constant elements can't share nodes with children
@@ -1661,7 +1759,7 @@ class DofHandler(object):
         # Diagonal directions
         #
         for diag_dir in ['SW','SE','NW','NE']:
-            nb = node.find_neighbor(diag_dir)
+            nb = node.get_neighbor(diag_dir)
             if nb != None:
                 pos = self.pos_to_int(diag_dir)
                 dof = dof_list[pos]
@@ -1687,8 +1785,8 @@ class DofHandler(object):
             opp_dir = opposite[direction]
             n_pos = self.element.pos_on_edge(direction)
             dofs = [dof_list[i] for i in self.pos_to_int(n_pos)]
-            nb = node.find_neighbor(direction)
-            if nb != None:
+            nb = node.get_neighbor(direction)
+            if nb is not None:
                 if not nested and nb.has_children():
                     #
                     # Neighboring cell has children
@@ -1964,7 +2062,7 @@ class DofHandler(object):
             # No node specified, return all dofs of (sub)mesh
             # 
             mesh_dofs = set()
-            for leaf in self.mesh.root_node().find_leaves(flag=flag):
+            for leaf in self.mesh.root_node().get_leaves(flag=flag):
                 mesh_dofs = mesh_dofs.union(self.__global_dofs[leaf])
             return list(mesh_dofs)
             
@@ -1982,7 +2080,7 @@ class DofHandler(object):
             # Count dofs explicitly
             # 
             dof_set = set()
-            for node in self.mesh.root_node().find_leaves(flag=flag):
+            for node in self.mesh.root_node().get_leaves(flag=flag):
                 dof_set.update(self.get_global_dofs(node))
             return len(dof_set)
             
@@ -2002,7 +2100,7 @@ class DofHandler(object):
             # Vertices corresponding to a single Node->QuadCell
             # 
             g_dofs = self.get_global_dofs(node)
-            x = rule.map(node.quadcell(),x=x_ref)
+            x = rule.map(node.cell(),x=x_ref)
         else:
             #
             # Vertices over entire mesh
@@ -2010,9 +2108,9 @@ class DofHandler(object):
             x = np.empty((self.n_dofs(),2))
             x.fill(np.nan)
             
-            for leaf in self.mesh.root_node().find_leaves(flag=flag):
+            for leaf in self.mesh.root_node().get_leaves(flag=flag):
                 g_dofs = self.get_global_dofs(leaf)
-                x[g_dofs,:] = rule.map(leaf.quadcell(),x=x_ref)
+                x[g_dofs,:] = np.array(leaf.cell().reference_map(list(x_ref)))
         return x[np.logical_not(np.isnan(x[:,0])),:]
     
                 
@@ -2037,7 +2135,7 @@ class DofHandler(object):
                 # Look in every direction
                 # 
                 n_dof_pos = self.element.pos_on_edge(direction)
-                nb = node.find_neighbor(direction)
+                nb = node.get_neighbor(direction)
                 if nb != None and nb.has_children():
                     #
                     # Neighbor has children -> resolve their hanging nodes
@@ -2045,7 +2143,7 @@ class DofHandler(object):
                     opp = opposite[direction]
                     for i in range(2):
                         child = nb.children[sub_pos[opp][i]]
-                        if child != None:
+                        if child is not None:
                             #
                             # For each of 2 children, get pos and dof info
                             #  
@@ -2579,8 +2677,8 @@ class System(object):
         self.__n_gauss_1d = n_gauss[0]
         self.__rule_1d = GaussRule(self.__n_gauss_1d,shape='edge')
         self.__rule_2d = GaussRule(self.__n_gauss_2d,shape=element.cell_type())
-        self.__dofhandler = DofHandler(mesh,element)
-        self.__dofhandler.distribute_dofs(nested=nested)
+        self.dofhandler = DofHandler(mesh,element)
+        self.dofhandler.distribute_dofs(nested=nested)
         # Initialize reference shape functions
         dlist = [(0,),(1,0),(1,1),(2,0,0),(2,0,1),(2,1,0),(2,1,1)]
         self.__phi = {'cell':       dict.fromkeys(dlist, None),
@@ -2588,13 +2686,6 @@ class System(object):
                       ('edge','E'): dict.fromkeys(dlist, None),
                       ('edge','S'): dict.fromkeys(dlist, None),
                       ('edge','N'): dict.fromkeys(dlist, None)}  
-    
-    
-    def dofhandler(self):
-        """
-        Returns dofhandler
-        """
-        return self.__dofhandler
     
     
     def assemble(self, bilinear_forms=None, linear_forms=None, 
@@ -2639,7 +2730,7 @@ class System(object):
         TODO: Include support for tensors. 
         TODO: Include option to assemble multiple matrices     
         """        
-        n_nodes = self.__dofhandler.n_dofs()
+        n_nodes = self.dofhandler.n_dofs()
         n_dofs = self.__element.n_dofs()     
         #
         # Determine the forms to assemble
@@ -2674,9 +2765,9 @@ class System(object):
         rows = []
         cols = []
         dir_dofs_encountered = set()
-        for node in self.__mesh.root_node().find_leaves():
-            node_dofs = self.__dofhandler.get_global_dofs(node)
-            cell = node.quadcell()            
+        for node in self.__mesh.root_node().get_leaves():
+            node_dofs = self.dofhandler.get_global_dofs(node)
+            cell = node.cell()            
             #
             # Assemble local system matrices/vectors
             # 
@@ -2834,7 +2925,7 @@ class System(object):
         # Convert A to a lil matrix
         A = A.tolil() 
         
-        hanging_nodes = self.__dofhandler.get_hanging_nodes()
+        hanging_nodes = self.dofhandler.get_hanging_nodes()
         n_rows = A.shape[0]
         for i in range(n_rows):
             #
@@ -2947,30 +3038,38 @@ class System(object):
         
     def n_dofs(self):
         """
-        Return the number of dofs 
+        Return the number of dofs
+        
+        TODO: remove 
         """
-        return self.__dofhandler.n_dofs()
+        return self.dofhandler.n_dofs()
     
     
     def get_global_dofs(self,node):
         """
         Return the degrees of freedom associated with node
+        
+        TODO: remove
         """             
-        return self.__dofhandler.get_global_dofs(node)
+        return self.dofhandler.get_global_dofs(node)
     
     
     def get_edge_dofs(self,node,direction):
         """
         Return the degrees of freedom associated with edge
+        
+        TODO: remove
         """
-        return self.__dofhandler.get_global_dofs(node, direction)
+        return self.dofhandler.get_global_dofs(node, direction)
     
     
     def dof_vertices(self):
         """
         Returns the locations of all degrees of freedom
+        
+        TODO: remove
         """
-        return self.__dofhandler.dof_vertices()
+        return self.dofhandler.dof_vertices()
      
      
     def x_loc(self,cell):
@@ -3155,15 +3254,15 @@ class System(object):
         elif isinstance(f, Function):
             f_vec = f.eval(x)
             
-        elif len(f)==self.__mesh.n_cells():
+        elif len(f)==self.__mesh.n_nodes():
             #
             # Mesh function
             # 
             f_vec = np.empty(x.shape[0])
             f_vec[:] = np.nan
             count = 0
-            for node in self.__mesh.root_node().find_leaves():
-                cell = node.quadcell()
+            for node in self.__mesh.root_node().get_leaves():
+                cell = node.cell()
                 in_cell = cell.contains_point(x)
                 f_vec[in_cell] = f[count]
                 count += 1 
@@ -3173,8 +3272,8 @@ class System(object):
             # 
             f_vec = np.empty(x.shape[0])
             f_vec[:] = np.nan
-            for node in self.__mesh.root_node().find_leaves():
-                cell = node.quadcell()
+            for node in self.__mesh.root_node().get_leaves():
+                cell = node.cell()
                 f_loc = f[self.get_global_dofs(node)]
                 in_cell = cell.contains_point(x)
                 x_loc = x[in_cell,:]
@@ -3214,7 +3313,7 @@ class System(object):
         
             fv: vector of function values, at x points
         """
-        cell = node.quadcell()
+        cell = node.cell()
         #
         # Parse points x
         # 
@@ -3297,7 +3396,7 @@ class System(object):
                             
         """
         assert node.is_linked(), 'Tree node must be linked to cell.'
-        cell = node.quadcell()
+        cell = node.cell()
         #
         # Quadrature weights
         # 
@@ -3477,13 +3576,13 @@ class System(object):
         #    
         # Construct
         # 
-        for node in self.__mesh.root_node().find_leaves(marker_fine):
+        for node in self.__mesh.root_node().get_leaves(marker_fine):
             if node.has_parent(marker_coarse):
                 parent = node.get_parent(marker_coarse)
                 node_dofs = self.__dofhandler.get_global_dofs(node)
                 parent_dofs = self.__dofhandler.get_global_dofs(parent)
                 x = self.__dofhandler.dof_vertices(node)
-                phi = self.shape_eval(cell=parent.quadcell(), x=x)
+                phi = self.shape_eval(cell=parent.cell(), x=x)
                 if u_coarse is not None:
                     #
                     # Update nodal vector

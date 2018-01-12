@@ -345,12 +345,12 @@ class Gmrf(object):
             n_gauss = rule.n_nodes()
             
             # Iterate over mesh nodes: outer loop
-            leaves = mesh.root_node().find_leaves()
+            leaves = mesh.root_node().get_leaves()
             n_nodes = len(leaves)
             for i in range(n_nodes):
                 # Local Gauss nodes and weights
                 xnode = leaves[i]
-                xcell = xnode.quadcell()
+                xcell = xnode.cell()
                 xdofs = dofhandler.get_global_dofs(xnode)
                 n_dofs_loc = len(xdofs)
                 xg = xcell.map(xg_ref) 
@@ -364,7 +364,7 @@ class Gmrf(object):
                 # Iterate over mesh nodes: inner loop
                 for j in range(i,n_nodes):
                     ynode = leaves[j]
-                    ycell = ynode.quadcell()
+                    ycell = ynode.cell()
                     ydofs = dofhandler.get_global_dofs(ynode)
                     yg = xcell.map(xg_ref)
                     w_yg = rule.jacobian(ycell)*w_xg_ref
@@ -731,20 +731,20 @@ class Gmrf(object):
             # Gauss points
             rule = system.cell_rule()
             n_gauss = rule.n_nodes()                  
-            for node_1 in mesh.root_node().find_leaves():
+            for node_1 in mesh.root_node().get_leaves():
                 node_dofs_1 = system.get_global_dofs(node_1)
                 n_dofs_1 = len(node_dofs_1)
-                cell_1 = node_1.quadcell()
+                cell_1 = node_1.cell()
                 
                 
                 weights_1 = rule.jacobian(cell_1)*rule.weights()
                 x_gauss_1 = rule.map(cell_1, x=rule.nodes())
                 phi_1 = system.shape_eval(cell=cell_1)    
                 WPhi_1 = np.diag(weights_1).dot(phi_1)
-                for node_2 in mesh.root_node().find_leaves():
+                for node_2 in mesh.root_node().get_leaves():
                     node_dofs_2 = system.get_global_dofs(node_2)
                     n_dofs_2 = len(node_dofs_2)
-                    cell_2 = node_2.quadcell()
+                    cell_2 = node_2.cell()
                     
                     x_gauss_2 = rule.map(cell_2, x=rule.nodes())
                     weights_2 = rule.jacobian(cell_2)*rule.weights()

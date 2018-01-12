@@ -40,7 +40,7 @@ class TestPlot(unittest.TestCase):
         #
         # Flag a few cells
         # 
-        mesh.unmark(nodes=True)
+        mesh.unmark_all(nodes=True)
         mesh.root_node().children[0,0].mark(2)
         mesh.root_node().children[1,0].mark(1)
         mesh.root_node().children[1,1].children['SW'].mark(3)
@@ -107,11 +107,11 @@ class TestPlot(unittest.TestCase):
         mesh = Mesh.newmesh(grid_size=(5,5))
         mesh.refine()
         for _ in range(4):
-            for leaf in mesh.root_node().find_leaves():
+            for leaf in mesh.root_node().get_leaves():
                 if np.random.rand() < 0.5:
                     leaf.mark('refine')
             mesh.refine('refine')
-            mesh.unmark(nodes='True')
+            mesh.unmark_all(nodes='True')
         mesh.balance()
         # Meshfunction
         fm = []
@@ -147,11 +147,11 @@ class TestPlot(unittest.TestCase):
         mesh = Mesh.newmesh(box=[-1,1,-1,1], grid_size=(2,2))
         mesh.refine()
         for _ in range(4):
-            for leaf in mesh.root_node().find_leaves():
+            for leaf in mesh.root_node().get_leaves():
                 if np.random.rand() < 0.5:
                     leaf.mark('s')
             mesh.refine('s')
-            mesh.unmark(nodes=True)
+            mesh.unmark_all(nodes=True)
         mesh.balance()   
         element = QuadFE(2,'Q1')
         

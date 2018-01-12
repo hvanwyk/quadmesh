@@ -7,7 +7,7 @@ Created on Mar 11, 2017
 import unittest
 
 from gmrf import Gmrf
-from mesh import Mesh
+from mesh import Mesh, Grid
 from fem import QuadFE, DofHandler, System, Function
 import numpy as np
 import scipy.sparse as sp
@@ -99,7 +99,7 @@ class TestGmrf(unittest.TestCase):
                      'exponential', 'matern', 'rational']
         anisotropy = [None, np.diag([2,1])]
         
-        mesh = Mesh.newmesh(grid_size=(20,20))
+        mesh = Mesh(grid=Grid(resolution=(20,20)))
         mesh.refine()
         element = QuadFE(2,'Q1')
         fig = plt.figure()
@@ -141,7 +141,7 @@ class TestGmrf(unittest.TestCase):
         """
         
         """ 
-        mesh = Mesh.newmesh(grid_size=(10,10))
+        mesh = Mesh(grid=Grid(resolution=(10,10)))
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs()
@@ -394,12 +394,12 @@ class TestGmrf(unittest.TestCase):
         (iii) soft constraints. (1) finite elements, (2) finite
         differences.
         """
-        mesh = Mesh.newmesh(grid_size=(10,10))
+        mesh = Mesh(grid=Grid(resolution=(10,10)))
         mesh.refine()
         mesh.record(0)
         for _ in range(2):
-            for leaf in mesh.root_node().find_leaves():
-                x = leaf.quadcell().get_vertices()
+            for leaf in mesh.root_node().get_leaves():
+                x = leaf.cell().get_vertices()
                 if all(x[:,0]>=0.25) and all(x[:,0]<=0.75) and \
                    all(x[:,1]>=0.25) and all(x[:,1]<=0.75):
                     leaf.mark('refine')
@@ -439,7 +439,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Define mesh and element    
         # 
-        mesh = Mesh.newmesh(grid_size=(40,40), box=[0,20,0,20])
+        mesh = Mesh(resolution=(40,40), box=[0,20,0,20])
         mesh.refine()
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh,element)

@@ -4,91 +4,138 @@ Created on Oct 23, 2016
 @author: hans-werner
 '''
 import unittest
-from mesh import Mesh, Node, BiCell, QuadCell, TriCell, Edge, Vertex
-from plot import Plot
-import matplotlib.pyplot as plt
+from fem import GaussRule
+from mesh import Mesh, Grid
+from mesh import BiNode, QuadNode
+from mesh import BiCell, QuadCell
+from mesh import Edge, Vertex
+from mesh import convert_to_array
+#from plot import Plot
+#import matplotlib.pyplot as plt
 import numpy as np
-from collections import deque
+#from collections import deque
+
 
 class TestMesh(unittest.TestCase):
     """
     Test Mesh Class
     """
-    def test_mesh_constructor(self):
-        # =============================
-        # Using given QuadCell and Node
-        # =============================
-        #
-        # Simple
-        # 
-        node = Node()
-        box = [0.,1.,0.,1.] 
-        quadcell = QuadCell(box=box)
-        mesh = Mesh(quadcell=quadcell, root_node=node)
-        self.assertTrue(mesh.root_node()==node,\
-                        'Node not associated with mesh.')
-        self.assertTrue(mesh.root_node().quadcell()==quadcell, \
-                        'QuadCell not associated with mesh.')
+    
+    def test_convert_to_array(self):
+        x = [Vertex((i,)) for i in range(5)]
+        y = convert_to_array(x)
+        self.assertEqual(y.shape, (5,1), 'Incorrect shape.')
+    def test_constructor(self):
         
-        #
-        # Node and Quadcell incompatible
-        # 
-        node = Node(grid_size=(1,2))
-        quadcell = QuadCell(box=box, grid_size=(2,2))
-        self.assertRaises(AssertionError, Mesh, \
-                          quadcell=quadcell, root_node=node)
+        mesh = Mesh(node=QuadNode())
+        self.assertEqual(mesh.dim(),2,'Mesh dimension should be 2.')
+        self.assertIsNone(mesh.grid, 'Mesh has no grid.')
         
-        # ==============================
-        # Using Mesh.newmesh()
-        # ==============================
-        mesh = Mesh.newmesh(box=[0.,2.,0.,1.], grid_size=(2,1))
-        right_box = mesh.root_node().quadcell().box()
-        self.assertEqual(right_box,(0.,2.,0.,1.),'Box should be (0,2,0,1).')
-
+        mesh = Mesh(cell=QuadCell())
+        self.assertEqual(mesh.dim(),2,'Mesh dimension should be 2.')
+        self.assertIsNone(mesh.grid, 'Mesh has no grid.')
         
-        # ==============================
-        # Using Mesh.submesh()
-        # ==============================
-        # TODO: Unfinished - perhaps it's better to work with labels
-        mesh.root_node().mark()
+        mesh = Mesh(grid=Grid(dim=2))
+        self.assertEqual(mesh.dim(),2,'Mesh dimension should be 2.')
+        self.assertIsNotNone(mesh.grid, 'Mesh has a grid.')
+        
+        mesh = Mesh(node=BiNode())
+        self.assertEqual(mesh.dim(),1,'Mesh dimension should be 1.')
+        self.assertIsNone(mesh.grid, 'Mesh has no grid.')
+        
+        mesh = Mesh(cell=BiCell())
+        self.assertEqual(mesh.dim(),1,'Mesh dimension should be 1.')
+        self.assertIsNone(mesh.grid, 'Mesh has no grid.')
+        
+        mesh = Mesh(grid=Grid(dim=1))
+        self.assertEqual(mesh.dim(),1,'Mesh dimension should be 1.')
+        self.assertIsNotNone(mesh.grid, 'Mesh has a grid.')
+    
+    
+    def test_depth(self):
+        mesh = Mesh()
+        for _ in range(3):
+            mesh.refine()
+        self.assertEqual(mesh.depth(),3,\
+                         'Refined mesh thrice, depth should be 3.')
+        
+    
+    def test_root_node(self):
+        node = QuadNode()
+        mesh = Mesh(node=node)
+        for _ in range(4):
+            mesh.refine()
+        self.assertEqual(mesh.root_node(), node, \
+                         'Did not return root node.')
+        
+    
+    def test_n_cells(self):
+        mesh = Mesh()
+        self.assertEqual(mesh.n_nodes(),1,\
+                         'Mesh consists only of one node.')
+        
         mesh.refine()
-        #print(mesh.root_node().children.keys())
-        mesh.root_node().children[(1,0)].mark()
-        mesh.refine()
-        #print(mesh.root_node().children.keys())
-        #print(mesh.root_node().children[(1,0)].children.keys())
-        #submesh = Mesh.submesh(mesh)
+        self.assertEqual(mesh.n_nodes(),4,\
+                         'Mesh should now have 4 nodes')
         
-        #_,ax = plt.subplots()
-        #submesh.plot_quadmesh(ax)
-        #mesh.plot_quadmesh(ax)
-        #
-        # Make sure submesh is independent
-        # 
-        mesh.unmark(nodes=True)
-        mesh.root_node().children[(1,0)].mark()
+        mesh.root_node().children['SW'].mark(1)
+        self.assertEqual(mesh.n_nodes(flag=1),1,\
+                         'Mesh should have 1 marked node.')
+        
+        
+    def test_coarsen(self):
+        mesh = Mesh()
+        self.assertFalse(mesh.root_node().has_children(),\
+                         'ROOT node has no children.')
+        mesh.refine()
+        self.assertTrue(mesh.root_node().has_children(),\
+                         'ROOT node now has children.')
         mesh.coarsen()
-    
+        self.assertFalse(mesh.root_node().has_children(),\
+                         'ROOT node has no children.')
         
-    def test_mesh_box(self):
-        pass
-    
-    
-    def test_mesh_grid_size(self):
-        pass 
-    
-    
-    def test_mesh_depth(self):
-        pass
-    
-    
-    def test_mesh_get_number_of_cells(self):
-        pass
-    
+        # 
+        # Mark 1 child -> not enough to coarsen
+        #  
+        mesh = Mesh()
+        root = mesh.root_node()
+        mesh.refine()
+        root.children['SW'].mark(1)
+        mesh.coarsen(flag=1)
+        child_count = 0
+        for _ in root.get_children():
+            child_count += 1
+        self.assertEqual(child_count,4, 'Root should still have 4 children.')
         
-    def test_mesh_root_node(self):
-        pass
-    
+        #
+        # Mark all children -> enough to coarsen
+        # 
+        mesh = Mesh()
+        mesh.refine()
+        root = mesh.root_node()
+        for child in root.get_children():
+            child.mark(flag=1)
+        mesh.coarsen(flag=1)
+        self.assertFalse(root.has_children(),'Coarsening should have occured.')
+        
+        #
+        # Unflagged mesh with multiple layers
+        # 
+        mesh = Mesh()
+        mesh.refine()
+        node = mesh.root_node()
+        for _ in range(3):
+            node.children['SW'].mark(flag=1)
+            mesh.refine(flag=1)
+            node = node.children['SW']
+        tree_depth = mesh.root_node().tree_depth()
+        mesh.coarsen()
+        self.assertEqual(mesh.root_node().tree_depth(),tree_depth-1,\
+                         'Tree depth should have reduced by 1.')
+        
+        
+        
+    '''   
     
     def test_mesh_boundary(self):
         # TODO: Finish
@@ -97,7 +144,7 @@ class TestMesh(unittest.TestCase):
         mesh.refine()
         mesh.root_node().children['SW'].remove()
         mesh.root_node().info()
-        for leaf in mesh.root_node().find_leaves():
+        for leaf in mesh.root_node().get_leaves():
             leaf.info()
         
         fig, ax = plt.subplots()
@@ -107,15 +154,7 @@ class TestMesh(unittest.TestCase):
         print(len(mesh.boundary('vertices')))
         print(len(mesh.boundary('edges')))
         print(len(mesh.boundary('quadcells')))
-        """
-
-    def test_mesh_tree_structure(self):
-        pass
-    
-    
-    def test_mesh_quadcell(self):
-        pass
-    
+        """    
     
     def test_mesh_iter_quadcells(self):
         #
@@ -204,25 +243,13 @@ class TestMesh(unittest.TestCase):
         mesh.refine()
         # Refine mesh arbitrarily (most likely not balanced)
         for _ in range(3):
-            for leaf in mesh.root_node().find_leaves():
+            for leaf in mesh.root_node().get_leaves():
                 if np.random.rand() < 0.5:
                     leaf.mark(1)
             mesh.refine(1)
         #print('Before balancing', mesh.is_balanced())
         mesh.balance()
         #print('After balancing', mesh.is_balanced())
-    
-    
-    def test_mesh_is_balanced(self):
-        pass
-    
-        
-    def test_mesh_refine(self):
-        pass
-    
-    
-    def test_coarsen(self):
-        pass
     
     
     def test_record(self):
@@ -241,10 +268,10 @@ class TestMesh(unittest.TestCase):
         mesh.record()
         """
         print("FINE MESH")
-        for node in mesh.root_node().find_leaves(1):
+        for node in mesh.root_node().get_leaves(1):
             node.info()
         print("COARSE MESH")
-        for node in mesh.root_node().find_leaves(0):
+        for node in mesh.root_node().get_leaves(0):
             node.info()
         """
         
@@ -252,8 +279,95 @@ class TestMesh(unittest.TestCase):
     
     def test_mesh_plot_trimesh(self):
         pass
-    
+    '''
      
+     
+class TestGrid(unittest.TestCase):
+    """
+    Test Grid class
+    """
+    def test_constructor(self):
+        #
+        # 1D regular grid
+        # 
+        grid = Grid(box=(0,1), resolution=(2,))
+        
+        self.assertEqual(grid.get_neighbor(0,'R'), 1, \
+                         'Right Neighbor of interval 0 is interval 1')
+        self.assertIsNone(grid.get_neighbor(0,'L'),\
+                        'Left neighbor should be None')
+        self.assertTrue(all([tpe=='interval' for tpe in grid.faces['type']]), \
+                         'Grid face type should be interval.')
+        self.assertEqual(grid.faces['n'],2, \
+                         'There should be two faces.')
+        self.assertEqual(grid.points['n'], 3, \
+                         'There should be 3 points.')
+        
+        #
+        # 2D cartesian grid
+        #
+        grid = Grid(box=(0,1,0,1), resolution=(2,2))
+        #
+        # Check vertices of first face
+        #
+        f0 = grid.faces['connectivity'][0]
+        xy_loc = [(0,0),(0.5,0),(0.5,0.5),(0,0.5)]
+        for i in range(4):
+            xy = grid.points['coordinates'][f0[i]]
+            self.assertAlmostEqual(xy.coordinate(), xy_loc[i], 8, \
+                                   'First cell vertices incorrect')
+        #
+        # Check neighbors
+        # 
+        directions = ['E','W','N','NE']
+        nbrs = [1, None, 2, 3]
+        for i in range(4):
+            direction = directions[i]
+            self.assertEqual(grid.get_neighbor(0,direction),nbrs[i],\
+                             'Incorrect Neighbor.')
+        
+        #
+        # Check boundary edges
+        # 
+        boundary_edges = grid.get_boundary_edges()
+        for i_e in boundary_edges:
+            i_he = grid.edges['half_edge'][i_e]
+            i_fc = grid.half_edges['face'][i_he]
+            direction = grid.half_edges['position'][i_he]
+            self.assertIsNone(grid.get_neighbor(i_fc, direction),\
+                              'Neighbor of boundary edge should be None')
+         
+        
+        #
+        # 2D Quadrilateral grid
+        # 
+        file_path = '/home/hans-werner/git/quadmesh/debug/circle_mesh.msh'
+        grid = Grid(file_path=file_path)
+        #
+        # Check boundary edges
+        # 
+        boundary_edges = grid.get_boundary_edges()
+        for i_e in boundary_edges:
+            i_he = grid.edges['half_edge'][i_e]
+            i_fc = grid.half_edges['face'][i_he]
+            direction = grid.half_edges['position'][i_he]
+            self.assertIsNone(grid.get_neighbor(i_fc, direction),\
+                              'Neighbor of boundary edge should be None')
+        
+        #
+        # 2D Triangular grid
+        file_path = '/home/hans-werner/Dropbox/work/code/matlab/'+\
+                    'finite_elements/mesh/gmsh_matlab/examples/'+\
+                    'quarter_disk.msh'
+        grid = Grid(file_path=file_path)
+        boundary_edges = grid.get_boundary_edges()
+        for i_e in boundary_edges:
+            i_he = grid.edges['half_edge'][i_e]
+            self.assertEqual(grid.half_edges['twin'][i_he],-1,\
+                             'Neighbor of boundary half-edge should be -1.')
+        #print(len(grid['faces']['tags']['phys']))
+        
+    
 class TestNode(unittest.TestCase):
     """
     Test Node Class
@@ -263,116 +377,160 @@ class TestNode(unittest.TestCase):
         #
         # Children standard
         #
-        node = Node()
-        self.assertEqual(node.depth, 0, 'Node depth should be zero.')
-        self.assertTrue(node.type=='ROOT', 'Node should be of type ROOT.')
-        generic_children = {'SW':None, 'SE':None, 'NE':None, 'NW':None}
-        self.assertEqual(node.children, generic_children, 'Incorrect form for children.')
-        self.assertEqual(node.grid_size(), None, 'Child grid size should be None.')
+        for node in [BiNode(), QuadNode()]:
+            self.assertEqual(node.depth, 0, 'Node depth should be zero.')
+            self.assertTrue(node.type=='ROOT', 'Node should be of type ROOT.')
+            if isinstance(node, BiNode):
+                generic_children = {'L': None, 'R': None}
+            elif isinstance(node, QuadNode):
+                generic_children = {'SW':None, 'SE':None, 'NE':None, 'NW':None}
+            self.assertEqual(node.children, generic_children, \
+                             'Incorrect form for children.')
+        self.assertEqual(node.grid, None, \
+                         'Child grid should be None.')
         #
         # Children in grid
-        # 
-        node = Node(grid_size=(2,2))
-        self.assertEqual(node.grid_size(),(2,2), 'Child grid size should be (2,2).')
+        #
+        binode = BiNode(grid=Grid(resolution=(2,)))
+        self.assertEqual(binode.grid_size(),2, 
+                         'Child grid size should be 2.')
+        grid = Grid(resolution=(2,2))
+        quadnode = QuadNode(grid=grid)
+        self.assertEqual(quadnode.grid.resolution,(2,2), 
+                         'Child grid resolution should be (2,2).')
     
     
-    def test_node_copy(self):
-        node = Node(grid_size=(2,1))
+    def test_copy(self):
+        pass
+        '''
+        node = QuadNode(grid_size=(2,1))
         node.split()
         e_child = node.children[(1,0)]
         e_child.split()
         e_ne_child = e_child.children['NE']
         e_ne_child.split()
         cnode = node.copy()    
-        
-        
-    def test_node_is_gridded(self):
+        self.assertNotEqual(cnode, node, \
+                            'Copied node should be different from original.')
+        '''
+    
+    def test_grid_size(self):
         pass
-    
-    
-    def test_node_grid_size(self):
-        pass
-    
-    
-    def test_node_find_neighbor(self):
-        node = Node()
+       
+     
+    def test_tree_depth(self):       
+        count = 0
+        for node in [QuadNode(), BiNode()]:
+            positions = ['SW', 'L']
+            inode = node
+            for _ in range(5):
+                inode.split()
+                inode = inode.children[positions[count]]
+            count += 1
+            self.assertEqual(node.tree_depth(), 5, 
+                             'Tree depth should be 5.')
+         
+         
+    def test_traverse(self):        
+        #
+        # 1D
+        #  
+        # Standard
+        node = BiNode()
         node.split()
-        sw_child = node.children['SW']
-        sw_child.split()
-        nw_grandchild = sw_child.children['NW']
-        ne_grandchild = sw_child.children['NE']
-        #
-        # Neighbor exterior to parent cell
-        #  
-        self.assertEqual(nw_grandchild.find_neighbor('N'), node.children['NW'], 
-                         'Neighbor should be NW child of ROOT cell.')
-        self.assertEqual(ne_grandchild.find_neighbor('NE'), node.children['NE'], 
-                         'Neighbor should be NE child of ROOT cell.')
-        #
-        # Neighbor is sibling cell
-        #  
-        self.assertEqual(nw_grandchild.find_neighbor('S'), sw_child.children['SW'], 
-                         'Neighbor should be SW sibling.')
-        self.assertEqual(nw_grandchild.find_neighbor('SE'),sw_child.children['SE'],
-                         'Neighbor should be SE sibling.')
-        #
-        # Neighbor is None
-        # 
-        self.assertEqual(nw_grandchild.find_neighbor('W'), None, 
-                         'Neighbor should be None.')
-        self.assertEqual(nw_grandchild.find_neighbor('NE'),None,
-                         'Neighbor should be None.')
+        node.children['L'].split()
+        node.children['L'].children['R'].remove()
+        addresses = {'breadth-first': [[],[0],[1],[0,0]], 
+                     'depth-first': [[],[0],[0,0],[1]]}
+ 
+        for mode in ['depth-first','breadth-first']:
+            count = 0
+            for leaf in node.traverse(mode=mode):
+                self.assertEqual(leaf.address, addresses[mode][count],
+                                 'BiNode traversal incorrect.')
+                count += 1
         
-        node.children['NW'].split()
-        self.assertEqual(nw_grandchild.find_neighbor('NE'),
-                         node.children['NW'].children['SE'],
-                         'Neighbor should be the NW-SE grandchild.')
-    
-        
-    def test_node_traverse_tree(self):
-        pass
-    
-    
-    def test_traverse_depthwise(self):
         #
         # Standard Node
         # 
-        node = Node()
+        node = QuadNode()
         node.split()
         node.children['SE'].split()
         node.children['SE'].children['NW'].remove()
         addresses = [[],[0],[1],[2],[3],[1,0],[1,1],[1,3]]
         count = 0
-        for n in node.traverse_depthwise():
+        for n in node.traverse(mode='breadth-first'):
             self.assertEqual(n.address, addresses[count],\
                              'Incorrect address.')
             count += 1
          
         #
         # Gridded Node
-        #     
-        node = Node(grid_size=(3,3))
+        #  
+        grid = Grid(resolution=(3,3))   
+        node = QuadNode(grid=grid)
+        
         node.split()
         addresses = [[]]
-        for j in range(3):
-            for i in range(3):
-                addresses.append([(i,j)])
         count = 0
-        for n in node.traverse_depthwise():
+        for _ in range(3):
+            for _ in range(3):
+                addresses.append([count])
+                count += 1
+        count = 0
+        for n in node.traverse(mode='breadth-first'):
             self.assertEqual(n.address, addresses[count],\
                              'Incorrect address.')
             count += 1
-            
-        
        
             
-    def test_node_find_leaves(self):
+    def test_get_leaves(self):
         #
-        # Single node
+        # 1D
         # 
-        node = Node()
-        leaves = node.find_leaves()
-        self.assertEqual(leaves, [node], 'Node should be its own leaf.')
+        node = BiNode()
+        leaves = node.get_leaves()
+        self.assertEqual(leaves, [node], 'Cell should be its own leaf.')
+        
+        #
+        # Split cell and L child - find leaves
+        # 
+        node.split()
+        l_child = node.children['L']
+        l_child.split()
+        leaves = node.get_leaves()
+        self.assertEqual(len(leaves),3, 'Cell should have 3 leaves.')
+        
+        #
+        # Depth first order
+        # 
+        addresses_depth_first = [[0,0],[0,1],[1]]
+        leaves = node.get_leaves(nested=False)
+        for i in range(len(leaves)):
+            leaf = leaves[i]
+            self.assertEqual(leaf.address, addresses_depth_first[i],
+                             'Incorrect order, depth first search.')
+        #
+        # Breadth first order
+        # 
+        addresses_breadth_first = [[1],[0,0],[0,1]]
+        leaves = node.get_leaves(nested=True)
+        for i in range(len(leaves)):
+            leaf = leaves[i]
+            self.assertEqual(leaf.address, addresses_breadth_first[i],
+                             'Incorrect order, breadth first search.')
+        
+        
+        node.children['L'].children['L'].mark('1')
+        node.children['R'].mark('1')
+        leaves = node.get_leaves(flag='1', nested='True')
+        self.assertEqual(len(leaves),2, \
+                         'There should only be 2 flagged leaves')
+        
+        #
+        # 2D
+        # 
+        node = QuadNode()
         
         #
         # Split cell and SW child - find leaves
@@ -380,53 +538,54 @@ class TestNode(unittest.TestCase):
         node.split()
         sw_child = node.children['SW']
         sw_child.split()
-        leaves = node.find_leaves()
+        leaves = node.get_leaves()
         self.assertEqual(len(leaves), 7, 'Node should have 7 leaves.')
         
         #
         # Nested traversal
         #
-        leaves = node.find_leaves(nested=True)
+        leaves = node.get_leaves(nested=True)
         self.assertEqual(leaves[0].address,[1], \
             'The first leaf in the nested enumeration should have address [1]')
         
-        leaves = node.find_leaves()
+        leaves = node.get_leaves()
         self.assertEqual(leaves[0].address, [0,0], \
                          'First leaf in un-nested enumeration should be [0,0].')
         
         #
         # Merge SW child - find leaves
         # 
-        sw_child.merge()
-        leaves = node.find_leaves()
+        for child in sw_child.get_children():
+            child.remove()
+        leaves = node.get_leaves()
         self.assertEqual(len(leaves), 4, 'Node should have 4 leaves.')
-    
         
         
-        
-    def test_node_find_marked_leaves(self):
-        node = Node()
+        #
+        # Marked Leaves
+        # 
+        node = QuadNode()
         node.mark(1)
-        self.assertTrue(node in node.find_leaves(flag=1), \
+        self.assertTrue(node in node.get_leaves(flag=1), \
                         'Node should be a marked leaf node.')
-        self.assertTrue(node in node.find_leaves(), \
+        self.assertTrue(node in node.get_leaves(), \
                         'Node should be a marked leaf node.')
     
         node.split()
         sw_child = node.children['SW']
         sw_child.split()
         sw_child.mark(1)
-        self.assertEqual(node.find_leaves(flag=1), \
+        self.assertEqual(node.get_leaves(flag=1), \
                          [sw_child], 'SW child should be only marked leaf')
         
         sw_child.remove()
-        self.assertEqual(node.find_leaves(flag=1), \
+        self.assertEqual(node.get_leaves(flag=1), \
                          [node], 'node should be only marked leaf')
         
         #
         # Nested traversal
         # 
-        node = Node()
+        node = QuadNode()
         node.split()
         for child in node.get_children():
             child.split()
@@ -434,26 +593,33 @@ class TestNode(unittest.TestCase):
         node.children['SE'].mark(1, recursive=True)
         node.children['NE'].mark(1)
         
-        leaves = node.find_leaves(nested=True, flag=1)
+        leaves = node.get_leaves(nested=True, flag=1)
         self.assertEqual(len(leaves), 5, 
                          'This tree has 5 flagged LEAF nodes.')
         self.assertEqual(leaves[0], node.children['NE'], 
                          'The first leaf should be the NE child.')
         self.assertEqual(leaves[3], node.children['SE'].children['NW'],
                          '4th flagged leaf should be SE-NW grandchild.')
+                
         
-        
-    def test_node_find_root(self):
-        node = Node()
-        self.assertEqual(node.get_root(), node, 'Node is its own root.')
-        
-        node.split()
-        sw_child = node.children['SW']
-        self.assertEqual(sw_child.get_root(), node, 'Node is its childs root.')
+    def test_get_root(self):
+        count = 0
+        pos = ['L','SE']
+        for node in [BiNode(), QuadNode()]:
+            self.assertEqual(node.get_root(), node, 
+                             'Node is its own root.')
+            node.split()
+            child = node.children[pos[count]]
+            self.assertEqual(child.get_root(), node, 
+                             'Node is its childs root.')
+            count +=1
     
     
-    def test_node_find_node(self):
-        node = Node()
+    def test_find_node(self):
+        # TODO: 1D
+        
+        # 2D
+        node = QuadNode()
         node.split()
         sw_child = node.children['SW']
         sw_child.split()
@@ -469,18 +635,22 @@ class TestNode(unittest.TestCase):
         sw_ne_grandchild = sw_child.children['NE']
         self.assertEqual(node.find_node(node_address), sw_ne_grandchild, \
                          'SW, NE grandchild has address [0,3].')
-        node = Node(grid_size=(2,2))
+        grid = Grid(resolution=(2,2))
+        node = QuadNode(grid=grid)
         node.split()
-        lb_child = node.children[(0,0)]
+        lb_child = node.children[0]
         lb_child.split()
-        address = [(0,0),3]
+        address = [0,3]
         lb_ne_grandchild = lb_child.children['NE']
         self.assertEqual(node.find_node(address), lb_ne_grandchild, \
                          'Left bottom, NE grandchild has address [(0,0),2].')
         
         
-    def test_node_has_children(self):
-        node = Node()
+    def test_has_children(self):
+        # TODO: Test 1D
+        
+        # 2D
+        node = QuadNode()
         node.split()
         node.children['NW'].remove()
         node.children['SE'].mark(1)
@@ -498,9 +668,12 @@ class TestNode(unittest.TestCase):
     
     
     def test_get_children(self):
-        mesh = Mesh.newmesh()
-        mesh.refine()
-        node = mesh.root_node()
+        
+        # TODO: 1D
+
+        # 2D
+        node = QuadNode()
+        node.split()
         count = 0
         pos = ['SW','SE','NW','NE']
         for child in node.get_children():
@@ -515,13 +688,11 @@ class TestNode(unittest.TestCase):
         count = 0 
         for child in node.get_children():
             count += 1
-        self.assertEqual(count, 3, 'There should only be 3 children left.')
-         
-         
+        self.assertEqual(count, 3, 'There should only be 3 children left.')   
         #
         # Node with no children   
         # 
-        node = Node()
+        node = QuadNode()
         for child in node.get_children():
             print('Hallo')
             
@@ -533,222 +704,320 @@ class TestNode(unittest.TestCase):
                          'No marked children because there are none.')
         
         
-    def test_node_has_parent(self):
-        node = Node()
-        node.split()
-        for child in node.get_children():
-            self.assertTrue(child.has_parent(),\
-                            'Nodes children should have a parent.')  
-        node.mark(1)
-        for child in node.get_children():
-            self.assertTrue(child.has_parent(1), \
-                            'Children should have parent labeled 1.')
-            self.assertFalse(child.has_parent(2),\
-                             'Children do not have parent labeled 2.')
-        
-        self.assertFalse(node.has_parent(1), \
-                         'Root node should not have parents of type 1.')
-        self.assertFalse(node.has_parent(), \
-                         'Root node should not have parents.')
-        
-        
-    def test_node_get_parent(self):
-        node = Node()
-        node.mark(1)
-        node.split()
-        sw_child = node.children['SW']
-        sw_child.split()
-        self.assertEqual(node,sw_child.children['NE'].get_parent(1),\
-                         'First marked ancestor should be node.')     
-        sw_child.mark(1)
-        self.assertEqual(sw_child,sw_child.children['NE'].get_parent(1),\
-                         'First marked ancestor should be sw_child.')
+    def test_has_parent(self):
+        for node in [BiNode(), QuadNode()]:
+            node.split()
+            for child in node.get_children():
+                self.assertTrue(child.has_parent(),\
+                                'Nodes children should have a parent.')  
+            node.mark(1)
+            for child in node.get_children():
+                self.assertTrue(child.has_parent(1), \
+                                'Children should have parent labeled 1.')
+                self.assertFalse(child.has_parent(2),\
+                                 'Children do not have parent labeled 2.')
+            
+            self.assertFalse(node.has_parent(1), \
+                             'Root node should not have parents of type 1.')
+            self.assertFalse(node.has_parent(), \
+                             'Root node should not have parents.')
+            
         
         
         
-    def test_node_in_grid(self):
+    def test_get_parent(self):
+        count = 0
+        pos1 = ['L','SW']
+        pos2 = ['R','NE']
+        for node in [BiNode(), QuadNode()]:            
+            node.mark(1)
+            node.split()
+            child = node.children[pos1[count]]
+            child.split()
+            self.assertEqual(node,child.children[pos2[count]].get_parent(1),\
+                             'First marked ancestor should be node.')     
+            child.mark(1)
+            self.assertEqual(child,child.children[pos2[count]].get_parent(1),\
+                             'First marked ancestor should be child.')
+            count += 1
+        
+        
+    def test_node_in_grid(self):  
         #
-        # Standard positioning
+        # 2D
         # 
-        node = Node()
+        node = QuadNode()
         node.split()
         sw_child = node.children['SW']
         self.assertFalse(sw_child.in_grid(), 'Child is not in grid.')
         
-        #
-        # Grid positioning
-        # 
-        node = Node(grid_size=(2,2))
+        grid = Grid(resolution=(2,2))
+        node = QuadNode(grid=grid)
         node.split()
-        lb_child = node.children[(0,0)]
+        lb_child = node.children[0]
         self.assertTrue(lb_child.in_grid(), 'Child lives in grid.')
     
+        #
+        # 1D
+        #
+        node = BiNode()
+        node.split()
+        r_child = node.children['R']
+        self.assertFalse(r_child.in_grid(), 'Child is not in grid.')
+        
+        node = BiNode(grid=Grid(resolution=(2,)))
+        node.split()
+        l_child = node.children[0]
+        self.assertTrue(l_child.in_grid(), 'Child lives in grid.')
+    
+        
     def test_node_is_marked(self):
-        node = Node()
-        node.mark()
-        self.assertTrue(node.is_marked(),'Node should be marked.')
-        node.unmark()
-        self.assertFalse(node.is_marked(),'Node should not be marked.')
+        for node in [BiNode(), QuadNode()]:
+            node.mark()
+            self.assertTrue(node.is_marked(),'Node should be marked.')
+            node.unmark()
+            self.assertFalse(node.is_marked(),'Node should not be marked.')
         
         
-    def test_node_mark(self):
-        node = Node()
-        node.mark()
-        self.assertTrue(node.is_marked(),'Node should be marked.')
+    def test_mark(self):
+        for node in [BiNode(), QuadNode()]:
+            node.mark()
+            self.assertTrue(node.is_marked(),'Node should be marked.')
     
     
-    def test_node_mark_support(self):
-        pass
-    
-    
-    def test_node_unmark(self):
+    def test_unmark(self):
         #
         # 3 Generations of marked nodes
         # 
-        node = Node()
-        node.mark()
-        node.split()
-        sw_child = node.children['SW']
-        sw_child.mark()
-        sw_child.split()
-        sw_sw_child = sw_child.children['SW']
-        sw_sw_child.mark()
+        pos1 = ['L','SW']
+        pos2 = ['L','SW']
+        count = 0
+        for node in [BiNode(), QuadNode()]:
+            
+            node.mark()
+            node.split()
+            child = node.children[pos1[count]]
+            child.mark()
+            child.split()
+            grandchild = child.children[pos2[count]]
+            grandchild.mark()
+            
+            #
+            # Unmark sw_child node
+            #
+            child.unmark()
+            self.assertTrue(node.is_marked(), \
+                            'Node should still be marked.')
+            self.assertFalse(child.is_marked(),\
+                             'Child should be unmarked.')
+            self.assertTrue(grandchild.is_marked(),\
+                            'Grandchild should be marked.')
+              
+            # Reset
+            child.mark()
+            
+            #
+            # Unmark recursively
+            # 
+            child.unmark(recursive=True)
+            self.assertTrue(node.is_marked(), \
+                            'Node should still be marked.')
+            self.assertFalse(child.is_marked(),\
+                             'Child should be unmarked.')
+            self.assertFalse(grandchild.is_marked(),\
+                             'Grandchild should be unmarked.')
+            
+            # Reset
+            grandchild.mark()
+            child.mark()
+            
+            #
+            # Unmark all
+            # 
+            node.unmark(recursive=True)
+            self.assertFalse(node.is_marked(), 'Node should still be marked.')
+            self.assertFalse(child.is_marked(),'Child should be unmarked.')
+            self.assertFalse(grandchild.is_marked(),'Grandchild should be marked.')
         
-        #
-        # Unmark sw_child node
-        #
-        sw_child.unmark()
-        self.assertTrue(node.is_marked(), 'Node should still be marked.')
-        self.assertFalse(sw_child.is_marked(),'SW child should be unmarked.')
-        self.assertTrue(sw_sw_child.is_marked(),'SWSW grandchild should be marked.')
-        
-        # Reset
-        sw_child.mark()
-        
-        #
-        # Unmark recursively
-        # 
-        sw_child.unmark(recursive=True)
-        self.assertTrue(node.is_marked(), 'Node should still be marked.')
-        self.assertFalse(sw_child.is_marked(),'SW child should be unmarked.')
-        self.assertFalse(sw_sw_child.is_marked(),'SWSW grandchild should be unmarked.')
-        
-        # Reset
-        sw_sw_child.mark()
-        sw_child.mark()
-        
-        #
-        # Unmark all
-        # 
-        node.unmark(recursive=True)
-        self.assertFalse(node.is_marked(), 'Node should still be marked.')
-        self.assertFalse(sw_child.is_marked(),'SW child should be unmarked.')
-        self.assertFalse(sw_sw_child.is_marked(),'SWSW grandchild should be marked.')
+            count += 1
     
     
-    def test_node_is_linked(self):
+    
+    def test_is_linked(self):
         pass
     
     
-    def test_node_link(self):
+    def test_link(self):
         pass
     
     
-    def test_node_unlink(self):
+    def test_unlink(self):
         pass
     
 
-    def test_quadcell(self):
-        pass
-    
-    
-    def add_tricells(self):
-        pass
-            
-            
-    def has_tricells(self):
+    def test_cell(self):
         pass
     
         
     def test_node_merge(self):
-        node = Node()
-        node.split()
-        node.merge()
-        self.assertFalse(node.has_children(),'Node should not have children.')
-    
-        node = Node(grid_size=(2,2))
-        node.split()
-        node.merge()
-        self.assertFalse(node.has_children(),'Node should not have children.')
+        for node in [BiNode(), QuadNode()]:
+            node.split()
+            node.merge()
+            self.assertFalse(node.has_children(),
+                             'Node should not have children.')
+        grid = Grid(resolution=(2,2))
+        for node in [BiNode(grid=Grid(resolution=(2,))), QuadNode(grid=grid)]:
+            node.split()
+            node.merge()
+            self.assertFalse(node.has_children(),\
+                             'Node should not have children.')
         
         
-    def test_node_remove(self):
-        node = Node()
-        node.split()
-        node.children['SW'].remove()
-        self.assertEqual(node.children['SW'],None,'Node should have been removed.')
+    def test_remove(self):
+        pos = ['L','SW']
+        count = 0
+        for node in [BiNode(), QuadNode()]:
+            node.split()
+            node.children[pos[count]].remove()
+            self.assertEqual(node.children[pos[count]],None,\
+                             'Node should have been removed.')
+            count += 1
         
-        node = Node(grid_size=(2,2))
+        # Gridded
+        
+        grid = Grid(resolution=(2,))
+        node = BiNode(grid=grid)
         node.split()
-        node.children[(0,0)].remove()
-        self.assertEqual(node.children[(0,0)],None, 'Node should have been removed.')
+        node.children[0].remove()
+        self.assertEqual(node.children[0],None,\
+                         'Child 0 should have been removed.')
+        grid = Grid(resolution=(2,2))    
+        node = QuadNode(grid=grid)
+        node.split()
+        node.children[0].remove()
+        self.assertEqual(node.children[0],None, \
+                         'Node should have been removed.')
     
     
     def test_node_split(self):
-        node = Node()
-        node.split()
-        self.assertTrue(node.has_children(),'Split node should have children.')
+        for node in [BiNode(), QuadNode()]:
+            node.split()
+            self.assertTrue(node.has_children(),\
+                            'Split node should have children.')
+
+
+class TestBiNode(unittest.TestCase):
+    """
+    Test the BiNode subclass of Node
+    """
+    def test_find_neighbor(self):
+        binode = BiNode()
+        self.assertIsNone(binode.get_neighbor('L'), \
+                          'neighbor should be None.')
         
-            
-    def test_node_is_balanced(self):
-        node = Node()
+        binode.split()
+        l_child = binode.children['L']
+        self.assertEqual(l_child.get_neighbor('R'), binode.children['R'],\
+                         'neighbor interior to parent cell not identified.')
+        
+        l_child.split()
+        lr_grandchild = l_child.children['R']
+        self.assertEqual(lr_grandchild.get_neighbor('R'), 
+                         binode.children['R'], 
+                         'neighbor exterior to parent cell not identified.')
+        
+        binode.children['R'].split()
+        self.assertEqual(lr_grandchild.get_neighbor('R'),\
+                         binode.children['R'].children['L'],\
+                         'neighbor exterior to parent cell not identified.')
+        
+        binode = BiNode(grid=Grid(resolution=(3,)))
+        
+        binode.split()
+        lchild = binode.children[0]
+        self.assertEqual(lchild.get_neighbor('L'),None,
+                         'neighbor of gridded cell not identified as None.')
+        
+        self.assertEqual(lchild.get_neighbor('R'),binode.children[1],
+                         'neighbor of gridded cell not identified.')
+
+  
+    def test_pos2id(self):
+        binode = BiNode(grid=Grid(resolution=(3,)))
+        binode.split()
+        self.assertEqual(binode.pos2id(0), 0, 
+                         'Position in grid incorrectly converted.')
+        
+        
+class TestQuadNode(unittest.TestCase):
+    """
+    Test the QuadNode class/a subclass of Node
+    """
+
+    def test_node_find_neighbor(self):
+        # 2D
+        node = QuadNode()
         node.split()
         sw_child = node.children['SW']
         sw_child.split()
-        sw_ne_grandchild = sw_child.children['NE']
-        sw_ne_grandchild.split()
-        self.assertFalse(node.is_balanced(),'Tree is not balanced.')
-        
-        node.balance()
-        self.assertTrue(node.is_balanced(),'Tree is balanced.')
-        
+        nw_grandchild = sw_child.children['NW']
+        ne_grandchild = sw_child.children['NE']
         #
-        # Test 2
+        # Neighbor exterior to parent cell
+        #  
+        self.assertEqual(nw_grandchild.get_neighbor('N'), node.children['NW'], 
+                         'Neighbor should be NW child of ROOT cell.')
+        self.assertEqual(ne_grandchild.get_neighbor('NE'), node.children['NE'], 
+                         'Neighbor should be NE child of ROOT cell.')
+        #
+        # Neighbor is sibling cell
+        #  
+        self.assertEqual(nw_grandchild.get_neighbor('S'), sw_child.children['SW'], 
+                         'Neighbor should be SW sibling.')
+        self.assertEqual(nw_grandchild.get_neighbor('SE'),sw_child.children['SE'],
+                         'Neighbor should be SE sibling.')
+        #
+        # Neighbor is None
         # 
-        node = Node()
+        self.assertEqual(nw_grandchild.get_neighbor('W'), None, 
+                         'Neighbor should be None.')
+        self.assertEqual(nw_grandchild.get_neighbor('NE'),None,
+                         'Neighbor should be None.')
+        
+        node.children['NW'].split()
+        self.assertEqual(nw_grandchild.get_neighbor('NE'),
+                         node.children['NW'].children['SE'],
+                         'Neighbor should be the NW-SE grandchild.')
+        
+            
+    def test_node_pos2id(self):
+        node = QuadNode()
         node.split()
-        # Split node arbitrarily (most likely not balanced)
-        for _ in range(3):
-            for leaf in node.find_leaves():
-                if np.random.rand() < 0.5:
-                    leaf.split()
-        node.balance()
-        self.assertTrue(node.is_balanced(),'Node should be balanced.')
-        """
-        Debugging: 
+        node = node.children['SW']
+        self.assertEqual(node.pos2id('SW'),0,'sw -> 0.')
+        self.assertEqual(node.pos2id('SE'),1,'se -> 1.')
+        self.assertEqual(node.pos2id('NW'),2,'nw -> 2.')
+        self.assertEqual(node.pos2id('NE'),3,'ne -> 3.')
         
-        if not node.is_balanced():
-            for leaf in node.find_leaves():
-                for direction in ['N','S','E','W']:
-                    nb = leaf.find_neighbor(direction)
-                    if nb is not None and nb.has_children():
-                        for child in nb.children.values():
-                            if child.type != 'LEAF':
-                                print('child is not leaf')
-                                print('Node:')
-                                leaf.info()
-                                print('\n\nNeighbor:')
-                                nb.info()
-                                print('\n\nChild:')
-                                child.info()
-                                for gchild in child.get_children():
-                                    print('\n Grandchild:')
-                                    gchild.info()
-        """
+        self.assertRaises(Exception, node.pos2id, (0,0))       
+        self.assertRaises(Exception, node.pos2id, [0,0])
         
         
-    def test_node_balance(self):
-        node = Node()
+    def test_node_id2pos(self):
+        node = QuadNode()
+        node.split()
+        node = node.children['SW']
+        self.assertEqual(node.id2pos(0),'SW','sw <- 0.')
+        self.assertEqual(node.id2pos(1),'SE','se <- 1.')
+        self.assertEqual(node.id2pos(2),'NW','nw <- 2.')
+        self.assertEqual(node.id2pos(3),'NE','ne <- 3.')
+        
+        self.assertRaises(Exception, node.id2pos, (0,0))       
+        self.assertRaises(Exception, node.id2pos, [0,0])
+        
+
+    def test_balance(self):
+        node = QuadNode()
         node.split()
         sw_child = node.children['SW']
         sw_child.split()
@@ -765,13 +1034,60 @@ class TestNode(unittest.TestCase):
                          'NW child should have children after balance.')
         self.assertTrue(node.children['SE'].has_children(),\
                          'SE child should have children after balance.')
+
+
+    def test_is_balanced(self):
+        node = QuadNode()
+        node.split()
+        sw_child = node.children['SW']
+        sw_child.split()
+        sw_ne_grandchild = sw_child.children['NE']
+        sw_ne_grandchild.split()
+        self.assertFalse(node.is_balanced(),'Tree is not balanced.')
         
+        node.balance()
+        self.assertTrue(node.is_balanced(),'Tree is balanced.')
+        
+        #
+        # Test 2
+        # 
+        node = QuadNode()
+        node.split()
+        # Split node arbitrarily (most likely not balanced)
+        for _ in range(3):
+            for leaf in node.get_leaves():
+                if np.random.rand() < 0.5:
+                    leaf.split()
+        node.balance()
+        self.assertTrue(node.is_balanced(),'Node should be balanced.')
+        """
+        Debugging: 
+        
+        if not node.is_balanced():
+            for leaf in node.get_leaves():
+                for direction in ['N','S','E','W']:
+                    nb = leaf.get_neighbor(direction)
+                    if nb is not None and nb.has_children():
+                        for child in nb.children.values():
+                            if child.type != 'LEAF':
+                                print('child is not leaf')
+                                print('Node:')
+                                leaf.info()
+                                print('\n\nNeighbor:')
+                                nb.info()
+                                print('\n\nChild:')
+                                child.info()
+                                for gchild in child.get_children():
+                                    print('\n Grandchild:')
+                                    gchild.info()
+        """
+    
     
     def test_node_remove_supports(self):
         #
         # Split and balance
         # 
-        node = Node()
+        node = QuadNode()
         node.split()
         sw_child = node.children['SW']
         sw_child.split()
@@ -788,49 +1104,9 @@ class TestNode(unittest.TestCase):
         self.assertFalse(node.children['NW'].has_children(),\
                          'NW child should not have children after coarsening.')
         self.assertFalse(node.children['SE'].has_children(),\
-                         'SE child should not have children after coarsening.')
+                         'SE child should not have children after coarsening.') 
         
-        
-    def test_node_pos2id(self):
-        node = Node()
-        self.assertEqual(node.pos2id('SW'),0,'sw -> 0.')
-        self.assertEqual(node.pos2id('SE'),1,'se -> 1.')
-        self.assertEqual(node.pos2id('NW'),2,'nw -> 2.')
-        self.assertEqual(node.pos2id('NE'),3,'ne -> 3.')
-        
-        self.assertEqual(node.pos2id((0,0)),(0,0),'(0,0) -> (0,0).')       
-        self.assertRaises(Exception, node.pos2id, [0,0])
-        
-    def test_node_id2pos(self):
-        node = Node()
-        self.assertEqual(node.id2pos(0),'SW','sw <- 0.')
-        self.assertEqual(node.id2pos(1),'SE','se <- 1.')
-        self.assertEqual(node.id2pos(2),'NW','nw <- 2.')
-        self.assertEqual(node.id2pos(3),'NE','ne <- 3.')
-        
-        self.assertEqual(node.id2pos((0,0)),(0,0),'(0,0) -> (0,0).')       
-        self.assertRaises(Exception, node.id2pos, [0,0])
-
-
-class TestBiNode(unittest.TestCase):
-    """
-    Test the BiNode subclass of Node
-    """
-    pass
-
-    
-class TestQuadNode(unittest.TestCase):
-    """
-    Test the QuadNode class/a subclass of Node
-    """
-    def test_is_balanced(self):
-        pass
-    
-    def test_balance(self):
-        pass
-
-
-
+           
 class TestCell(unittest.TestCase):
     """
     Test Cell Class
@@ -874,7 +1150,7 @@ class TestCell(unittest.TestCase):
         
         
         #
-        # Standard Node
+        # Standard QuadCell
         # 
         cell = QuadCell()
         cell.split()
@@ -887,21 +1163,6 @@ class TestCell(unittest.TestCase):
                              'Incorrect address.')
             count += 1
          
-        #
-        # Gridded Node
-        #     
-        cell = QuadCell(grid_size=(3,3))
-        cell.split()
-        addresses = [[]]
-        for j in range(3):
-            for i in range(3):
-                addresses.append([(i,j)])
-        count = 0
-        for n in cell.traverse(mode='breadth-first'):
-            self.assertEqual(n.address, addresses[count],\
-                             'Incorrect address.')
-            count += 1
-            
     
         
     def test_find_leaves(self):
@@ -909,7 +1170,7 @@ class TestCell(unittest.TestCase):
         # 1D
         # 
         cell = BiCell()
-        leaves = cell.find_leaves()
+        leaves = cell.get_leaves()
         self.assertEqual(leaves, [cell], 'Cell should be its own leaf.')
         
         #
@@ -918,14 +1179,14 @@ class TestCell(unittest.TestCase):
         cell.split()
         l_child = cell.children['L']
         l_child.split()
-        leaves = cell.find_leaves()
+        leaves = cell.get_leaves()
         self.assertEqual(len(leaves),3, 'Cell should have 3 leaves.')
         
         #
         # Depth first order
         # 
         addresses_depth_first = [[0,0],[0,1],[1]]
-        leaves = cell.find_leaves(nested=False)
+        leaves = cell.get_leaves(nested=False)
         for i in range(len(leaves)):
             leaf = leaves[i]
             self.assertEqual(leaf.address, addresses_depth_first[i],
@@ -934,7 +1195,7 @@ class TestCell(unittest.TestCase):
         # Breadth first order
         # 
         addresses_breadth_first = [[1],[0,0],[0,1]]
-        leaves = cell.find_leaves(nested=True)
+        leaves = cell.get_leaves(nested=True)
         for i in range(len(leaves)):
             leaf = leaves[i]
             self.assertEqual(leaf.address, addresses_breadth_first[i],
@@ -943,7 +1204,7 @@ class TestCell(unittest.TestCase):
         
         cell.children['L'].children['L'].mark('1')
         cell.children['R'].mark('1')
-        leaves = cell.find_leaves(flag='1', nested='True')
+        leaves = cell.get_leaves(flag='1', nested='True')
         self.assertEqual(len(leaves),2, \
                          'There should only be 2 flagged leaves')
     
@@ -958,17 +1219,17 @@ class TestCell(unittest.TestCase):
         cell.split()
         sw_child = cell.children['SW']
         sw_child.split()
-        leaves = cell.find_leaves()
+        leaves = cell.get_leaves()
         self.assertEqual(len(leaves), 7, 'Node should have 7 leaves.')
         
         #
         # Nested traversal
         #
-        leaves = cell.find_leaves(nested=True)
+        leaves = cell.get_leaves(nested=True)
         self.assertEqual(leaves[0].address,[1], \
             'The first leaf in the nested enumeration should have address [1]')
         
-        leaves = cell.find_leaves()
+        leaves = cell.get_leaves()
         self.assertEqual(leaves[0].address, [0,0], \
                          'First leaf in un-nested enumeration should be [0,0].')
         
@@ -977,7 +1238,7 @@ class TestCell(unittest.TestCase):
         # 
         for child in sw_child.get_children():
             child.remove()
-        leaves = cell.find_leaves()
+        leaves = cell.get_leaves()
         self.assertEqual(len(leaves), 4, 'Node should have 4 leaves.')
         
     
@@ -985,7 +1246,7 @@ class TestCell(unittest.TestCase):
         pass
     
     
-    def test_find_root(self):
+    def test_get_root(self):
         for rootcell in [BiCell(), QuadCell()]:
             cell = rootcell
             for _ in range(10):
@@ -1050,48 +1311,41 @@ class TestBiCell(unittest.TestCase):
     def test_constructor(self):
         pass
     
-    def test_box(self):
+    def test_area(self):
         bicell = BiCell()
-        self.assertEqual((0,1),bicell.box(), \
-                        'box incorrect: default bicell')
-    
-        bicell = BiCell(box=[-10,2])
-        self.assertEqual((-10,2), bicell.box(), \
-                         'box incorrect: box specified')
-        
-        self.assertRaises(AssertionError, BiCell, box =[2,-1])
-        
+        self.assertEqual(bicell.area(), 1, \
+                         'area incorrect: default bicell')
         
     def test_find_neighbor(self):
         bicell = BiCell()
-        self.assertIsNone(bicell.find_neighbor('L'), \
+        self.assertIsNone(bicell.get_neighbor('L'), \
                           'neighbor should be None.')
         
         bicell.split()
         l_child = bicell.children['L']
-        self.assertEqual(l_child.find_neighbor('R'), bicell.children['R'],\
+        self.assertEqual(l_child.get_neighbor('R'), bicell.children['R'],\
                          'neighbor interior to parent cell not identified.')
         
         l_child.split()
         lr_grandchild = l_child.children['R']
-        self.assertEqual(lr_grandchild.find_neighbor('R'), 
+        self.assertEqual(lr_grandchild.get_neighbor('R'), 
                          bicell.children['R'], 
                          'neighbor exterior to parent cell not identified.')
         
         bicell.children['R'].split()
-        self.assertEqual(lr_grandchild.find_neighbor('R'),\
+        self.assertEqual(lr_grandchild.get_neighbor('R'),\
                          bicell.children['R'].children['L'],\
                          'neighbor exterior to parent cell not identified.')
-        
+        """
         bicell = BiCell(grid_size=3)
         bicell.split()
         lchild = bicell.children[0]
-        self.assertEqual(lchild.find_neighbor('L'),None,
+        self.assertEqual(lchild.get_neighbor('L'),None,
                          'neighbor of gridded cell not identified as None.')
         
-        self.assertEqual(lchild.find_neighbor('R'),bicell.children[1],
+        self.assertEqual(lchild.get_neighbor('R'),bicell.children[1],
                          'neighbor of gridded cell not identified.')
-        
+        """
         
     def test_get_root(self):
         bicell = BiCell()
@@ -1121,24 +1375,24 @@ class TestBiCell(unittest.TestCase):
                          'Smallest cell containing point incorrectly detrmnd')
     
     
-    def test_map_to_reference(self):
-        bicell = BiCell(box=[-2,10])
-        self.assertTrue(np.allclose(bicell.map_to_reference([-2,10]),\
-                                    np.array([0,1])), \
-                        'Points incorrectly mapped to reference.')
-    
-    def test_map_from_reference(self):
-        bicell = BiCell(box=[-2,10])
-        self.assertTrue(np.allclose(bicell.map_from_reference([0,1]),\
-                                    np.array([-2,10])),
+    def test_reference_map(self):
+        #
+        # Backward Map
+        #
+        bicell = BiCell(corner_vertices=[-2,10])
+        y, jac = bicell.reference_map([-2,10], jacobian=True, mapsto='reference') 
+        self.assertTrue(np.allclose(y, np.array([0,1])),\
+            'Points incorrectly mapped to reference.')
+        self.assertAlmostEqual(jac[0], 1/12,'Derivative incorrectly computed.')
+        
+        #
+        # Forward Map
+        # 
+        bicell = BiCell(corner_vertices=[-2,10])
+        y, jac = bicell.reference_map([0,1], jacobian=True, mapsto='physical')
+        self.assertTrue(np.allclose(y, np.array([-2,10])),\
                         'Points incorrectly mapped from reference.')
-                        
-    
-    def test_derivative_multiplier(self):
-        bicell = BiCell(box=[-2,10])
-        self.assertEqual(bicell.derivative_multiplier(derivative=(2,)),
-                         (1/12)**2,
-                         'Derivative multiplier incorrect.')
+        self.assertAlmostEqual(jac[0], 12,'Derivative incorrectly computed.')
     
     
     def test_split(self):
@@ -1155,18 +1409,20 @@ class TestBiCell(unittest.TestCase):
 
         
         # gridded
-        bicell = BiCell(grid_size=3)
+        grid = Grid(dim=1, resolution=(3,))
+        bicell = BiCell(grid=grid, position=0)
         self.assertFalse(bicell.has_children(), 
                          'Bicell should not have children')
         bicell.split()
         count = 0
         for _ in bicell.get_children():
             count += 1
-        self.assertEqual(count, 3, 'Bicell should have 3 children.')
+        self.assertEqual(count, 2, 'Bicell should have 3 children.')
     
     
     def test_pos2id(self):
-        bicell = BiCell(grid_size=3)
+        grid = Grid(dim=1, resolution=(3,))
+        bicell = BiCell(grid=grid, position=0)
         bicell.split()
         self.assertEqual(bicell.pos2id(0), 0, 
                          'Position in grid incorrectly converted.')
@@ -1176,7 +1432,9 @@ class TestQuadCell(unittest.TestCase):
     """
     Test QuadCell Class
     """
-    def test_quadcell_constructor(self):
+    def test_constructor(self):
+        # TODO: unfinished
+        
         # Define basic QuadCell
         box = [0.,1.,0.,1.]
         Q1 = QuadCell()
@@ -1201,7 +1459,7 @@ class TestQuadCell(unittest.TestCase):
         print('-'*10)
         print('Neighbors')
         for direction in ['N','S','E','W']:
-            nb = q2002.find_neighbor(direction)
+            nb = q2002.get_neighbor(direction)
             print('{0}: {1}'.format(direction, repr(nb.box())))
             
         q2002.split()
@@ -1218,19 +1476,57 @@ class TestQuadCell(unittest.TestCase):
         #plt.plot(x,numpy.sin(x))
         plt.show()
         """        
+    def test_area(self):
+        #
+        # Standard Quadcell
+        # 
+        cell = QuadCell()
+        self.assertEqual(cell.area(), 1, 'Area should be 1: default cell.')
         
-    def test_quadcell_mark(self):
+        # TODO: test nonstandard case
+        
+    def test_is_rectangle(self):
+        #
+        # Standard QuadCell
+        # 
+        cell = QuadCell()
+        self.assertTrue(cell.is_rectangle(),'Cell should be a rectangle')
+        
+        #
+        # Non-rectangular cell
+        # 
+        cnr_vs = [Vertex((0,0)), Vertex((1,1)), Vertex((0,2)), Vertex((0,1))]
+        cell = QuadCell(corner_vertices=cnr_vs)
+        self.assertFalse(cell.is_rectangle(), 'Cell should not be a rectangle')
+        
+        #
+        # Rectangular cell
+        # 
+        cnr_vs = [Vertex((0,0)), Vertex((2,0)), Vertex((2,5)), Vertex((0,5))]
+        cell = QuadCell(corner_vertices=cnr_vs)
+        self.assertTrue(cell.is_rectangle(), 'Cell should be a rectangle')
+        
+        #
+        # Cell in regular grid
+        #
+        grid = Grid(box=[0,1,0,1], resolution=(2,4))
+        cell = QuadCell(position=0, grid=grid)
+        self.assertTrue(cell.is_rectangle(), 'Cell should be a rectangle')
+        
+        
+    def test_mark(self):
         box = [0.,1.,0.,1.]
-        qcell = QuadCell(box=box)
+        qcell = QuadCell(corner_vertices=box)
         qcell.mark()
         self.assertTrue(qcell.is_marked(),'Quadcell should be marked.')
 
-    def test_quadcell_unmark(self):
+
+    def test_unmark(self):
         #
         # 3 Generations of marked cells
         # 
         box = [0.,1.,0.,1.]
-        qcell = QuadCell(box=box)
+        qcell = QuadCell(corner_vertices=box)
         qcell.mark()
         qcell.split()
         sw_child = qcell.children['SW']
@@ -1271,31 +1567,209 @@ class TestQuadCell(unittest.TestCase):
         self.assertFalse(sw_sw_child.is_marked(), 'SW-SW child should not be marked')
        
     
-    def test_quadcell_normal(self):
+    def test_unit_normal(self):
         box = [0.,1.,0.,1.]
-        qc = QuadCell(box=box)
+        qc = QuadCell(corner_vertices=box)
         ew = qc.get_edges('W')
         ee = qc.get_edges('E')
         es = qc.get_edges('S')
         en = qc.get_edges('N')
-        self.assertEqual(np.sum(np.array([-1.,0])-qc.normal(ew)),0.0, 
+        self.assertEqual(np.sum(np.array([-1.,0])-qc.unit_normal(ew)),0.0, 
                          'Unit normal should be [-1,0].')
-        self.assertEqual(np.sum(np.array([1.,0])-qc.normal(ee)),0.0, 
+        self.assertEqual(np.sum(np.array([1.,0])-qc.unit_normal(ee)),0.0, 
                          'Unit normal should be [1,0].')
-        self.assertEqual(np.sum(np.array([0.,-1.])-qc.normal(es)),0.0, 
+        self.assertEqual(np.sum(np.array([0.,-1.])-qc.unit_normal(es)),0.0, 
                          'Unit normal should be [0,-1].')
-        self.assertEqual(np.sum(np.array([0.,1.])-qc.normal(en)),0.0, 
+        self.assertEqual(np.sum(np.array([0.,1.])-qc.unit_normal(en)),0.0, 
                          'Unit normal should be [0,1].')
 
+    
+        cnr = [Vertex((0,0)), Vertex((3,1)), Vertex((2,3)), Vertex((-1,1))]
+        cell = QuadCell(corner_vertices=cnr)
+        edge = cell.edges[('SW','SE')]
+        self.assertTrue(np.allclose(cell.unit_normal(edge), 
+                                    1/np.sqrt(10)*np.array([1,-3])), 
+                        'Unit normal should be [1,-3]/sqrt(10)')
+        
+    
+    def test_contains_point(self):
+        v_sw = Vertex((0,0))
+        v_se = Vertex((3,1))
+        v_ne = Vertex((2,3))
+        v_nw = Vertex((-1,1))
+        cell = QuadCell(corner_vertices=[v_sw, v_se, v_ne, v_nw])
+        
+        points = [(1,1),(3,0),(-0.5,0.5)]
+        in_cell = cell.contains_point(points)
+        
+        self.assertTrue(in_cell[0],'Point (1,1) lies in cell.')
+        self.assertFalse(in_cell[1], 'Point (3,0) lies outside cell.')
+        self.assertTrue(in_cell[2], 'Point (-0.5,0.5) lies on cell boundary.')
+    
+    
+    def test_intersects_line_segment(self):
+        v_sw = Vertex((0,0))
+        v_se = Vertex((3,1))
+        v_ne = Vertex((2,3))
+        v_nw = Vertex((-1,1))
+        cell = QuadCell(corner_vertices=[v_sw, v_se, v_ne, v_nw])
+        
+        #
+        # Line beginning in cell and ending outside
+        # 
+        line_1 = [(1,1),(3,0)]
+        self.assertTrue(cell.intersects_line_segment(line_1),\
+                        'Cell should intersect line segment.')
+        #
+        # Line inside cell
+        #
+        line_2 = [(1,1),(1.1,1.1)]
+        self.assertTrue(cell.intersects_line_segment(line_2),\
+                        'Cell contains line segment.')
+        #
+        # Line outside cell
+        # 
+        line_3 = [(3,0),(5,6)]
+        self.assertFalse(cell.intersects_line_segment(line_3),\
+                         'Cell does not intersect line segment.')
+   
+   
+    def test_reference_map(self):
+        v_sw = Vertex((0,0))
+        v_se = Vertex((3,1))
+        v_ne = Vertex((2,3))
+        v_nw = Vertex((-1,1))
+        cell = QuadCell(corner_vertices=[v_sw, v_se, v_ne, v_nw])
+        
+        #
+        # Map corner vertices of reference cell to physical vertices
+        #
+        y_refs = np.array([[0,0],[1,0],[1,1],[0,1]])
+        x = list(cell.get_vertices(pos='corners', as_array=True))
+        x_phys = cell.reference_map(list(y_refs))
+        self.assertTrue(np.allclose(np.array(x),x_phys),\
+                        'Mapped vertices should coincide '+\
+                        'with physical cell vertices.')
+        
+        #
+        # Jacobian: Area of cell by integration
+        #  
+        rule_2d = GaussRule(order=4, shape='quadrilateral')
+        r = rule_2d.nodes()
+        wg = rule_2d.weights()
+        _, jac = cell.reference_map(list(r), jacobian=True)
+        area = 0
+        for i in range(4):
+            j = jac[i]
+            w = wg[i]
+            area += np.abs(np.linalg.det(j))*w
+        self.assertAlmostEqual(cell.area(), area, 7,\
+                               'Area computed via numerical quadrature '+\
+                               'not close to actual area')
+        #
+        # Try different formats
+        # 
+        # Array
+        x = np.array(x)
+        x_ref = cell.reference_map(x, mapsto='reference')
+        self.assertTrue(np.allclose(y_refs, np.array(x_ref)),\
+                        'Map array to reference: incorrect output.')
+        # Single point
+        x = x[0,:]
+        x_ref = cell.reference_map(x, mapsto='reference')
+        self.assertTrue(np.allclose(x, x_ref))
+        
+        #
+        # Map corner vertices to reference points
+        #
+        x = cell.get_vertices(pos='corners', as_array=True)
+        y = cell.reference_map(x, mapsto='reference')
+        self.assertTrue(np.allclose(y, y_refs), \
+                        'Corner vertices should map '+\
+                        'onto (0,0),(1,0),(1,1),(0,1).')
+         
+        #
+        # Map random points in [0,1]^2 onto cell and back again
+        # 
+        # Generate random points
+        t = np.random.rand(5)
+        s = np.random.rand(5)
+        x = np.array([s,t]).T
+        
+        # Map to physical cell
+        x_phy = cell.reference_map(x)
+        
+        # Check whether points are contained in cell
+        in_cell = cell.contains_point(x_phy)
+        self.assertTrue(all(in_cell), \
+                        'All points mapped from [0,1]^2 '+\
+                        'should be contained in the cell.')
+        
+        # Map back to reference cell
+        x_ref = cell.reference_map(x_phy, mapsto='reference')
+        self.assertTrue(np.allclose(np.array(x_ref), np.array(x)),\
+                        'Points mapped to physical cell and back should '+\
+                        'be unchanged.')
+        
 
-          
-class TestTriCell(unittest.TestCase):
-    """
-    Test TriCell Class
-    """
-    pass
+        #
+        # Compute the hessian and compare with finite difference approximation 
+        #
+        h = 1e-8
+        x = np.array([[0.5, 0.5],[0.5+h,0.5],[0.5-h,0.5],
+                      [0.5,0.5+h],[0.5,0.5-h]])
+        
+        x_ref, J, H  = cell.reference_map(x, mapsto='reference', 
+                                          hessian=True, jacobian=True)
+        
+        # sxx
+        sxx_fd = (J[1][0,0]-J[2][0,0])/(2*h)
+        sxx    = H[0][0,0,0]  
+        self.assertAlmostEqual(sxx_fd, sxx, 7, \
+                               'Hessian calculation not close to '+\
+                               'finite difference approximation')
+        
+        
+        # syx
+        syx_fd = (J[1][0,1]-J[2][0,1])/(2*h)
+        sxy    = H[0][0,1,0]
+        syx    = H[0][1,0,0]
+        self.assertAlmostEqual(sxy, syx, 7, 'Mixed derivatives not equal.')
+        self.assertAlmostEqual(syx_fd, sxy, 7, \
+                               'Hessian calculation not close to '+\
+                               'finite difference approximation')
+        
+        # syy
+        syy_fd = (J[3][0,1]-J[4][0,1])/(2*h)
+        syy    = H[0][1,1,0]
+        self.assertAlmostEqual(syy_fd, syy, 7, \
+                               'Hessian calculation not close to '+\
+                               'finite difference approximation')
 
-
+        # txx
+        txx_fd = (J[1][1,0]-J[2][1,0])/(2*h)
+        txx = H[0][0,0,1]
+        self.assertAlmostEqual(txx_fd, txx, 7, \
+                               'Hessian calculation not close to '+\
+                               'finite difference approximation')
+        
+        # txy
+        txy_fd = (J[3][1,0]-J[4][1,0])/(2*h)
+        txy    = H[0][0,1,1]
+        tyx    = H[0][1,0,1]
+        self.assertAlmostEqual(txy, tyx, 7, 'Mixed derivatives not equal.')
+        self.assertAlmostEqual(txy_fd, txy, 7, \
+                               'Hessian calculation not close to '+\
+                               'finite difference approximation')
+        
+        # tyy
+        tyy_fd = (J[3][1,1]-J[4][1,1])/(2*h)
+        tyy    = H[0][1,1,1] 
+        self.assertAlmostEqual(tyy_fd, tyy, 7, \
+                               'Hessian calculation not close to '+\
+                               'finite difference approximation')
+        
+        
 class TestEdge(unittest.TestCase):
     """
     Test Edge Class
@@ -1307,7 +1781,10 @@ class TestVertex(unittest.TestCase):
     """
     Test Vertex Class
     """
-    pass
+    def test_dim(self):
+        pass
+        
+        
  
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testNode']
