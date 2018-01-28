@@ -1380,6 +1380,7 @@ class Grid(object):
         # ---------------------------------------------------------------------
         # Assign Directions to half-edges (only for quadrilaterals)
         # ---------------------------------------------------------------------
+        # TODO: This is folly, it won't work.
         first_half_edge = True
         directions = ['S','E','N','W']
         opposite  = {'S':'N', 'N':'S', 'W':'E', 'E':'W'}
@@ -1465,6 +1466,7 @@ class Grid(object):
             
             direction: str, ['L','R'] for a 1D grid or 
                 ['N','S','E','W'] (or combinations) for a 2D grid
+                
         """
         if self.dim() == 1:
             #
@@ -3319,7 +3321,7 @@ class QuadNode(Node):
                             #  
                             for direction2 in ['N', 'S', 'E', 'W']:
                                 nb = leaf.get_neighbor(direction2)
-                                if (nb != None) and \
+                                if (nb is not None) and \
                                    (nb.type == 'LEAF') and \
                                    (nb.depth < leaf.depth):
                                     leaves.add(nb)
@@ -5892,6 +5894,88 @@ class QuadCell(Cell):
         else:
             raise Exception('Unrecognized format.')
         
+
+class HalfEdge(object):
+    """
+    Description: Half-Edge in Quadtree mesh
+    
+    Attributes:
+    
+        base: Vertex, at base 
+        
+        head: Vertex, at head
+        
+        twin: HalfEdge, in adjoining cell pointing from head to base 
+        
+        cell: QuadCell, lying to half edge's left 
+        
+    Methods:
+    
+    
+    """ 
+    def __init__(self, base, head, cell, previous=None, nxt=None, twin=None):
+        """
+        Constructor
+        
+        Inputs:
+        
+            base: Vertex, at beginning
+            
+            head: Vertex, at end
+            
+            cell: QuadCell, lying to the left of half edge
+            
+            twin: Half-Edge, in adjoining cell pointing from head to base
+        """
+        self.__base = base
+        self.__head = head
+        self.__cell = cell
+        self.__previous = previous
+        self.__next = nxt
+        self.__twin = twin
+    
+        
+    def base(self):
+        """
+        Returns half-edge's base vertex
+        """
+        return self.__base
+    
+    
+    def head(self):
+        """
+        Returns half-edge's head vertex
+        """
+        return self.__head
+    
+    
+    def cell(self):
+        """
+        Returns the cell containing half-edge
+        """
+        return self.__cell
+    
+    
+    def twin(self):
+        """
+        Returns the half-edge's twin
+        """
+        return self.__twin
+    
+    
+    def next(self):
+        """
+        Returns the next half-edge, whose base is current head
+        """
+        return self.__next
+    
+    
+    def previous(self):
+        """
+        Returns previous half-edge, whose head is current base
+        """
+        return self.__previous
+    
                
 class Edge(object):
     '''
