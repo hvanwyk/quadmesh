@@ -6,7 +6,7 @@ Created on Feb 24, 2017
 
 import unittest
 from plot import Plot
-from mesh import Mesh
+from mesh import Mesh, Grid
 from fem import System, QuadFE
 import matplotlib.pyplot as plt
 #from mpl_toolkits.mplot3d import *  # @UnresolvedImport
@@ -29,7 +29,8 @@ class TestPlot(unittest.TestCase):
         #
         # Define mesh
         # 
-        mesh = Mesh.newmesh(grid_size=(2,2))
+        grid = Grid(resolution=(2,2))
+        mesh = Mesh(grid=grid)
         mesh.refine()      
         mesh.root_node().children[1,1].mark(1)
         mesh.refine(1)
@@ -81,7 +82,7 @@ class TestPlot(unittest.TestCase):
         
         fig, ax = plt.subplots(3,3)
         plot = Plot()
-        mesh = Mesh.newmesh(grid_size=(5,5))
+        mesh = Mesh(grid=Grid(resolution=(5,5)))
         mesh.refine()
         
         #
@@ -104,7 +105,7 @@ class TestPlot(unittest.TestCase):
         # Mesh function
         #
         # Refine mesh 
-        mesh = Mesh.newmesh(grid_size=(5,5))
+        mesh = Mesh(grid=Grid(resolution=(5,5)))
         mesh.refine()
         for _ in range(4):
             for leaf in mesh.root_node().get_leaves():
@@ -144,8 +145,8 @@ class TestPlot(unittest.TestCase):
         Surface plots
         """
         f = lambda x,y: np.exp(-x**2-y**2)
-        mesh = Mesh.newmesh(box=[-1,1,-1,1], grid_size=(2,2))
-        mesh.refine()
+        grid = Grid(resolution=(2,2), box=[-1,1,-1,1])
+        mesh = Mesh(grid=grid)
         for _ in range(4):
             for leaf in mesh.root_node().get_leaves():
                 if np.random.rand() < 0.5:

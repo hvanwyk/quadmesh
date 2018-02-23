@@ -231,7 +231,7 @@ class Plot(object):
         #
         # Initialize grid
         # 
-        x0,x1,y0,y1 = mesh.box()
+        x0,x1,y0,y1 = mesh.bounding_box()
         nx, ny = resolution
         x_range = np.linspace(x0,x1,nx)
         y_range = np.linspace(y0,y1,ny)
