@@ -2352,7 +2352,7 @@ class Node(object):
         
         Input: 
         
-            flag: str, int, double
+            flag: str/int/double
         """
         if flag is None:
             # No flag specified check whether there is any mark
@@ -3377,96 +3377,19 @@ class Cell(object):
         """
         return self._dim
     
-    
-    def get_vertices(self, pos=None, as_array=True):
+        
+    def tree_depth(self, flag=None):
         """
-        Returns the vertices of the current cell. 
-        
-        Inputs:
-        
-            pos: str, position of vertex within the cell: 
-                SW, S, SE, E, NE, N, NW, or W. 
-                If pos='corners', return vertices ['L','R'] 1d, 
-                    or ['SW', 'SE', 'NE', 'NW'] 2d
-                If pos is not specified, return all vertices.
-                
-            as_array: bool, if True, return vertices as a numpy array.
-                Otherwise return a list of Vertex objects. 
-             
-                
-        Outputs: 
-        
-            vertices: 
-                    
-        """            
-        single_vertex = False
-        if pos is None: 
-            #
-            # Return all vertices
-            # 
-            vertices = [self.vertices[p] for p in \
-                        self._vertex_positions]
-        elif pos=='corners':
-            #
-            # Return corner vertices
-            # 
-            vertices = [self.vertices[p] for p in \
-                        self._corner_vertex_positions]
-        elif type(pos) is list:
-            #
-            # Positions specified in list
-            #
-            for p in pos:
-                assert p in self._vertex_positions, \
-                'Valid inputs for pos are None, or %s' % self._vertex_positions
-            vertices = [self.vertices[p] for p in pos]
-        elif type(pos) is str and pos !='corners':
-            #
-            # Single position specified
-            # 
-            assert pos in self._vertex_positions, \
-            'Valid inputs for pos are None, or %s' % self._vertex_positions
-            single_vertex = True
-            vertices = [self.vertices[pos]]
-            
-        if as_array:
-            #
-            # Convert to array
-            #  
-            v = [vertex.coordinate() for vertex in vertices]
-            if single_vertex:
-                return np.array(v[0])
-            else:
-                return np.array(v)
-        else:
-            #
-            # Return as list of Vertex objects
-            #
-            if single_vertex:
-                return vertices[0]
-            else:
-                return vertices
-        
-        
-    '''
-    def get_leaves(self, with_depth=False):
+        Return the maximum depth of sub-nodes 
         """
-        Returns a list of all 'LEAF' type sub-cells (and their depths) of a given cell 
-        
-        TODO: Make generic and delete special cases
-        """
-        leaves = []
-        if self.type == 'LEAF':
-            if with_depth:
-                leaves.append((self,self.depth))
-            else:
-                leaves.append(self)
-        elif self.has_children():
-            for pos in self._child_positions:
-                child = self.children[pos]
-                leaves.extend(child.get_leaves(with_depth))    
-        return leaves
-    '''
+        depth = self.depth
+        if self.has_children():
+            for child in self.get_children(flag=flag):
+                d = child.tree_depth()
+                if d > depth:
+                    depth = d 
+        return depth
+                      
             
     def traverse(self, flag=None, mode='depth-first'):
         """
@@ -3560,22 +3483,7 @@ class Cell(object):
                 elif self.is_marked(flag):
                     leaves.append(self)
             return leaves
-    '''
-    def find_cells_at_depth(self, depth):
-        """
-        Return a list of cells at a certain depth
-        
-        TODO: Is this necessary? 
-        TODO: Make generic and delete special 
-        """
-        cells = []
-        if self.depth == depth:
-            cells.append(self)
-        elif self.has_children():
-            for child in self.children[self._children_positions]:
-                cells.extend(child.find_cells_at_depth(depth))
-        return cells
-    '''
+
     
     def get_root(self):
         """
@@ -3587,6 +3495,26 @@ class Cell(object):
             return self.parent.get_root()
         
         
+    
+    def find_cell(self, address):
+        """
+        Locate node by its address
+        """
+        cell = self.get_root()
+        if address != []:
+            #
+            # Not the ROOT node
+            # 
+            for a in address:
+                if cell.grid is not None:
+                    pos = a
+                else:
+                    pos = self.id2pos(a)
+                cell = cell.children[pos]
+        return cell  
+    
+    
+    
     def has_children(self, position=None, flag=None):
         """
         Determine whether node has children
@@ -3669,9 +3597,33 @@ class Cell(object):
         return self.parent is not None
     
     
+    def get_parent(self, flag=None):
+        """
+        Return cell's parent, or first ancestor with given flag (None if there
+        are none).
+        """
+        if flag is None:
+            if self.has_parent():
+                return self.parent
+        else:
+            if self.has_parent(flag):
+                parent = self.parent
+                if parent.is_marked(flag):
+                    return parent
+                else:
+                    return parent.get_parent(flag=flag)
+        
+            
+    def in_grid(self):
+        """
+        Determine whether a (ROOT)cell lies within a grid        
+        """
+        return self.__in_grid 
+    
+
     def mark(self, flag=None):
         """
-        Mark CEll
+        Mark Cell
         
         Inputs:
         
@@ -3733,10 +3685,90 @@ class Cell(object):
     
     def remove(self):
         """
-        Remove node from parent's list of children
+        Remove cell from parent's list of children
         """
         assert self.type != 'ROOT', 'Cannot delete ROOT node.'
         self.parent.children[self.position] = None    
+    
+
+    def merge(self):
+        """
+        Delete all sub-nodes of given node
+        """
+        for key in self.children.keys():
+            self.children[key] = None
+        if self.type == 'BRANCH':
+            self.type = 'LEAF'
+
+    
+    def get_vertices(self, pos=None, as_array=True):
+        """
+        Returns the vertices of the current cell. 
+        
+        Inputs:
+        
+            pos: str, position of vertex within the cell: 
+                SW, S, SE, E, NE, N, NW, or W. 
+                If pos='corners', return vertices ['L','R'] 1d, 
+                    or ['SW', 'SE', 'NE', 'NW'] 2d
+                If pos is not specified, return all vertices.
+                
+            as_array: bool, if True, return vertices as a numpy array.
+                Otherwise return a list of Vertex objects. 
+             
+                
+        Outputs: 
+        
+            vertices: 
+                    
+        """            
+        single_vertex = False
+        if pos is None: 
+            #
+            # Return all vertices
+            # 
+            vertices = [self.vertices[p] for p in \
+                        self._vertex_positions]
+        elif pos=='corners':
+            #
+            # Return corner vertices
+            # 
+            vertices = [self.vertices[p] for p in \
+                        self._corner_vertex_positions]
+        elif type(pos) is list:
+            #
+            # Positions specified in list
+            #
+            for p in pos:
+                assert p in self._vertex_positions, \
+                'Valid inputs for pos are None, or %s' % self._vertex_positions
+            vertices = [self.vertices[p] for p in pos]
+        elif type(pos) is str and pos !='corners':
+            #
+            # Single position specified
+            # 
+            assert pos in self._vertex_positions, \
+            'Valid inputs for pos are None, or %s' % self._vertex_positions
+            single_vertex = True
+            vertices = [self.vertices[pos]]
+            
+        if as_array:
+            #
+            # Convert to array
+            #  
+            v = [vertex.coordinate() for vertex in vertices]
+            if single_vertex:
+                return np.array(v[0])
+            else:
+                return np.array(v)
+        else:
+            #
+            # Return as list of Vertex objects
+            #
+            if single_vertex:
+                return vertices[0]
+            else:
+                return vertices
            
            
 class BiCell(Cell):
@@ -4007,13 +4039,7 @@ class BiCell(Cell):
         """
         V = self.get_vertices(pos='corners', as_array=True)
         return np.abs(V[1,0]-V[0,0])
-            
-    
-    def in_grid(self):
-        """
-        Is the current cell contained in a grid?
-        """ 
-        return self.__in_grid 
+
 
             
     def box(self):
@@ -4909,15 +4935,8 @@ class QuadCell(Cell):
             j = (i-1)%4
             area += (V[i,0]+V[j,0])*(V[i,1]-V[j,1])
         return area/2
-            
-    
-    def in_grid(self):
-        """
-        Is the current cell contained in a grid?
-        """ 
-        return self.__in_grid 
-    
-    
+
+
     def is_rectangle(self):
         """
         Is the cell a rectangle?
@@ -5158,7 +5177,8 @@ class QuadCell(Cell):
         Input:
         
             edge: Edge, along which the unit normal is to be computed
-            
+        
+        TODO: Modify using half-edges    
         """ 
         #
         # Get vertex coordinates
@@ -5913,7 +5933,8 @@ class HalfEdge(object):
     
     
     """ 
-    def __init__(self, base, head, cell, previous=None, nxt=None, twin=None):
+    def __init__(self, base, head, parent=None, cell=None, 
+                 previous=None, nxt=None, twin=None):
         """
         Constructor
         
@@ -5923,18 +5944,27 @@ class HalfEdge(object):
             
             head: Vertex, at end
             
+            parent: HalfEdge, parental 
+            
             cell: QuadCell, lying to the left of half edge
+            
+            previous: HalfEdge, whose head is self's base
+            
+            nxt: HalfEdge, whose base is self's head
             
             twin: Half-Edge, in adjoining cell pointing from head to base
         """
         self.__base = base
         self.__head = head
+        self.__parent = parent
         self.__cell = cell
         self.__previous = previous
         self.__next = nxt
         self.__twin = twin
+        self.__children = [None, None]
     
-        
+    
+       
     def base(self):
         """
         Returns half-edge's base vertex
@@ -5956,11 +5986,25 @@ class HalfEdge(object):
         return self.__cell
     
     
+    def assign_cell(self, cell):
+        """
+        Assign cell to half-edge
+        """
+        self.__cell = cell
+        
+    
     def twin(self):
         """
         Returns the half-edge's twin
         """
         return self.__twin
+    
+    
+    def assign_twin(self, twin):
+        """
+        Assigns twin to half-edge
+        """
+        self.__twin = twin
     
     
     def next(self):
@@ -5970,12 +6014,65 @@ class HalfEdge(object):
         return self.__next
     
     
+    def assign_next(self, nxt):
+        """
+        Assigns half edge to next
+        """
+        self.__next = nxt
+        
+    
     def previous(self):
         """
         Returns previous half-edge, whose head is current base
         """
         return self.__previous
+        
     
+    def assign_previous(self, previous):
+        """
+        Assigns half-edge to previous
+        """
+        self.__previous = previous
+    
+        
+    def has_parent(self):
+        """
+        Returns true if HE has parent
+        """
+        return self.__parent is not None
+
+    
+    def get_parent(self):
+        """
+        Returns half-edge's parent edge
+        """
+        return self.__parent
+        
+    
+    def has_children(self):
+        """
+        Determine whether half-edge has been split 
+        """
+        return all([child is not None for child in self.__children])
+    
+    
+    def get_children(self):
+        """
+        Returns the half-edge's children
+        """    
+        return self.__children
+    
+        
+    def split(self):
+        """
+        Refine current half-edge
+        """
+        x0, y0 = self.base().coordinate()
+        x1, y1 = self.head().coordinate()
+        vm = Vertex(0.5*(x0+x1), 0.5*(y0+y1))
+        self.__children[0] = HalfEdge(self.base(), vm, parent=self)
+        self.__children[1] = HalfEdge(vm, self.head(), parent=self)
+        
                
 class Edge(object):
     '''

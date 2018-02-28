@@ -99,5 +99,16 @@ Current Wishlist:
 			  
 			  
 		Node: Incorporate Grid object in Nodes
-			 
+	
+	
+5. Merge Cells and Nodes (submeshes via tags)
+	
+	Instead of using Nodes for the tree structure and Cells for the physical structure,
+	combine them. 
+	
+	TODO:
+	
+	a. Copy Node methods to Cells.
+	
+	b. Ensure 		 
 		
