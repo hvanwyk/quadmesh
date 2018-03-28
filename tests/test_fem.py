@@ -7,7 +7,7 @@ Created 11/22/2016
 # =============================================================================
 import unittest
 from fem import QuadFE, Function, DofHandler, GaussRule, System
-from mesh import Mesh, Edge, Vertex, Grid
+from mesh import Mesh, Edge, Vertex, DCEL
 #import scipy.sparse as sp
 import numpy as np
 import numpy.linalg as la
@@ -409,7 +409,7 @@ class TestFunction(unittest.TestCase):
         # New nodal function
         #  
         # Define Mesh and elements
-        mesh = Mesh(grid=Grid(resolution=(2,2)))
+        mesh = Mesh(grid=DCEL(resolution=(2,2)))
         #mesh.refine()
         element = QuadFE(2,'DQ0')
         
@@ -707,7 +707,7 @@ class TestDofHandler(unittest.TestCase):
                 self.assertEqual(nbr_dofs, dofs_to_check[etype][direction],\
                              'Dofs shared incorrectly %s:'%(direction))
             
-        mesh = Mesh(grid=Grid(resolution=(2,2)))
+        mesh = Mesh(grid=DCEL(resolution=(2,2)))
         mesh.refine()
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh,element)
@@ -754,7 +754,7 @@ class TestDofHandler(unittest.TestCase):
         #
         # Check dof count 
         # 
-        mesh = Mesh(grid=Grid(resolution=(2,2)))
+        mesh = Mesh(grid=DCEL(resolution=(2,2)))
         mesh.refine()
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh,element)
@@ -1121,7 +1121,7 @@ class TestSystem(unittest.TestCase):
         #
         # Test by integration
         # 
-        mesh = Mesh(grid=Grid(resolution=(2,2)))
+        mesh = Mesh(grid=DCEL(resolution=(2,2)))
         mesh.refine()        
         
         trial_functions = {'Q1': lambda x,y: (x-1),
@@ -1165,7 +1165,7 @@ class TestSystem(unittest.TestCase):
         #
         # 10x10 grid     
         # 
-        mesh = Mesh(grid=Grid(resolution=(10,10)))
+        mesh = Mesh(grid=DCEL(resolution=(10,10)))
         mesh.refine()
         u = lambda x,y: x*(1-x)*y*(1-y)  # exact solution
         f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))+u(x,y)  # forcing term 
@@ -1354,7 +1354,7 @@ class TestSystem(unittest.TestCase):
         #
         # Over arbitrary cell
         #
-        mesh = Mesh(grid=Grid(box=[1,4,1,3]))
+        mesh = Mesh(grid=DCEL(box=[1,4,1,3]))
         cell = mesh.root_node().cell()
         y = np.random.rand(5,2)
         for etype in ['Q1','Q2','Q3']:
@@ -1372,7 +1372,7 @@ class TestSystem(unittest.TestCase):
                 f_vals = test_functions[etype][i](y_phys[:,0],y_phys[:,1])
                 self.assertTrue(np.allclose(np.dot(phi,f_nodes),f_vals),\
                                 'Shape function interpolation failed.')
-        mesh = Mesh(grid=Grid(box=[0,0.5,0,0.5]))
+        mesh = Mesh(grid=DCEL(box=[0,0.5,0,0.5]))
         cell = mesh.root_node().cell()
         node = mesh.root_node()
         u = lambda x,y: x*y**2
@@ -1402,7 +1402,7 @@ class TestSystem(unittest.TestCase):
         test_functions = {'Q1': lambda x,y: (2+x)*(y-3),
                           'Q2': lambda x,y: (2+x**2+x)*(y-2)**2,
                           'Q3': lambda x,y: (2*x**3-3*x)*(y**2-2*y)}
-        mesh = Mesh(grid=Grid(resolution=(5,5)))
+        mesh = Mesh(grid=DCEL(resolution=(5,5)))
         mesh.refine()
         x_test = np.random.rand(10,2)
         for etype in ['Q1','Q2','Q3']:
@@ -1482,7 +1482,7 @@ class TestSystem(unittest.TestCase):
 
             
     def test_form_eval(self):
-        mesh = Mesh(grid=Grid(box=[1,2,1,2]))
+        mesh = Mesh(grid=DCEL(box=[1,2,1,2]))
         trial_functions = {'Q1': lambda x,y: (x-1),
                            'Q2': lambda x,y: x*y**2,
                            'Q3': lambda x,y: x**3*y}
@@ -1570,7 +1570,7 @@ class TestSystem(unittest.TestCase):
         #
         # A general cell        
         # 
-        mesh = Mesh(grid=Grid(box=[1,4,1,3]))
+        mesh = Mesh(grid=DCEL(box=[1,4,1,3]))
         element = QuadFE(2,'Q1')
         system = System(mesh,element)
         cell = mesh.root_node().cell()

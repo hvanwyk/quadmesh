@@ -7,7 +7,7 @@ Created on Mar 11, 2017
 import unittest
 
 from gmrf import Gmrf
-from mesh import Mesh, Grid
+from mesh import Mesh, DCEL
 from fem import QuadFE, DofHandler, System, Function
 import numpy as np
 import scipy.sparse as sp
@@ -99,7 +99,7 @@ class TestGmrf(unittest.TestCase):
                      'exponential', 'matern', 'rational']
         anisotropy = [None, np.diag([2,1])]
         
-        mesh = Mesh(grid=Grid(resolution=(20,20)))
+        mesh = Mesh(grid=DCEL(resolution=(20,20)))
         mesh.refine()
         element = QuadFE(2,'Q1')
         fig = plt.figure()
@@ -141,7 +141,7 @@ class TestGmrf(unittest.TestCase):
         """
         
         """ 
-        mesh = Mesh(grid=Grid(resolution=(10,10)))
+        mesh = Mesh(grid=DCEL(resolution=(10,10)))
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs()
@@ -394,7 +394,7 @@ class TestGmrf(unittest.TestCase):
         (iii) soft constraints. (1) finite elements, (2) finite
         differences.
         """
-        mesh = Mesh(grid=Grid(resolution=(10,10)))
+        mesh = Mesh(grid=DCEL(resolution=(10,10)))
         mesh.refine()
         mesh.record(0)
         for _ in range(2):

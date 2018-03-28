@@ -6,7 +6,7 @@ Created on Feb 24, 2017
 
 import unittest
 from plot import Plot
-from mesh import Mesh, Grid
+from mesh import Mesh, DCEL
 from fem import System, QuadFE
 import matplotlib.pyplot as plt
 #from mpl_toolkits.mplot3d import *  # @UnresolvedImport
@@ -29,7 +29,7 @@ class TestPlot(unittest.TestCase):
         #
         # Define mesh
         # 
-        grid = Grid(resolution=(2,2))
+        grid = DCEL(resolution=(2,2))
         mesh = Mesh(grid=grid)
         mesh.refine()      
         mesh.root_node().children[1,1].mark(1)
@@ -82,7 +82,7 @@ class TestPlot(unittest.TestCase):
         
         fig, ax = plt.subplots(3,3)
         plot = Plot()
-        mesh = Mesh(grid=Grid(resolution=(5,5)))
+        mesh = Mesh(grid=DCEL(resolution=(5,5)))
         mesh.refine()
         
         #
@@ -105,7 +105,7 @@ class TestPlot(unittest.TestCase):
         # Mesh function
         #
         # Refine mesh 
-        mesh = Mesh(grid=Grid(resolution=(5,5)))
+        mesh = Mesh(grid=DCEL(resolution=(5,5)))
         mesh.refine()
         for _ in range(4):
             for leaf in mesh.root_node().get_leaves():
@@ -117,7 +117,7 @@ class TestPlot(unittest.TestCase):
         # Meshfunction
         fm = []
         for cell in mesh.iter_quadcells():
-            xi,yi = cell.vertices['M'].coordinate()
+            xi,yi = cell.vertices['M'].coordinates()
             fm.append(f(xi,yi))
         fm = np.array(fm)
         # Plot
@@ -145,7 +145,7 @@ class TestPlot(unittest.TestCase):
         Surface plots
         """
         f = lambda x,y: np.exp(-x**2-y**2)
-        grid = Grid(resolution=(2,2), box=[-1,1,-1,1])
+        grid = DCEL(resolution=(2,2), box=[-1,1,-1,1])
         mesh = Mesh(grid=grid)
         for _ in range(4):
             for leaf in mesh.root_node().get_leaves():
@@ -182,7 +182,7 @@ class TestPlot(unittest.TestCase):
         #
         fm = []
         for cell in mesh.iter_quadcells():
-            xi,yi = cell.vertices['M'].coordinate()
+            xi,yi = cell.vertices['M'].coordinates()
             fm.append(f(xi,yi))
         fm = np.array(fm)
         # Plot

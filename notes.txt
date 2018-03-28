@@ -90,8 +90,8 @@ Current Wishlist:
 	d. Modify QuadCell, BiCell classes
 		QuadCell:
 			- consolidate map_to_reference, map_from_reference, and derivative_multiplier
-			  into one function: reference_mapping  
-			- use nodal basis functions to map from physical to reference cell.
+			  into one function: reference_mapping  [done]
+			- use nodal basis functions to map from physical to reference cell. [done]
 			
 		BiCell: 
 			- reference_mapping: consolidates, map_to_reference, map_from_reference,
@@ -110,5 +110,14 @@ Current Wishlist:
 	
 	a. Copy Node methods to Cells.
 	
-	b. Ensure 		 
-		
+	b. Ensure
+	
+	
+Tree
+Forest
+Dcel
+Vertex 		 
+HalfEdge(Tree)
+Cell
+QuadCell(Cell, Tree) + reference map + split
+Mesh(Forest)  + boundary_edges + boundary_nodes +  

@@ -5,9 +5,9 @@ Created on Oct 23, 2016
 '''
 import unittest
 from fem import GaussRule
-from mesh import Mesh, Grid
+from mesh import DCEL
 from mesh import BiNode, QuadNode
-from mesh import BiCell, QuadCell
+from mesh import BiInterval, QuadCell
 from mesh import Edge, Vertex
 from mesh import convert_to_array
 #from plot import Plot
@@ -16,6 +16,8 @@ import numpy as np
 #from collections import deque
 
 
+
+'''
 class TestMesh(unittest.TestCase):
     """
     Test Mesh Class
@@ -35,7 +37,7 @@ class TestMesh(unittest.TestCase):
         self.assertEqual(mesh.dim(),2,'Mesh dimension should be 2.')
         self.assertIsNone(mesh.grid, 'Mesh has no grid.')
         
-        mesh = Mesh(grid=Grid(dim=2))
+        mesh = Mesh(grid=DCEL(dim=2))
         self.assertEqual(mesh.dim(),2,'Mesh dimension should be 2.')
         self.assertIsNotNone(mesh.grid, 'Mesh has a grid.')
         
@@ -47,7 +49,7 @@ class TestMesh(unittest.TestCase):
         self.assertEqual(mesh.dim(),1,'Mesh dimension should be 1.')
         self.assertIsNone(mesh.grid, 'Mesh has no grid.')
         
-        mesh = Mesh(grid=Grid(dim=1))
+        mesh = Mesh(grid=DCEL(dim=1))
         self.assertEqual(mesh.dim(),1,'Mesh dimension should be 1.')
         self.assertIsNotNone(mesh.grid, 'Mesh has a grid.')
     
@@ -61,7 +63,7 @@ class TestMesh(unittest.TestCase):
         #
         
         # Rectangular grid on [0,1,0,1]
-        grid = Grid(dim=2)
+        grid = DCEL(dim=2)
         mesh = Mesh(grid=grid)
         x_min, x_max, y_min, y_max = mesh.bounding_box()
         self.assertAlmostEqual(x_min, 0, 9, 'x_min should be 0')
@@ -72,10 +74,10 @@ class TestMesh(unittest.TestCase):
         # Non-Standard Grid on [0,1,0,1]
         print('Importing grid from file')
         file_path = '/home/hans-werner/git/quadmesh/tests/quarter_circle.msh'
-        grid = Grid(file_path=file_path)
+        grid = DCEL(file_path=file_path)
         
-        # TODO: Finish
-        #mesh = Mesh(grid=grid)
+        # TODO: Finish (doesn't work)
+        # mesh = Mesh(grid=grid)
         x_min, x_max, y_min, y_max = mesh.bounding_box()
         self.assertAlmostEqual(x_min, 0, 9, 'x_min should be 0')
         self.assertAlmostEqual(x_max, 1, 9, 'x_min should be 0')
@@ -165,7 +167,7 @@ class TestMesh(unittest.TestCase):
         
         
         
-    '''   
+       
     
     def test_mesh_boundary(self):
         # TODO: Finish
@@ -312,166 +314,6 @@ class TestMesh(unittest.TestCase):
     '''
      
      
-class TestGrid(unittest.TestCase):
-    """
-    Test Grid class
-    """
-    def test_constructor(self):
-        #
-        # 1D regular grid
-        # 
-        grid = Grid(box=(0,1), resolution=(2,))
-        
-        self.assertEqual(grid.get_neighbor(0,'R'), 1, \
-                         'Right Neighbor of interval 0 is interval 1')
-        self.assertIsNone(grid.get_neighbor(0,'L'),\
-                        'Left neighbor should be None')
-        self.assertTrue(all([tpe=='interval' for tpe in grid.faces['type']]), \
-                         'Grid face type should be interval.')
-        self.assertEqual(grid.faces['n'],2, \
-                         'There should be two faces.')
-        self.assertEqual(grid.points['n'], 3, \
-                         'There should be 3 points.')
-        
-        #
-        # 2D cartesian grid
-        #
-        grid = Grid(box=(0,1,0,1), resolution=(2,2))
-        #
-        # Check vertices of first face
-        #
-        f0 = grid.faces['connectivity'][0]
-        xy_loc = [(0,0),(0.5,0),(0.5,0.5),(0,0.5)]
-        for i in range(4):
-            xy = grid.points['coordinates'][f0[i]]
-            self.assertAlmostEqual(xy.coordinate(), xy_loc[i], 8, \
-                                   'First cell vertices incorrect')
-        #
-        # Check neighbors
-        # 
-        directions = ['E','W','N','NE']
-        nbrs = [1, None, 2, 3]
-        for i in range(4):
-            direction = directions[i]
-            self.assertEqual(grid.get_neighbor(0,direction),nbrs[i],\
-                             'Incorrect Neighbor.')
-        
-        #
-        # Check boundary edges
-        # 
-        boundary_edges = grid.get_boundary_edges()
-        for i_e in boundary_edges:
-            i_he = grid.edges['half_edge'][i_e]
-            i_fc = grid.half_edges['face'][i_he]
-            direction = grid.half_edges['position'][i_he]
-            self.assertIsNone(grid.get_neighbor(i_fc, direction),\
-                              'Neighbor of boundary edge should be None')
-         
-        
-        #
-        # 2D Quadrilateral grid
-        #
-        '''
-        # FIXME: Assigning directions to sides of quadrilaterals in a mesh is
-        not consistent!!! 
-        
-         
-        file_path = '/home/hans-werner/git/quadmesh/tests/quarter_circle.msh' 
-        # file_path = '/home/hans-werner/git/quadmesh/debug/circle_mesh.msh'
-        #file_path = '/home/hans-werner/Dropbox/work/code/matlab/'+\
-        #            'finite_elements/examples/reaction_diffusion/'+\
-        #            'circle_mesh.msh'
-        grid = Grid(file_path=file_path)
-        
-        #
-        # Check boundary edges
-        # 
-        boundary_edges = grid.get_boundary_edges()
-        for i_e in boundary_edges:
-            i_he = grid.edges['half_edge'][i_e]
-            i_fc = grid.half_edges['face'][i_he]
-            direction = grid.half_edges['position'][i_he]
-            self.assertIsNone(grid.get_neighbor(i_fc, direction),\
-                              'Neighbor of boundary edge should be None')
-        '''
-            
-        #
-        # 2D Triangular grid
-        file_path = '/home/hans-werner/Dropbox/work/code/matlab/'+\
-                    'finite_elements/mesh/gmsh_matlab/examples/'+\
-                    'quarter_disk.msh'
-        grid = Grid(file_path=file_path)
-        boundary_edges = grid.get_boundary_edges()
-        for i_e in boundary_edges:
-            i_he = grid.edges['half_edge'][i_e]
-            self.assertEqual(grid.half_edges['twin'][i_he],-1,\
-                             'Neighbor of boundary half-edge should be -1.')
-        #print(len(grid['faces']['tags']['phys']))
-        
-    '''
-    def test_half_edge_positions(self):
-        """
-        Test whether the grid faces have the correct directions associated
-        
-        THIS CANNOT WORK FOR GENERAL MESHES.
-        """
-        file_path = '/home/hans-werner/git/quadmesh/tests/quarter_circle.msh' 
-        grid = Grid(file_path=file_path)
-        for i in range(grid.faces['n']):
-            assert len(grid.faces['connectivity'][i]) == 4, 'Grid not made of quads.'
-        
-        #
-        # Ensure each face contains 4 unique half-edges
-        #         
-        for i_fc in range(grid.faces['n']):
-            i_he = grid.faces['half_edge'][i_fc]
-            pos  = grid.half_edges['position'][i_he]
-            i_hes = [i_he]
-            positions = [pos]
-            for _ in range(3):
-                i_he = grid.half_edges['next'][i_he]
-                i_hes.append(i_he)
-                positions.append(grid.half_edges['position'][i_he]) 
-            
-            self.assertEqual(len(list(set(i_hes))), 4, \
-                             'There should be 4 unique half-edges.')
-            
-            # TODO: This doesnt hold
-            self.assertEqual(len(list(set(positions))), 4, \
-                             'There should be 4 unique half-edges \n'+
-                             '{0}.'.format(positions))
-            
-        """    
-        # Reproduce position assignment
-        for i_fc in range(grid.faces['n']):
-            i_he = grid.faces['half_edge'][i_fc]
-        """ 
-            
-        for pos in range(grid.faces['n']):
-            if pos==20:
-                vertices = dict.fromkeys(['SW','SE','NW','NE'])
-                i_conn = grid.faces['connectivity'][pos]
-                vs = [grid.points['coordinates'][i] for i in i_conn]
-                print(vs)
-                print('\n\n')
-
-                i_he = grid.faces['half_edge'][pos]
-                sub_dirs = {'S': ['SW','SE'], 'E': ['SE', 'NE'], 
-                            'N': ['NE','NW'], 'W': ['NW','SW'] }
-                for _ in range(3):
-                    print(i_he)
-                    direction = grid.half_edges['position'][i_he]
-                    
-                    for j in range(2):
-                        sub_dir = sub_dirs[direction][j]
-                        i_vtx = grid.half_edges['connectivity'][i_he][j] 
-                        vertices[sub_dir] = grid.points['coordinates'][i_vtx]
-                    # Proceed to next half-edge
-                    i_he = grid.half_edges['next'][i_he]
-                for p in ['SW', 'SE','NE','NW']:
-                    print(vertices[p])
-            cell = QuadCell(position=pos, grid=grid)
-    '''
                 
 class TestNode(unittest.TestCase):
     """
@@ -496,32 +338,14 @@ class TestNode(unittest.TestCase):
         #
         # Children in grid
         #
-        binode = BiNode(grid=Grid(resolution=(2,)))
+        binode = BiNode(grid=DCEL(resolution=(2,)))
         self.assertEqual(binode.grid_size(),2, 
                          'Child grid size should be 2.')
-        grid = Grid(resolution=(2,2))
+        grid = DCEL(resolution=(2,2))
         quadnode = QuadNode(grid=grid)
         self.assertEqual(quadnode.grid.resolution,(2,2), 
                          'Child grid resolution should be (2,2).')
     
-    
-    def test_copy(self):
-        pass
-        '''
-        node = QuadNode(grid_size=(2,1))
-        node.split()
-        e_child = node.children[(1,0)]
-        e_child.split()
-        e_ne_child = e_child.children['NE']
-        e_ne_child.split()
-        cnode = node.copy()    
-        self.assertNotEqual(cnode, node, \
-                            'Copied node should be different from original.')
-        '''
-    
-    def test_grid_size(self):
-        pass
-       
      
     def test_tree_depth(self):       
         count = 0
@@ -572,7 +396,7 @@ class TestNode(unittest.TestCase):
         #
         # Gridded Node
         #  
-        grid = Grid(resolution=(3,3))   
+        grid = DCEL(resolution=(3,3))   
         node = QuadNode(grid=grid)
         
         node.split()
@@ -740,7 +564,7 @@ class TestNode(unittest.TestCase):
         sw_ne_grandchild = sw_child.children['NE']
         self.assertEqual(node.find_node(node_address), sw_ne_grandchild, \
                          'SW, NE grandchild has address [0,3].')
-        grid = Grid(resolution=(2,2))
+        grid = DCEL(resolution=(2,2))
         node = QuadNode(grid=grid)
         node.split()
         lb_child = node.children[0]
@@ -856,7 +680,7 @@ class TestNode(unittest.TestCase):
         sw_child = node.children['SW']
         self.assertFalse(sw_child.in_grid(), 'Child is not in grid.')
         
-        grid = Grid(resolution=(2,2))
+        grid = DCEL(resolution=(2,2))
         node = QuadNode(grid=grid)
         node.split()
         lb_child = node.children[0]
@@ -870,7 +694,7 @@ class TestNode(unittest.TestCase):
         r_child = node.children['R']
         self.assertFalse(r_child.in_grid(), 'Child is not in grid.')
         
-        node = BiNode(grid=Grid(resolution=(2,)))
+        node = BiNode(grid=DCEL(resolution=(2,)))
         node.split()
         l_child = node.children[0]
         self.assertTrue(l_child.in_grid(), 'Child lives in grid.')
@@ -970,8 +794,8 @@ class TestNode(unittest.TestCase):
             node.merge()
             self.assertFalse(node.has_children(),
                              'Node should not have children.')
-        grid = Grid(resolution=(2,2))
-        for node in [BiNode(grid=Grid(resolution=(2,))), QuadNode(grid=grid)]:
+        grid = DCEL(resolution=(2,2))
+        for node in [BiNode(grid=DCEL(resolution=(2,))), QuadNode(grid=grid)]:
             node.split()
             node.merge()
             self.assertFalse(node.has_children(),\
@@ -990,13 +814,13 @@ class TestNode(unittest.TestCase):
         
         # Gridded
         
-        grid = Grid(resolution=(2,))
+        grid = DCEL(resolution=(2,))
         node = BiNode(grid=grid)
         node.split()
         node.children[0].remove()
         self.assertEqual(node.children[0],None,\
                          'Child 0 should have been removed.')
-        grid = Grid(resolution=(2,2))    
+        grid = DCEL(resolution=(2,2))    
         node = QuadNode(grid=grid)
         node.split()
         node.children[0].remove()
@@ -1036,7 +860,7 @@ class TestBiNode(unittest.TestCase):
                          binode.children['R'].children['L'],\
                          'neighbor exterior to parent cell not identified.')
         
-        binode = BiNode(grid=Grid(resolution=(3,)))
+        binode = BiNode(grid=DCEL(resolution=(3,)))
         
         binode.split()
         lchild = binode.children[0]
@@ -1048,7 +872,7 @@ class TestBiNode(unittest.TestCase):
 
   
     def test_pos2id(self):
-        binode = BiNode(grid=Grid(resolution=(3,)))
+        binode = BiNode(grid=DCEL(resolution=(3,)))
         binode.split()
         self.assertEqual(binode.pos2id(0), 0, 
                          'Position in grid incorrectly converted.')
@@ -1514,7 +1338,7 @@ class TestBiCell(unittest.TestCase):
 
         
         # gridded
-        grid = Grid(dim=1, resolution=(3,))
+        grid = DCEL(dim=1, resolution=(3,))
         bicell = BiCell(grid=grid, position=0)
         self.assertFalse(bicell.has_children(), 
                          'Bicell should not have children')
@@ -1526,7 +1350,7 @@ class TestBiCell(unittest.TestCase):
     
     
     def test_pos2id(self):
-        grid = Grid(dim=1, resolution=(3,))
+        grid = DCEL(dim=1, resolution=(3,))
         bicell = BiCell(grid=grid, position=0)
         bicell.split()
         self.assertEqual(bicell.pos2id(0), 0, 
@@ -1569,7 +1393,7 @@ class TestQuadCell(unittest.TestCase):
             
         q2002.split()
         q2002.children['NW'].split()
-            #plt.plot(Q2.vertices[v].coordinate(),'.')
+            #plt.plot(Q2.vertices[v].coordinates(),'.')
         
         
         _,ax = plt.subplots()
@@ -1614,7 +1438,7 @@ class TestQuadCell(unittest.TestCase):
         #
         # Cell in regular grid
         #
-        grid = Grid(box=[0,1,0,1], resolution=(2,4))
+        grid = DCEL(box=[0,1,0,1], resolution=(2,4))
         cell = QuadCell(position=0, grid=grid)
         self.assertTrue(cell.is_rectangle(), 'Cell should be a rectangle')
         
@@ -1874,20 +1698,7 @@ class TestQuadCell(unittest.TestCase):
                                'Hessian calculation not close to '+\
                                'finite difference approximation')
         
-        
-class TestEdge(unittest.TestCase):
-    """
-    Test Edge Class
-    """
-    pass
 
-
-class TestVertex(unittest.TestCase):
-    """
-    Test Vertex Class
-    """
-    def test_dim(self):
-        pass
         
         
  

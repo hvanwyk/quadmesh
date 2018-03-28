@@ -109,7 +109,7 @@ class Plot(object):
                                          coordinate_array=False)
             v_count = 0
             for v in vertices:
-                x,y = v.coordinate()
+                x,y = v.coordinates()
                 ax.text(x,y,str(v_count),size='7',
                         horizontalalignment='center',
                         verticalalignment='center',
@@ -125,8 +125,8 @@ class Plot(object):
             for e in edges:
                 if not(e.is_marked()):
                     v1, v2 = e.vertices()
-                    x0,y0 = v1.coordinate()
-                    x1,y1 = v2.coordinate()
+                    x0,y0 = v1.coordinates()
+                    x1,y1 = v2.coordinates()
                     x_pos, y_pos = 0.5*(x0+x1),0.5*(y0+y1)
                     if x0 == x1:
                         # vertical
