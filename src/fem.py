@@ -1,7 +1,7 @@
 import numpy as np
 from scipy import sparse, linalg
 import numbers
-from mesh import QuadCell, Edge, Vertex
+from mesh import QuadCell, Vertex
 from mesh import convert_to_array
 from bisect import bisect_left       
 from _operator import index
@@ -980,14 +980,14 @@ class Function(object):
                 
             fn_type: str, function type ('explicit', 'nodal', or 'constant')
             
-            mesh [None]: Mesh, on which the function will be defined
+            *mesh [None]: Mesh, on which the function will be defined
             
-            element [None]: FiniteElement, on whch the function will be defined
+            *element [None]: FiniteElement, on whch the function will be defined
             
-            dofhandler [None]: DofHandler, specifying the mesh and element on
+            *dofhandler [None]: DofHandler, specifying the mesh and element on
                 which the function is defined.
             
-            flag [None]: str/int, marker specifying submesh
+            *flag [None]: str/int, marker specifying submesh
             
             
         Note: We allow for the option of specifying multiple realizations 
@@ -1137,7 +1137,7 @@ class Function(object):
                     # 1d vector -> no samples
                     n_samples = None
                 elif len(v.shape) == 2:
-                    _, n_samples = v.shape
+                    n_samples = v.shape[1]
                     self.__n_samples = n_samples
                     
         elif self.fn_type() == 'constant':

@@ -2,7 +2,7 @@
 Created on Oct 23, 2016
 
 @author: hans-werner
-'''
+
 import unittest
 from fem import GaussRule
 from mesh import DCEL
@@ -17,7 +17,7 @@ import numpy as np
 
 
 
-'''
+
 class TestMesh(unittest.TestCase):
     """
     Test Mesh Class
@@ -311,7 +311,7 @@ class TestMesh(unittest.TestCase):
     
     def test_mesh_plot_trimesh(self):
         pass
-    '''
+
      
      
                 
@@ -1705,3 +1705,5 @@ class TestQuadCell(unittest.TestCase):
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testNode']
     unittest.main()
+    
+    '''

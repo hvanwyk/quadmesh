@@ -2,7 +2,7 @@
 import numpy as np
 from collections import deque
 import numbers
-from math import isclose
+#from math import isclose
 """
 Created on Jun 29, 2016
 @author: hans-werner
@@ -742,18 +742,19 @@ class Tree(object):
                 yield node         
                  
                 
-    def get_leaves(self, flag=None, nested=False):
+    def get_leaves(self, flag=None, rs_flag=None, mode='breadth-first'):
         """
-        Return all LEAF sub-nodes (nodes with no children) of current node
+        Return all marked LEAF nodes (nodes with no children) of current subtree
         
         Inputs:
         
-            flag: If flag is specified, return all leaf nodes within labeled
-                submesh (or an empty list if there are none).
+            *flag: If flag is specified, return all leaf nodes within rooted 
+                subtree marked with flag (or an empty list if there are none).
                 
-            nested: bool, indicates whether leaves should be searched for 
-                in a nested way (one level at a time).
-                
+            *rs_flag: Label specifying the rooted subtree (rs) within which
+                to search for (flagged) leaves. 
+                  
+
         Outputs:
         
             leaves: list, of LEAF nodes.
@@ -761,40 +762,71 @@ class Tree(object):
             
         Note: 
         
-            For nested traversal of a node with flags, there is no simple way
-            of determining whether any of the progeny are flagged. We therefore
-            restrict ourselves to subtrees. If your children are not flagged, 
-            then theirs will also not be. 
+            The rooted subtree must contain all ancestors of a marked node 
         """
-        if nested:
-            #
-            # Nested traversal
-            # 
-            leaves = []
-            for node in self.traverse(flag=flag, mode='breadth-first'):
-                if not node.has_children(flag=flag):
-                    leaves.append(node)
+        #
+        # Get all leaves of the subtree
+        # 
+        leaves = []
+        for node in self.traverse(flag=rs_flag, mode=mode):
+            if not node.has_children(flag=rs_flag):
+                leaves.append(node)
+        #
+        # Return marked leaves
+        # 
+        if flag is None:
             return leaves
-        else:
-            #
-            # Non-nested (recursive algorithm)
-            # 
-            leaves = []
-            if flag is None:
-                if self.has_children():
-                    for child in self.get_children():
-                        leaves.extend(child.get_leaves(flag=flag))
-                else:
-                    leaves.append(self)
-            else:
-                if self.has_children(flag=flag):
-                    for child in self.get_children(flag=flag):
-                        leaves.extend(child.get_leaves(flag=flag))
-                elif self.is_marked(flag):
-                    leaves.append(self)
-            return leaves
-        
+        else: 
+            return [leaf for leaf in leaves if leaf.is_marked(flag)]
     
+    
+    def make_rooted_subtree(self, flag):
+        """
+        Mark all ancestors of flagged node with same flag, to turn flag into
+        a subtree marker. 
+        """
+        #
+        # Search through all nodes
+        # 
+        for node in self.get_root().traverse(mode='breadth-first'):
+            if node.is_marked(flag):
+                #
+                # If node is flagged, mark all its ancestors
+                # 
+                ancestor = node
+                while ancestor.has_parent():
+                    ancestor = ancestor.get_parent()
+                    ancestor.mark(flag)
+      
+    
+    def is_rooted_subtree(self, flag):
+        """
+        Determine whether a given flag defines a rooted subtree
+        
+        Note: This takes roughly the same amount of work as make_rooted_subtree  
+        """
+        #
+        # Search through all nodes
+        # 
+        for node in self.get_root().traverse(mode='breadth-first'):
+            if node.is_marked(flag):
+                #
+                # Check that ancestors of flagged node are also marked 
+                # 
+                ancestor = node
+                while ancestor.has_parent():
+                    ancestor = ancestor.get_parent()
+                    if not ancestor.is_marked(flag):
+                        #
+                        # Ancestor not marked: not a rooted subtree
+                        # 
+                        return False
+        #
+        # No problems: it's a rooted subtree
+        #
+        return True               
+            
+        
     def find_node(self, address):
         """
         Locate node by its address
@@ -916,19 +948,20 @@ class Forest(object):
             else:
                 yield node
         
-    
-    def get_leaves(self, flag=None, nested=False):
+        
+    def get_leaves(self, flag=None, subforest_flag=None, mode='breadth-first'):
         """
-        Return all LEAF sub-nodes (nodes with no children) of current node
+        Return all marked LEAF nodes (nodes with no children) of current subtree
         
         Inputs:
         
-            flag: If flag is specified, return all leaf nodes within labeled
-                submesh (or an empty list if there are none).
+            *flag: If flag is specified, return all leaf nodes within rooted 
+                subtree marked with flag (or an empty list if there are none).
                 
-            nested: bool, indicates whether leaves should be searched for 
-                in a nested way (one level at a time).
-                
+            *subforest_flag: Label specifying the rooted subtrees (rs) within which
+                to search for (flagged) leaves. 
+                  
+
         Outputs:
         
             leaves: list, of LEAF nodes.
@@ -936,54 +969,88 @@ class Forest(object):
             
         Note: 
         
-            For nested traversal of a node with flags, there is no simple way
-            of determining whether any of the progeny are flagged. We therefore
-            restrict ourselves to subtrees. If your children are not flagged, 
-            then theirs will also not be. 
+            The rooted subtree must contain all ancestors of a marked node 
         """
-        if nested:
-            #
-            # Nested traversal
-            # 
-            leaves = []
-            for node in self.traverse(flag=flag, mode='breadth-first'):
-                if not node.has_children(flag=flag):
-                    leaves.append(node)
+        #
+        # Get all leaves of the subtree
+        # 
+        leaves = []
+        for node in self.traverse(flag=subforest_flag, mode=mode):
+            if not node.has_children(flag=subforest_flag):
+                leaves.append(node)
+        #
+        # Return marked leaves
+        # 
+        if flag is None:
             return leaves
-        else:
-            #
-            # Non-nested (recursive algorithm)
-            # 
-            leaves = []
-            for child in self.get_children():
-                leaves.extend(child.get_leaves(flag=flag))
-            '''    
-            if flag is None:
-                if self.has_children():
-                    for child in self.get_children():
-                        #
-                        # Loop over trees
-                        #
-                        if child.has_children():
-                            #
-                            # Loop over tree children
-                            # 
-                            for grandchild in child.get_children():
-                                leaves.extend(grandchild.get_leaves(flag=flag))
-                        else:
-                            leaves.append(child)
-            else:
-                if self.has_children(flag=flag):
-                    for child in self.get_children(flag=flag):
-                        if child.has_children(flag=flag):
-                            for grandchild in child.get_children():
-                                
-                        leaves.extend(child.get_leaves(flag=flag))
-                elif self.is_marked(flag):
-                    leaves.append(self)
-            '''
-            return leaves
+        else: 
+            return [leaf for leaf in leaves if leaf.is_marked(flag)]
+           
         
+    def make_forest_of_rooted_subtrees(self, flag):
+        """
+        Mark all ancestors of flagged node with same flag, to turn flag into
+        a subtree marker. 
+        
+        Note: If no node is flagged, then only flag the root nodes.
+        """
+        #
+        # Search through all nodes
+        # 
+        for root_node in self.get_children():
+            #
+            # Mark all root nodes with flag
+            # 
+            root_node.mark(flag)
+            for node in root_node.traverse():
+                #
+                # Look for marked subnodes
+                # 
+                if node.is_marked(flag):
+                    #
+                    # If node is flagged, mark all its ancestors
+                    # 
+                    ancestor = node
+                    while ancestor.has_parent():
+                        ancestor = ancestor.get_parent()
+                        ancestor.mark(flag)
+          
+    
+    def is_forest_of_rooted_subtree(self, flag):
+        """
+        Determine whether a given flag defines a rooted subtree
+        
+        Note: This takes roughly the same amount of work as make_rooted_subtree  
+        """
+        #
+        # Search through all nodes
+        # 
+        for root_node in self.get_children():
+            #
+            # Check if root nodes are marked
+            # 
+            if not root_node.is_marked(flag):
+                return False
+            else:
+                for node in root_node.traverse(mode='breadth-first'):
+                    if node.is_marked(flag):
+                        #
+                        # Check that ancestors of flagged node are also marked 
+                        # 
+                        ancestor = node
+                        while ancestor.has_parent():
+                            ancestor = ancestor.get_parent()
+                            if not ancestor.is_marked(flag):
+                                #
+                                # Ancestor not marked: not a rooted subtree
+                                # 
+                                return False
+        #
+        # No problems: it's a forest of rooted subtrees
+        #
+        return True               
+ 
+    
     
     def find_node(self, address):
         """
@@ -1022,7 +1089,7 @@ class Forest(object):
         """
         assert position < len(self._trees),\
             'Input "position" exceeds number of trees.'
-        assert position >=0 and type(position) is np.int, \
+        assert type(position) is np.int, \
             'Input "position" should be a nonnegative integer. '
         return self._trees[position]    
         
@@ -1060,7 +1127,6 @@ class Forest(object):
         self._trees.append(tree)
         tree.plant_in_forest(self, self.n_children()-1)    
         
-        
     
     def remove_tree(self, position):
         """
@@ -1083,54 +1149,147 @@ class Forest(object):
             tree.mark(flag, recursive=True)
     
         
-    def coarsen(self, label=None, coarsening_flag=None):
+    def coarsen(self, subforest_flag=None, coarsening_flag=None, 
+                new_label=None, clean_up=True):
         """
-        Unmark leaves in the subforest 
-        """
-        for leaf in self.get_leaves(flag=label):
-            #
-            # Leaf is root node, cannot coarsen
-            #
-            if not leaf.has_parent(): 
-                continue 
-            #
-            # Leaf's parent is not marked
-            #
-            elif leaf.has_parent() \
-            and coarsening_flag is not None \
-            and not leaf.get_parent().is_marked(coarsening_flag):     
-                continue
+        Coarsen (sub)forest (delimited by 'subforest_flag', by (possibly)
+        merging (=deleting or unlabeling the siblings of) nodes marked with 
+        'coarsening_flag' and labeling said nodes with new_label. 
+        
+        Inputs:
+        
+            *subforest_flag: flag, specifying the subforest being coarsened.
             
-            if label is not None:
+            *coarsening_flag: flag, specyfying nodes in subforest whose children
+                are to be deleted/unmarked.
+                
+            *new_label: flag, specifying the new subforest.
+            
+            *clean_up: bool, remove coarsening_flag after use.
+        """
+        #
+        # Ensure the subforest is rooted
+        #
+        if subforest_flag is not None:
+            self.make_forest_of_rooted_subtrees(subforest_flag)
+        
+        #
+        # Look for marked leaves within the submesh
+        #
+        for leaf in self.get_leaves(subforest_flag=subforest_flag):
+            #
+            # Find leaves that must be coarsened
+            #
+            if coarsening_flag is not None:
                 #
-                # Label specified unmark 
-                #  
-                for child in leaf.get_parent().get_children():
-                    child.unmark(label)
-            else:
-                #
-                # No label specified, delete children
+                # Only coarsen flagged nodes
                 # 
-                leaf.get_parent().delete_children()
-    
-    
-    def refine(self, label=None, refinement_flag=None):
-        """
-        Refine forest.
-        """        
-        for tree in self.get_leaves(flag=label):
-            if refinement_flag is not None \
-            and not tree.is_marked(refinement_flag):   
-                continue
+                if not leaf.is_marked(coarsening_flag):
+                    if new_label is not None:
+                        #
+                        # Nodes not flagged for coarsening should be part of new mesh
+                        # 
+                        leaf.mark(new_label)
+                    continue
+                else:
+                    if clean_up:
+                        #
+                        # Remove the coarsening flag
+                        # 
+                        leaf.unmark(coarsening_flag)  
+            #
+            # Coarsen leaf
+            # 
+            if leaf.has_parent():
+                if subforest_flag is None and new_label is None:
+                    #
+                    # Delete self and siblings
+                    # 
+                    leaf.get_parent().delete_children()
+                elif new_label is None:
+                    #
+                    # Remove 'subforest_label' from self and siblings
+                    # 
+                    for child in leaf.get_parent().get_children():
+                        child.unmark(subforest_flag)
+                else:
+                    #
+                    # Mark parents with new_label
+                    # 
+                    leaf.get_parent().mark(new_label)
+        #
+        # Apply new label to coarsened submesh if necessary
+        # 
+        if new_label is not None:
+            self.make_forest_of_rooted_subtrees(new_label)
             
-            if not tree.has_children():
-                tree.split()
+    
+    def refine(self, subforest_flag=None, refinement_flag=None, new_label=None):
+        """
+        Refine (sub)forest (delimited by 'subforest_flag'), by (possibly) 
+        splitting (subforest)nodes with refinement_flag and marking their 
+        children (with new_label).
+        
+        Inputs:
+        
+            subforest_flag: flag, used to specify the subforest being refined
+            
+            refinemenet_flag: flag, specifying the nodes within the submesh that
+                are being refined. 
                 
-            if label is not None:
-                # Mark children with the appropriate label    
-                for child in tree.get_children():
-                    child.mark(label)
-                
+            new_label: flag, new label to be applied to refined submesh
+        """        
+        #
+        # Ensure that the subforest is rooted
+        # 
+        if subforest_flag is not None:
+            self.make_forest_of_rooted_subtrees(subforest_flag)
+        #
+        # Look for marked leaves within the submesh
+        # 
+        for leaf in self.get_leaves(subforest_flag=subforest_flag):
+            #
+            # Mark tree with new label to ensure new forest contains old subforest
+            # 
+            if new_label is not None:
+                leaf.mark(new_label)
+            #
+            # If the refinement flag is used, ensure that the node is marked
+            # before continuing.
+            # 
+            if refinement_flag is not None:
+                if not leaf.is_marked(refinement_flag):
+                    continue           
+            #
+            # Add new children if necessary
+            # 
+            if not leaf.has_children():
+                leaf.split()
+            #
+            # Label each (new) child
+            #
+            for child in leaf.get_children(): 
+                if new_label is None and subforest_flag is None:
+                    #
+                    # No labels specified: do nothing
+                    #
+                    continue
+                elif new_label is None:
+                    #
+                    # No new label given, use the subforest label 
+                    # 
+                    child.mark(subforest_flag)
+                else:
+                    #
+                    # New label given, mark child with new label
+                    #
+                    child.mark(new_label)
+        #
+        # Label ancestors of newly labeled children
+        # 
+        if new_label is not None:
+            self.make_forest_of_rooted_subtrees(new_label)
+ 
         
 class Vertex(object):
     """
@@ -1314,10 +1473,6 @@ class HalfEdge(Tree):
         if parent is not None:
             assert isinstance(parent, HalfEdge), \
                 'Parent should be a HalfEdge.'
-            assert self.base()==parent.base() or self.head()==parent.head(),\
-                'One of child endpoints should match that of parent.'
-        
-        
         #
         # Assign incident cell
         # 
@@ -1325,7 +1480,6 @@ class HalfEdge(Tree):
             assert isinstance(cell, Cell), \
                 'Input "cell" should be a Cell object.'
         self.__cell = cell
-        
         #
         # Assign previous half-edge
         # 
@@ -1393,12 +1547,13 @@ class HalfEdge(Tree):
         return self.__twin
     
     
-    def assign_twin(self, twin):
+    def assign_twin(self, twin, periodic=False):
         """
         Assigns twin to half-edge
         """
-        assert self.base()==twin.head() and self.head()==twin.base(),\
-            'Own head vertex should be equal to twin base vertex & vice versa.'
+        if not periodic:
+            assert self.base()==twin.head() and self.head()==twin.base(),\
+                'Own head vertex should be equal to twin base vertex & vice versa.'
         self.__twin = twin
         
     
@@ -1426,15 +1581,19 @@ class HalfEdge(Tree):
         return self.__next
     
     
-    def assign_next(self, nxt):
+    def assign_next(self, nxt, periodic=False):
         """
         Assigns half edge to next
         """
-        assert self.head() == nxt.base(), \
-            'Own head vertex is not equal to next base vertex.'
-        self.__next = nxt
-        if nxt.previous() != self:
-            nxt.assign_previous(self)
+        if nxt is None:
+            return
+        else:
+            if not periodic:
+                assert self.head() == nxt.base(), \
+                    'Own head vertex is not equal to next base vertex.'
+            self.__next = nxt
+            if nxt.previous() != self:
+                nxt.assign_previous(self, periodic=periodic)
             
     
     def previous(self):
@@ -1444,15 +1603,19 @@ class HalfEdge(Tree):
         return self.__previous
         
     
-    def assign_previous(self, previous):
+    def assign_previous(self, previous, periodic=False):
         """
         Assigns half-edge to previous
         """
-        assert self.base() == previous.head(), \
-            'Own base vertex is not equal to previous head vertex.'
-        self.__previous = previous
-        if previous.next()!=self:
-            previous.assign_next(self)
+        if previous is None:
+            return 
+        else:
+            if not periodic:
+                assert self.base() == previous.head(), \
+                    'Own base vertex is not equal to previous head vertex.'
+            self.__previous = previous
+            if previous.next()!=self:
+                previous.assign_next(self, periodic=periodic)
         
         
     def split(self):
@@ -1621,6 +1784,103 @@ class HalfEdge(Tree):
                 return False 
 
 
+     
+    def reference_map(self, x, jacobian=True, hessian=False, mapsto='physical'):
+        """
+        Map points x from the reference interval to the physical domain or vice versa
+        
+        Inputs:
+        
+            x: double, (n,) array or a list of points.
+            
+            jacobian: bool, return jacobian for mapping.
+            
+            mapsto: str, 'physical' (map from reference to physical), or 
+                'reference' (map from physical to reference).
+                
+                
+        Outputs:
+        
+            y: double, (n,) array of mapped points
+            
+            jac: list of associated gradients
+            
+            hess: list of associated Hessians (always 0).
+        """
+        if mapsto=='physical':
+            #
+            # Check that input is an array
+            # 
+            assert type(x) is np.ndarray, \
+            'If "mapsto" is "physical", then input should '+\
+            'be a one dimensional array.'
+            #
+            # Check that points contained in [0,1]
+            # 
+            assert x.max()>=0 and x.min()<=1, \
+            'Reference point should be between 0 and 1.'
+            
+        elif mapsto=='reference':
+            x = convert_to_array(x, dim=self.head().dim())
+            #
+            # Check that points lie on the HalfEdge
+            # 
+            assert all(self.contains_points(x)), \
+            'Some points are not contained in the HalfEdge.'
+              
+        #
+        # Compute mapped points
+        # 
+        n = len(x)    
+        x0, y0 = self.base().coordinates()
+        x1, y1 = self.head().coordinates()
+        if mapsto == 'physical':
+            y = [(x0 + (x1-x0)*xi, y0 + (y1-y0)*xi) for xi in x]
+        elif mapsto == 'reference':
+            if not np.isclose(x0, x1):
+                #
+                # Not a vertical line
+                # 
+                y = list((x[:,0]-x0)/(x1-x0))
+            elif not np.isclose(y0, y1):
+                #
+                # Not a horizontal line
+                # 
+                y = list((x[:,1]-y0)/(y1-y0))
+        
+        #
+        # Compute the Jacobian
+        # 
+        if jacobian:
+            if mapsto == 'physical':
+                #
+                # Derivative of mapping from refence to physical cell
+                # 
+                jac = [np.array([[x1-x0],[y1-y0]]) for dummy in range(n)]
+            elif mapsto == 'reference':
+                #
+                # Derivative of inverse map
+                # 
+                jac = [np.array([[1/(x1-x0), 1/(y1-y0)]]) for dummy in range(n)]
+
+        # 
+        # Compute the Hessian (linear mapping, so Hessian = 0)
+        #
+        hess = [np.zeros((2,2)) for dummy in range(n)]
+         
+        #
+        # Return output
+        # 
+        if jacobian and hessian:
+            return y, jac, hess
+        elif jacobian and not hessian:
+            return y, jac
+        elif hessian and not jacobian:
+            return y, hess
+        else: 
+            return y
+
+
 class Interval(HalfEdge):
     """
     Interval Class (1D equivalent of a Cell)
@@ -1653,22 +1913,24 @@ class Interval(HalfEdge):
         return self.base() if position==0 else self.head()
     
 
-    def assign_previous(self, prev):
+    def assign_previous(self, prev, periodic=False):
         """
         Assign a previous interval
         """
-        assert isinstance(prev, Interval), \
-            'Input "prev" should be an Interval.'
-        HalfEdge.assign_previous(self, prev)
+        if prev is not None:
+            assert isinstance(prev, Interval), \
+                'Input "prev" should be an Interval.'
+        HalfEdge.assign_previous(self, prev, periodic=periodic)
     
     
-    def assign_next(self, nxt):
+    def assign_next(self, nxt, periodic=False):
         """
         Assign the next interval
         """
-        assert isinstance(nxt, Interval), \
-            'Input "nxt" should be an Interval.'
-        HalfEdge.assign_next(self,nxt)
+        if nxt is not None:
+            assert isinstance(nxt, Interval), \
+                'Input "nxt" should be an Interval.'
+        HalfEdge.assign_next(self,nxt, periodic=periodic)
      
      
     def get_neighbor(self, pivot, flag=None):
@@ -1705,59 +1967,74 @@ class Interval(HalfEdge):
         Split a given interval into subintervals
         """                 
         #
-        # Compute midpoint
+        # Determine interval endpoints
         # 
         x0, = self.base().coordinates()
         x1, = self.head().coordinates()
         n = self.n_children()
-        for i in range(n+1):
+        #
+        # Loop over children
+        # 
+        for i in range(n):
             #
-            # Store vertices
+            # Determine children base and head Vertices
             # 
             if i==0:
-                base = self.base()
-            else:
-                if i<n-1:
-                    head = Vertex(i*(x1-x0)/2)
-                else:
-                    head = self.head()
-                
-                subinterval = \
-                    Interval(base, head, parent=self,\
-                             regular=self.is_regular(),\
-                             position=i-1, n_children=n_children)
-                self._children[i-1] = subinterval
-                base = head
-   
-            
-        for child in self.get_children():
-            #
-            # Assign previous/next
-            # 
-            i = child.get_node_position()
-            if i==0:
-                # Align own left child with neighbor's right
-                nbr = self.get_neighbor(0)
-                if nbr is not None and nbr.has_children():
-                    child.assign_previous(nbr.get_child(-1))
-            else:
-                child.assign_previous(self.get_child(i-1))
-                
+                base = self.base()   
             if i==n-1:
-                # Align own right child with neighbor's left
-                nbr = self.get_neighbor(1)
-                if nbr is not None and nbr.has_children():
-                    child.assign_next(nbr.get_child(0))
+                head = self.head()
+            else:
+                head = Vertex(x0+(i+1)*(x1-x0)/n)
+            #     
+            # Define new child interval
+            # 
+            subinterval = Interval(base, head, parent=self, \
+                                   regular=self.is_regular(),\
+                                   position=i, n_children=n_children)
+            #
+            # Store in children
+            # 
+            self._children[i] = subinterval
+            #
+            # The head of the current subinterval 
+            # becomes the base of the next one 
+            base = subinterval.head()
+        
+        #
+        # Assign previous/next
+        #
+        for child in self.get_children(): 
+            i = child.get_node_position()
+            #
+            # Assign previous
+            #
+            if i==0:
+                # Leftmost child assign own previous
+                child.assign_previous(self.previous())
+            else:
+                # Child in the middle
+                child.assign_previous(self.get_child(i-1))
+            #
+            # Assign next
+            # 
+            if i==n-1:
+                # Rightmost child, assign own right
+                child.assign_next(self.next())
         
     
     def locate_point(self, point, flag=None):
         """
         Returns the smallest subinterval that contains a given point
+        
+        Note: The flag is a subtree type flag. If current interval is 
+            not flagged, then its children will also not be flagged.
         """
         #
         # Check that self contains the point
-        # 
-        if self.contains_points(point):
+        #
+        if not self.is_marked(flag):
+            return None  
+        elif self.contains_points(point):
             #
             # Look for child that contains the point
             #  
@@ -1767,7 +2044,7 @@ class Interval(HalfEdge):
                         #
                         # Recursion
                         # 
-                        return child.locate(point)  
+                        return child.locate_point(point, flag=flag)  
             else:
                 #
                 # Current cell is the smallest that contains point
@@ -1777,9 +2054,7 @@ class Interval(HalfEdge):
             #
             # Point is not contained in self 
             # 
-            return None
-    
-            
+            return None        
     
         
     def reference_map(self, x, jacobian=True, hessian=False, mapsto='physical'):
@@ -1966,6 +2241,19 @@ class Cell(object):
             area += (x0+x1)*(y1-y0)
         return 0.5*area
     
+    
+    def bounding_box(self):
+        """
+        Returns the cell's bounding box in the form of a tuple (x0,x1,y0,y1), 
+        so that the cell is contained in the rectangle [x0,x1]x[y0,y1]
+        """  
+        xy = convert_to_array(self.get_vertices(), 2)
+        x0 = np.min(xy[:,0], axis=0)
+        x1 = np.max(xy[:,0], axis=0)
+        y0 = np.min(xy[:,1], axis=0)
+        y1 = np.max(xy[:,1], axis=0)
+        return x0, x1, y0, y1
+        
         
     def check_winding_order(self):
         """
@@ -2243,8 +2531,9 @@ class QuadCell(Cell, Tree):
         for half_edge in self.get_half_edges():
             #
             # Split each half_edge
-            # 
-            half_edge.split()     
+            #
+            if not half_edge.has_children():
+                half_edge.split()     
             #
             # Form new HalfEdges to and from the center
             # 
@@ -2379,7 +2668,7 @@ class QuadCell(Cell, Tree):
             # Initialize points in reference domain
             s, t = 0.5*np.ones(n), 0.5*np.ones(n) 
             n_iterations = 5
-            for _ in range(n_iterations):
+            for dummy in range(n_iterations):
                 #
                 # Compute residual
                 # 
@@ -2458,7 +2747,7 @@ class QuadCell(Cell, Tree):
                         hess.append(h)
             elif mapsto=='reference':
                 if self.is_rectangle():
-                    hess = [np.zeros((2,2,2)) for _ in range(n)]
+                    hess = [np.zeros((2,2,2)) for dummy in range(n)]
                 else:
                     Dx = p_sw_x - p_se_x + p_ne_x - p_nw_x
                     Dy = p_sw_y - p_se_y + p_ne_y - p_nw_y
@@ -3017,8 +3306,9 @@ class DCEL(object):
                 partition: int, list indicating membership to certain
                     mesh partitions. 
         
-            half_edge: int array, pointing to an associated half-edge
-        
+            half_edge: int array, pointing to a half-edge based at
+                point.
+                
             coordinates: double, list of tuples
             
                 
@@ -3082,7 +3372,7 @@ class DCEL(object):
         
         initialize_grid_structure
         
-        regular_grid
+        rectangular_grid
         
         grid_from_gmsh
         
@@ -3098,8 +3388,8 @@ class DCEL(object):
         ROOT Tree. 
     
     """
-    def __init__(self, box=None, resolution=None, dim=None, x=None,
-                 connectivity=None, file_path=None, file_format='gmsh'):
+    def __init__(self, box=None, resolution=None, periodic=None, dim=None, 
+                 x=None, connectivity=None, file_path=None, file_format='gmsh'):
         """
         Constructor
         
@@ -3121,11 +3411,16 @@ class DCEL(object):
             file_path: str, path to mesh file
             
             file_format: str, type of mesh file (currently only gmsh)
+            
+            periodic: int, set containing integers 0 and/or 1.
+                0 in periodic: make periodic in x-direction
+                1 in periodic: make periodic in y-direction
         """
         #
         # Initialize struct
         #     
         self.is_rectangular = False
+        self.is_periodic = False
         self.resolution = resolution
         self.initialize_grid_structure() 
         if file_path is not None:
@@ -3191,14 +3486,24 @@ class DCEL(object):
                 elif dim==2:
                     resolution = (1,1)  
             self.is_rectangular = True
-            self.regular_grid(box=box, resolution=resolution)
-
-        
+            self.rectangular_grid(box=box, resolution=resolution)
+           
+                
         # =====================================================================
         # Generate doubly connected edge list 
         # =====================================================================
         self.determine_half_edges()
         
+        #
+        # Add periodicity
+        # 
+        self.periodic_coordinates = {}
+        if periodic is not None:
+            if self.dim()==2:
+                assert self.is_rectangular, \
+                    'Only rectangular meshes can be made periodic'
+            self.make_periodic(periodic, box)
+            
                             
     def initialize_grid_structure(self):
         """
@@ -3228,7 +3533,7 @@ class DCEL(object):
                       'connectivity': []}
         
     
-    def regular_grid(self, box, resolution):
+    def rectangular_grid(self, box, resolution):
         """
         Construct a grid on a rectangular region
         
@@ -3931,26 +4236,89 @@ class DCEL(object):
             if self.half_edges['twin'][i_he] == -1:
                 bnd_hes.append(i_he)
                 bnd_hes_conn.append(self.half_edges['connectivity'][i_he])
-        n_bnd = len(bnd_hes)
         #
-        # Sort half-edges and extract edge numbers
+        # Group and sort half-edges
         #
-        i_he = bnd_hes.pop()
-        he_conn = bnd_hes_conn.pop()
-        bnd_hes_sorted = [i_he]
+        bnd_hes_sorted = [deque([he]) for he in bnd_hes]
+        while True:
+            for g1 in bnd_hes_sorted:
+                #
+                # Check if g1 can add a deque in bnd_hes_sorted
+                # 
+                merger_activity = False
+                for g2 in bnd_hes_sorted:
+                    #
+                    # Does g1's head align with g2's tail?
+                    #
+                    if self.half_edges['connectivity'][g1[-1]][1]==\
+                       self.half_edges['connectivity'][g2[0]][0]:
+                        # Remove g2 from list
+                        g2 = bnd_hes_sorted.pop(bnd_hes_sorted.index(g2))
+                        g1.extend(g2)
+                        merger_activity = True 
+                    #
+                    # Does g1's tail align with g2's head?
+                    #
+                    elif self.half_edges['connectivity'][g1[0]][0]==\
+                         self.half_edges['connectivity'][g2[-1]][1]:
+                        g2 = bnd_hes_sorted.pop(bnd_hes_sorted.index(g2))
+                        g1.extendleft(g2)
+                        merger_activity = True
+            if not merger_activity:
+                break    
+        #
+        # Multiple boundary segments
+        #     
+        return [list(segment) for segment in bnd_hes_sorted]
+        
+        """
+        bnd_hes_sorted = []
+        i_he_left = bnd_hes.pop()
+        i_he_right = i_he_left
+        he_conn_left = bnd_hes_conn.pop()
+        he_conn_right = he_conn_left
+        subbnd_hes_sorted = deque([i_he])
         while len(bnd_hes)>0:
-            for i in range(n_bnd):
-                if bnd_hes_conn[i][0] == he_conn[1]:
+            added_to_left = False
+            added_to_right = False
+            for i in range(len(bnd_hes)):
+                if bnd_hes_conn[i][0] == he_conn_right[1]:
                     #
-                    # Initial vertex of he in list matches 
-                    # final vertex of popped he.
+                    # Base vertex of he in list matches 
+                    # head vertex of popped he.
                     #
-                    i_he = bnd_hes.pop(i)
-                    he_conn = bnd_hes_conn.pop(i)
+                    i_he_right = bnd_hes.pop(i)
+                    he_conn_right = bnd_hes_conn.pop(i)
+                    subbnd_hes_sorted.append(i_he_right)
+                    added_to_right = True 
+                elif bnd_hes_conn[i][1] == he_conn_left[0]:
+                    #
+                    # Head vertex of he in list matches
+                    # base vertex of popped he.
+                    #
+                    i_he_left = bnd_hes_conn.pop(i)
+                    he_conn_left = bnd_hes_conn.pop(i)
+                    subbnd_hes_sorted.appendleft(i_he_left)
+                    added_to_left = True
+                if added_to_left and added_to_right:
                     break
-            bnd_hes_sorted.append(i_he) 
+            if not added_to_left and not added_to_right:
+                # Could not find any half-edges to add
+                #
+                # Add boundary segment to sorted hes
+                # 
+                bnd_hes_sorted.extend(ihe for ihe in subbnd_hes_sorted)
+                #
+                # Reinitialize subbnd_hes_sorted
+                # 
+                i_he_left = bnd_hes.pop()
+                i_he_right = i_he_left
+                he_conn_left = bnd_hes_conn.pop()
+                he_conn_right = he_conn_left
+                subbnd_hes_sorted = deque([i_he])
         return bnd_hes_sorted
-    
+        """
+        
     '''
     def get_boundary_edges(self):
         """
@@ -3989,13 +4357,135 @@ class DCEL(object):
             raise Exception('Only dimensions 1 and 2 supported.')
         return bnd_points
     
+    
+    def make_periodic(self, coordinates, box):
+        """
+        Make a rectangular DCEL periodic by assigning the correct twins to
+        HalfEdges on the boundary. 
+        
+        Inputs:
+        
+            Coordinates: set, containing 0 (x-direction) and/or 1 (y-direction). 
+        """
+        if self.dim()==1:
+            #
+            # In 1D, first half-edge becomes "next" of last half-edge
+            # 
+            self.half_edges['next'][-1] = 0
+            self.half_edges['prev'][0] = self.half_edges['n']-1
+        elif self.dim()==2:
+            #
+            # In 2D, must align vertices on both side of the box
+            # 
+            x_min, x_max, y_min, y_max = box
+            if 0 in coordinates:
+                #
+                # Make periodic in the x-direction
+                #
+                left_hes = []
+                right_hes = []
+                for segment in self.get_boundary_half_edges():
+                    for he in segment:               
+                        #
+                        # Record coordinates of half-edge's base and head
+                        # 
+                        i_base, i_head = self.half_edges['connectivity'][he][:]
+                        x_base, y_base = self.points['coordinates'][i_head]
+                        x_head, y_head = self.points['coordinates'][i_base]
+                        
+                        if np.isclose(x_base,x_max) and np.isclose(x_head,x_max):
+                            #
+                            # If x-values are near x_max, it's on the right
+                            # 
+                            right_hes.append((he, y_base, y_head))
+        
+                        elif np.isclose(x_base,x_min) and np.isclose(x_head,x_min):
+                            #
+                            # If x-values are near x_min, it's on the left
+                            # 
+                            left_hes.append((he, y_base, y_head))
+                #
+                # Look for twin half-edges
+                # 
+                n_right = len(left_hes)
+                n_left = len(right_hes)
+                assert n_right==n_left, \
+                    'Number of half-edges on either side of domain differ.'+\
+                    'Cannot make periodic.'
+                while len(left_hes)>0:
+                    l_he, l_ybase, l_yhead = left_hes.pop()
+                    for ir in range(len(right_hes)):
+                        #
+                        # For each halfedge on the left, check if there is a 
+                        # corresponding one on the right.
+                        #         
+                        r_he, r_ybase, r_yhead = right_hes[ir]
+                        if np.isclose(l_ybase, r_yhead) and np.isclose(l_yhead, r_ybase):
+                            self.half_edges['twin'][l_he] = r_he
+                            self.half_edges['twin'][r_he] = l_he
+                            del right_hes[ir]
+                            break
+                        
+                assert len(right_hes)==0, \
+                    'All HalfEdges on the left should be matched with '+\
+                    'one on the right.'            
+                
+            if 1 in coordinates:
+                #
+                # Make periodic in the y-direction
+                #coordinates
+                top_hes = []
+                bottom_hes = []
+                for segment in self.get_boundary_half_edges():
+                    for he in segment:
+                        #
+                        # Record coordinates of half-edge's base and head
+                        # 
+                        i_base, i_head = self.half_edges['connectivity'][he]
+                        x_base, y_base = self.points['coordinates'][i_head]
+                        x_head, y_head = self.points['coordinates'][i_base]
+                        
+                        if np.isclose(y_base,y_max) and np.isclose(y_head,y_max):
+                            #
+                            # If y-values are near y_max, it's on the top
+                            # 
+                            top_hes.append((he, x_base, x_head))
+        
+                        elif np.isclose(y_base,y_min) and np.isclose(y_head,y_min):
+                            #
+                            # If y-values are near y_min, it's on the bottom
+                            # 
+                            bottom_hes.append((he, x_base, x_head))
+                #
+                # Look for twin half-edges
+                # 
+                while len(bottom_hes)>0:
+                    b_he, b_xbase, b_xhead = bottom_hes.pop()
+                    for it in range(len(top_hes)):
+                        #
+                        # For each halfedge on the left, check if there is a 
+                        # corresponding one on the right.
+                        #         
+                        t_he, t_xbase, t_xhead = top_hes[it]
+                        if np.isclose(t_xbase, b_xhead) and np.isclose(t_xhead, b_xbase):
+                            self.half_edges['twin'][b_he] = t_he
+                            self.half_edges['twin'][t_he] = b_he
+                            del top_hes[it]
+                            break
+                        
+                assert len(top_hes)==0, \
+                    'All HalfEdges on the left should be matched with '+\
+                    'one on the right.'                 
+        self.periodic_coordinates = coordinates
+        
 
-class Mesh(Tree):
+class Mesh(object):
     """
     Mesh class
     """
-    def __init__(self, dcel=None, box=None, resolution=None, dim=None, x=None,
-                 connectivity=None, file_path=None, file_format='gmsh'):
+    def __init__(self, dcel=None, box=None, resolution=None, periodic=None, 
+                 dim=None, x=None, connectivity=None, file_path=None, 
+                 file_format='gmsh'):
         
         # =====================================================================
         # Doubly connected Edge List
@@ -4004,8 +4494,8 @@ class Mesh(Tree):
             #
             # Initialize doubly connected edge list if None
             # 
-            dcel = DCEL(box=box, resolution=resolution, dim=dim, 
-                        x=x, connectivity=connectivity, 
+            dcel = DCEL(box=box, resolution=resolution, periodic=periodic, 
+                        dim=dim, x=x, connectivity=connectivity, 
                         file_path=file_path, file_format=file_format)
         else:
             assert isinstance(dcel,DCEL)
@@ -4032,27 +4522,26 @@ class Mesh(Tree):
         Returns the dimension of the mesh (1 or 2)
         """
         return self._dim
-    
-    
-    def locate_point(self):
-        """
-        Returns the smallest cell/interval in Mesh that contains a given point
-        """
-        pass
-    
-    
-    
+
 
 class Mesh1D(Mesh):
     """
     1D Mesh Class
     """
-    def __init__(self, dcel=None, box=None, resolution=None, x=None,
-                 connectivity=None, file_path=None, file_format='gmsh'):
+    def __init__(self, dcel=None, box=None, resolution=None, periodic=False, 
+                 x=None, connectivity=None, file_path=None, file_format='gmsh'):
         
-        Mesh.__init__(self, dcel=dcel, box=box, resolution=resolution, dim=1,
-                      x=x, connectivity=connectivity, file_path=file_path,
-                      file_format=file_format)
+        #
+        # Convert input "periodic" to something intelligible for DCEL
+        # 
+        if periodic is True:
+            periodic = {0}
+        else:
+            periodic = None
+            
+        Mesh.__init__(self, dcel=dcel, box=box, resolution=resolution, 
+                      periodic=periodic, dim=1, x=x, connectivity=connectivity,
+                      file_path=file_path, file_format=file_format)
         
         assert self.dim()==1, 'Mesh dimension not 1.'
         
@@ -4065,7 +4554,7 @@ class Mesh1D(Mesh):
             #
             # Make list of intervals
             # 
-            i_vertices  = dcel.half_edges['connectivity'][i]
+            i_vertices  = self.dcel.half_edges['connectivity'][i]
             v_base = self.vertices[i_vertices[0]]
             v_head = self.vertices[i_vertices[1]]
             interval = Interval(v_base, v_head) 
@@ -4074,13 +4563,26 @@ class Mesh1D(Mesh):
         # Align intervals (assign next)
         # 
         for i in range(n_intervals):
-                i_nxt = dcel.half_edges['next'][i]
-                if i_nxt!=-1:
-                    intervals[i].assign_next(intervals[i_nxt])
+            i_nxt = self.dcel.half_edges['next'][i]
+            if i_nxt!=-1:
+                if self.dcel.is_periodic:
+                    intervals[i].assign_next(intervals[i_nxt], \
+                                             periodic=True)
+                else:
+                    intervals[i].assign_next(intervals[i_nxt], \
+                                             periodic=False)
         #
         # Store intervals in Forest
         # 
         self.intervals = Forest(intervals)
+        self.__periodic_coordinates = self.dcel.periodic_coordinates
+
+    
+    def is_periodic(self):
+        """
+        Returns true if the mesh is periodic
+        """
+        return 0 in self.__periodic_coordinates
     
     
     def locate_point(self, point, flag=None):
@@ -4099,40 +4601,88 @@ class Mesh1D(Mesh):
         """
         for interval in self.intervals.get_children(flag=flag):
             if interval.contains_points(point):
-                if not interval.is_marked(flag):
-                    return None
+                if flag is not None:
+                    if not interval.is_marked(flag):
+                        return None
+                    else: return interval.locate_point(point, flag=flag)
                 else:
                     return interval.locate_point(point, flag=flag)
     
-        
-class Mesh2D(Tree):
+    
+    def bounding_box(self):
+        """
+        Returns the interval endpoints
+        """
+        x0, = self.intervals.get_child(0).base().coordinates()
+        x1, = self.intervals.get_child(-1).head().coordinates()
+        return x0, x1
+    
+    '''
+    def record(self, mesh_label, flag=None):
+        """
+        Mark (flagged) intervals in the current mesh (and their parents) with
+        mesh_label.  
+        """
+        # 
+        # Traverse the forest of flagged intervals
+        # 
+        for interval in self.intervals.traverse(flag=flag, mode='breadth-first'):
+            interval.mark(mesh_label)
+            
+    
+    def refine(self, flag, mesh_label=None):
+        """
+        Split flagged LEAF cells of mesh (and label the refined mesh).
+        """
+        for interval in self.intervals.get_leaves(flag):
+            interval.split()
+            for child in interval.get_children():
+                child.mark(flag)
+        if mesh_label is not None:
+            self.record(mesh_label, flag=flag)
+    
+    
+    def coarsen(self, flag, mesh_label=None):
+        """
+        Delete (or unmark) the children 
+        """
+        for interval in self.intervals.get_leaves(flag=flag):
+          pass  
+    '''
+    
+    
+class Mesh2D(Mesh):
     """
     2D Mesh class
     """
-    def __init__(self, dcel=None, box=None, resolution=None, x=None,
-                 connectivity=None, file_path=None, file_format='gmsh'):
+    def __init__(self, dcel=None, box=None, resolution=None, x=None, 
+                 periodic=None, connectivity=None, file_path=None, 
+                 file_format='gmsh'):
         
-        Mesh.__init__(self, dcel=dcel, box=box, resolution=resolution, dim=2,
-                      x=x, connectivity=connectivity, file_path=file_path,
-                      file_format=file_format)
+        Mesh.__init__(self, dcel=dcel, box=box, resolution=resolution, 
+                      periodic=periodic, dim=2, x=x, connectivity=connectivity,
+                      file_path=file_path, file_format=file_format)
+        
+        self._is_rectangular = self.dcel.is_rectangular
+        self._periodic_coordinates = self.dcel.periodic_coordinates
         # ====================================================================
         # HalfEdges
         # ====================================================================
         half_edges = []
-        n_hes = dcel.half_edges['n']            
+        n_hes = self.dcel.half_edges['n']            
         for i in range(n_hes):
-            i_vertices  = dcel.half_edges['connectivity'][i]
+            i_vertices  = self.dcel.half_edges['connectivity'][i]
             v_base = self.vertices[i_vertices[0]]
             v_head = self.vertices[i_vertices[1]]
             half_edge = HalfEdge(v_base, v_head)
             half_edges.append(half_edge)
         #
         # Assign twins (2D)
-        #         
+        #                 
         for i_he in range(n_hes):
-            i_twin = dcel.half_edges['twin'][i_he]
+            i_twin = self.dcel.half_edges['twin'][i_he]
             if i_twin!=-1:
-                half_edges[i_he].assign_twin(half_edges[i_twin])
+                half_edges[i_he].assign_twin(half_edges[i_twin], periodic=True)
         #
         # Add HalfEdges to forest.
         #
@@ -4142,16 +4692,16 @@ class Mesh2D(Tree):
         # Cells
         # =====================================================================
         cells = []
-        n_cells = dcel.faces['n']
+        n_cells = self.dcel.faces['n']
         is_quadmesh = True
         for ic in range(n_cells):
-            i_he_pivot = dcel.faces['half_edge'][ic]
+            i_he_pivot = self.dcel.faces['half_edge'][ic]
             i_he = i_he_pivot
             one_rotation = False 
             i_hes = []
             while not one_rotation:
                 i_hes.append(i_he)
-                i_he = dcel.half_edges['next'][i_he]
+                i_he = self.dcel.half_edges['next'][i_he]
                 if i_he==i_he_pivot:
                     one_rotation = True    
             if len(i_hes)==4:
@@ -4159,26 +4709,44 @@ class Mesh2D(Tree):
             else:
                 cells.append(Cell([half_edges[i] for i in i_hes]))
                 is_quadmesh = False                
-        self.__is_quadmesh = is_quadmesh
-        if is_quadmesh:
-            #
-            # If all cells are quadrilaterals, then its a quadmesh
-            # 
-            self.cells = Forest(cells)
-        else:
-            #
-            # Otherwise it's just a normal mesh
-            # 
-            self.cells = cells
+        self._is_quadmesh = is_quadmesh
+        self.cells = cells    
     
-
+        
+    def is_rectangular(self):
+        """
+        Check whether the Mesh is rectangular
+        """
+        return self._is_rectangular
+    
+    
+    def is_periodic(self, coordinates=None):
+        """
+        Check whether the Mesh is periodic in the x- and/or the y direction
+        
+        Input:
+        
+            *coordinates: int, set containing 0 (x-direction) and/or 1 (y-direction)
+                if directions is None, check for periodicity in any direction 
+            
+        """
+        if coordinates is None:
+            return 0 in self._periodic_coordinates or 1 in self._periodic_coordinates
+        else:
+            is_periodic = True
+            for i in coordinates:
+                if i not in self._periodic_coordinates:
+                    return False
+            return is_periodic
+        
+    
     def is_quadmesh(self):
         """
-        Returns True if all cells in the mesh are QuadCells 
+        Check if the mesh is a quadmesh
         """
-        return self.__is_quadmesh
-            
-    
+        return self._is_quadmesh
+          
+        
     def locate_point(self, point, flag=None):
         """
         Returns the smallest (flagged) cell containing a given point 
@@ -4195,34 +4763,156 @@ class Mesh2D(Tree):
         """
         for cell in self.cells.get_children(flag=flag):
             if cell.contains_points(point):
-                if not cell.is_marked(flag):
-                    return None
-                else:
-                    return cell.locate_point(point, flag=flag)
+                return cell
             
-        
-    def refine(self, label=None, indicator=None, \
-               remove_indicator=True):
+
+    def get_boundary_segments(self, flag=None):
         """
-        Refine the given mesh by splitting cells/intervals marked with a 
-        refinement flag and store the tree structre using the mesh_flag.
+        Returns a list of segments of boundary half edges
         """
-        Forest.refine(self.cells, label=label, \
-                      indicator=indicator, \
-                      remove_indicator=remove_indicator)
-        
+        bnd_hes = []
+        #
+        # Locate half-edges on the boundary
+        # 
+        for he in self.half_edges.get_leaves(flag=flag):
+            if he.twin() is None:
+                bnd_hes.append(he)
+        #
+        # Group and sort half-edges
+        #
+        bnd_hes_sorted = [deque([he]) for he in bnd_hes]
+        while True:
+            for g1 in bnd_hes_sorted:
+                #
+                # Check if g1 can add a deque in bnd_hes_sorted
+                # 
+                merger_activity = False
+                for g2 in bnd_hes_sorted:
+                    #
+                    # Does g1's head align with g2's tail?
+                    #
+                    if g1[-1].head()==g2[0].base():
+                        # Remove g2 from list
+                        g2 = bnd_hes_sorted.pop(bnd_hes_sorted.index(g2))
+                        g1.extend(g2)
+                        merger_activity = True 
+                    #
+                    # Does g1's tail align with g2's head?
+                    #
+                    elif g1[0].base()==g2[-1].head():
+                        g2 = bnd_hes_sorted.pop(bnd_hes_sorted.index(g2))
+                        g1.extendleft(g2)
+                        merger_activity = True
+            if not merger_activity or len(bnd_hes_sorted)==1:
+                break    
+        #
+        # Multiple boundary segments
+        #     
+        return [list(segment) for segment in bnd_hes_sorted]
     
-    def coarsen(self, label=None, coarsening_flag=None, \
-                remove_coarsening_flag=True):
-        """
-        Coarsen the given mesh by merging cells/intervals marked with a 
-        coarsening flag and store the tree structre using the mesh_flag.
-        """
-        Forest.coarsen(self.cells, label=label, \
-                       coarsening_flag=coarsening_flag,\
-                       remove_coarsening_flag=remove_coarsening_flag)
-        
     
+    def bounding_box(self):
+        """
+        Returns the bounding box of the mesh
+        """
+        bnd_edges = []
+        for segment in self.get_boundary_segments():
+            bnd_edges.extend(segment)
+        xy = np.array([he.base().coordinates() for he in bnd_edges])
+        x0, x1 = xy[:,0].min(), xy[:,0].max()
+        y0, y1 = xy[:,1].min(), xy[:,1].max()
+        return x0, x1, y0, y1
+        
+    '''
+    def get_boundary_edges(self, flag=None):
+        """
+        Returns the half-nodes on the boundary
+        """
+        bnd_hes_unsorted = []
+        #
+        # Locate ROOT half-edges on the boundary
+        # 
+        for he in self.half_edges.get_children():
+            if he.twin() is None:
+                bnd_hes_unsorted.append(he)
+        n_bnd = len(bnd_hes_unsorted)
+        #
+        # Sort half-edges
+        #
+        he = bnd_hes_unsorted.pop()
+        bnd_hes_sorted = [he]
+        while n_bnd>0:
+            for i in range(n_bnd):
+                nxt_he = bnd_hes_unsorted[i]
+                if he.head()==nxt_he.base():
+                    bnd_hes_sorted.append(nxt_he)
+                    he = bnd_hes_unsorted.pop(i)
+                    n_bnd -= 1
+                    break
+        #
+        # Get LEAF half-edges
+        # 
+        bnd_hes = []
+        for he in bnd_hes_sorted:
+            bnd_hes.extend(he.get_leaves(flag=flag))
+    '''                        
+
+    def get_boundary_vertices(self, flag=None):
+        """
+        Returns the Vertices on the boundary
+        """
+        vertices = []
+        for segment in self.get_boundary_segments(flag=flag):
+            for he in segment:
+                vertices.append(he.base())
+        return vertices
+    
+    
+
+class QuadMesh(Mesh2D):
+    """
+    Two dimensional mesh with quadrilateral cells.
+    
+    
+    Note:
+
+        When coarsening and refining a QuadMesh, the HalfEdges are not deleted
+        Rather use submeshes.
+    """
+    def __init__(self, dcel=None, box=None, resolution=None, x=None, 
+                 periodic=None, connectivity=None, file_path=None, 
+                 file_format='gmsh'):
+        #
+        # Initialize 2D Mesh.
+        # 
+        Mesh2D.__init__(self, dcel=dcel, box=box, resolution=resolution, 
+                        periodic=periodic, x=x, connectivity=connectivity,
+                        file_path=file_path, file_format=file_format)
+        self.cells = Forest(self.cells)
+         
+        
+    def locate_point(self, point, flag=None):
+        """
+        Returns the smallest (flagged) cell containing a given point 
+        or None if current cell doesn't contain the point
+        
+        Input:
+            
+            point: Vertex
+            
+        Output:
+            
+            cell: smallest cell that contains x
+                
+        """
+        for cell in self.cells.get_children(flag=flag):
+            if cell.contains_points(point):
+                if cell.has_children(flag=flag):
+                    return cell.locate_point(point, flag=flag)
+                else:
+                    return cell
+
+        
     def is_balanced(self, flag=None):
         """
         Check whether the mesh is balanced
@@ -4232,13 +4922,7 @@ class Mesh2D(Tree):
             flag (optional): marker, allowing for the restriction to
                 a submesh. 
         
-        Note: 
-        
-            Balancing only works when a mesh contains only QuadCells  
         """
-        assert self.is_quadmesh(), \
-            'Can only verify 2:1 rule for meshes of QuadCells'
-            
         for cell in self.cells.get_leaves(flag=flag):
             for half_edge in cell.get_half_edges():
                 nb = cell.get_neighbors(half_edge, flag=flag)
@@ -4247,732 +4931,129 @@ class Mesh2D(Tree):
                         if child.has_children(flag=flag):
                             return False
         return True
-       
+
         
     def balance(self, flag=None):
         """
         Ensure that subcells of current cell conform to the 2:1 rule
         """
+        assert self.is_quadmesh(),\
+            'Balancing only supported for Meshes of QuadCells.'
         
-    
+        #
+        #  Ensure mesh is correctly flagged.   
+        # 
+        if flag is not None:
+            self.validify_flag(flag)
+        #
+        # Get all LEAF cells
+        # 
         leaves = set(self.cells.get_leaves(flag=flag))  # set: no duplicates
         while len(leaves)>0:
             leaf = leaves.pop()
-            refine_self = False
+            #
+            # For each Cell
+            # 
+            is_split = False
             for half_edge in leaf.get_half_edges():
-                nb = leaf.get_neighbor(half_edge, flag=flag)
+                #
+                # Look for neighbors in each direction
+                # 
+                nb = leaf.get_neighbors(half_edge, flag=flag)
                 if nb is not None and nb.has_children(flag=flag):
+                    #
+                    # Check if neighbor has children (still fine)
+                    # 
                     twin = half_edge.get_twin()
                     for the_child in twin.get_children():
                         if the_child.cell().has_children(flag=flag):
-                            leaf.split()
-                            for child in leaf.get_children():
-                                child.mark(flag)
-                                leaves.add(child)
-                                
-            for half_edge in leaf.get_half_edges():
-                nb = leaf.get_neighbor(half_edge, flag=flag)
-                if twin is not None:
-                    nb = twin.cell()
-                    
-                    
-                
-                    pass
-        leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
-                     'E': ['NW', 'SW'], 'W': ['NE', 'SE']} 
-
-        while len(leaves) > 0:            
-            leaf = leaves.pop()
-            flag = False
-            #
-            # Check if leaf needs to be split
-            # 
-            for direction1 in ['N', 'S', 'E', 'W']:
-                nb = leaf.get_neighbor(direction1) 
-                if nb == None:
-                    pass
-                elif nb.type == 'LEAF':
-                    pass
-                else:
-                    for pos in leaf_dict[direction1]:
-                        #
-                        # If neighor's children nearest to you aren't LEAVES,
-                        # then split and add children to list of leaves! 
-                        #
-                        if nb.children[pos].type != 'LEAF':
-                            leaf.split()
-                            for child in leaf.children.values():
-                                child.mark('support')
-                                leaves.add(child)
-                                
-                                    
                             #
-                            # Check if there are any neighbors that should 
-                            # now also be split.
-                            #  
-                            for direction2 in ['N', 'S', 'E', 'W']:
-                                nb = leaf.get_neighbor(direction2)
-                                if (nb is not None) and \
-                                   (nb.type == 'LEAF') and \
-                                   (nb.depth < leaf.depth):
-                                    leaves.add(nb)
-                                
-                            flag = True
+                            # If the neighbor has grandchildren, then split LEAF
+                            # 
+                            if leaf.has_children():
+                                #
+                                # LEAF already has children -> mark them
+                                # 
+                                for child in leaf.get_children():
+                                    child.mark(flag)
+                            else:
+                                #
+                                # LEAF needs new children.
+                                # 
+                                leaf.split(flag=flag)
+                            #
+                            # Add children to the leaf nodes to be considered
+                            # 
+                            for child in leaf.get_children():
+                                if flag is not None:
+                                    child.mark('support')
+                                else:
+                                    child.mark((flag, 'support'))
+                                leaves.add(child)
+                            
+                            #
+                            # If LEAF is split, add all its neighbors to leaves
+                            # to be considered for splitting.
+                            #     
+                            for half_edge in leaf.get_half_edges():
+                                if half_edge.has_parent(flag=flag):
+                                    leaves.add(half_edge.get_parent(flag=flag))
+                             
+                            #
+                            # Current LEAF cell has been split, move on to next one
+                            #    
+                            is_split = True
                             break
-                if flag:
+                if is_split:
+                    #
+                    # LEAF already split, no need to check other directions
+                    # 
                     break
-        self.__balanced = True
-        
+            
     
-    def remove_supports(self):
+    def remove_supports(self, flag=None):
         """
-        Remove the supporting nodes. This is useful after coarsening
+        Remove the supporting nodes. This is useful after coarsening  
         
+        TODO: 
         """    
-        leaves = self.get_leaves()
+        #
+        # Get all flagged LEAF nodes
+        # 
+        leaves = self.get_leaves(flag=flag)
         while len(leaves) > 0:
+            #
+            # For each LEAF
+            # 
             leaf = leaves.pop()
-            if leaf.is_marked('support'):
+            if leaf.is_marked((flag, 'support')):
                 #
                 # Check whether its safe to delete the support cell
                 # 
                 safe_to_coarsen = True
-                for direction in ['N', 'S', 'E', 'W']:
-                    nb = leaf.get_neighbor(direction)
-                    if nb!=None and nb.has_children():
+                for half_edge in leaf.get_half_edges():
+                    nb = leaf.get_neighbor(half_edge, flag=flag)
+                    if nb is not None and nb.has_children(flag=flag):
+                        #
+                        # Neighbor has (flagged) children, coarsening will lead
+                        # to an unbalanced tree
+                        # 
                         safe_to_coarsen = False
                         break
+                
                 if safe_to_coarsen:
+                    #
+                    # Remove support by unmarking siblings or 
+                    # deleting them if flag is not specified.
+                    #
                     parent = leaf.parent
-                    parent.merge()
+                    if flag is None:
+                        parent.delete_children()
+                    else:
+                        for child in parent.get_children(flag=flag):
+                            child.unmark(flag)
                     leaves.append(parent)
-        self.__balanced = False
     
-    
-    def get_boundary_edges(self, flag=None):
-        """
-        Returns the half-nodes on the boundary
-        """
-        bnd_hes = []
-        #
-        # Locate half-edges on the boundary
-        # 
-        for he in self.half_edges.get_children():
-            if he.twin() is None:
-                bnd_hes.append(he)
-        n_bnd = len(bnd_hes)
-        #
-        # Sort half-edges
-        #
-        he = bnd_hes.pop()
-        bnd_hes_sorted = [he]
-        while n_bnd>0:
-            for i in range(n_bnd):
-                nxt_he = bnd_hes[i]
-                if he.head()==nxt_he.base():
-                    bnd_hes_sorted.append(nxt_he)
-                    he = bnd_hes.pop(i)
-                    break
-        return bnd_hes_sorted
- 
- 
-
-    def get_boundary_vertices(self):
-        """
-        Returns the Vertices on the boundary
-        """
-        pass
-    
-
-
-class BiNode(Tree):
-    """
-    Binary tree Tree
-    
-    Attributes:
-    
-        address:
-        
-        children:
-        
-        depth:
-        
-        parent: 
-        
-        position:
-        
-        type:
-        
-        _cell:
-        
-        _flags:
-        
-        _support:
-        
-    """
-    def __init__(self, parent=None, position=None, 
-                 grid=None, bicell=None):
-        """
-        Constructor
-        
-        Inputs:
-                    
-            parent: BiNode, parental node
-            
-            position: position within parent 
-                ['L','R'] if parent = Tree
-                None if parent = None
-                i if parent is a ROOT node with specified grid_size
-                
-            grid: DCEL object, used to store children of ROOT node
-                
-            bicell: BiCell, physical Cell associated with tree: 
-        """
-        super().__init__()
-        self.parent = parent
-        #
-        # Types
-        # 
-        if parent is None:
-            #
-            # ROOT node
-            #
-            node_type = 'ROOT'
-            node_address = []
-            node_depth = 0
-            if grid  is not None:
-                assert isinstance(grid, DCEL),\
-                'Input "grid" should be a DCEL object.'
-                
-                child_positions = list(range(grid.faces['n']))
-                node_children = dict.fromkeys(child_positions)
-            else:
-                node_children = {'L':None, 'R':None}
-                child_positions = ['L','R']
-        else:
-            #
-            # LEAF node
-            # 
-            node_type = 'LEAF'
-            node_address = parent.address + [parent.pos2id(position)]
-            node_depth = parent.depth + 1
-            node_children = {'L': None, 'R': None}
-            if parent.type == 'LEAF':
-                parent.type = 'BRANCH'  # modify parent to branch
-            child_positions = ['L','R']  
-        #
-        # Record Attributes
-        # 
-        self.address = node_address
-        
-        self._cell = bicell
-        self.children = node_children
-        self._child_positions = child_positions
-        self.depth = node_depth
-        self._dim = 1
-        self.grid = grid
-        self.parent = parent
-        self.position = position       
-        self.type = node_type
-    
-    
-    def get_neighbor(self, direction):
-        """
-        Description: Returns the deepest neighboring node, whose depth is at 
-            most that of the given node, or 'None' if there aren't any 
-            neighbors.
-         
-        Inputs: 
-         
-            direction: char, 'L'(left), 'R'(right)
-             
-        Output: 
-         
-            neighboring node
-         
-        """
-        
-        assert direction in ['L','R'], 'Invalid direction: use "L" or "R".'
-        
-        if self.type == 'ROOT':
-            #
-            # ROOT Cells have no neighbors
-            # 
-            return None
-        #
-        # For a node in a grid, do a brute force search (comparing vertices)
-        #
-        elif self.in_grid():
-            i = self.address[0]
-            p = self.parent
-            nx = p.grid.faces['n']
-            if direction == 'L':
-                if i > 0:
-                    return p.children[i-1]
-                else:
-                    return None
-            elif direction == 'R':
-                if i < nx-1:
-                    return p.children[i+1]
-                else:
-                    return None
-        #
-        # Non-ROOT cells 
-        # 
-        else:
-            #
-            # Check for neighbors interior to parent cell
-            # 
-            opposite = {'L': 'R', 'R': 'L'}
-            if self.position == opposite[direction]:
-                return self.parent.children[direction]
-            else: 
-                #
-                # Children 
-                # 
-                mu = self.parent.get_neighbor(direction)
-                if mu is None or mu.type == 'LEAF':
-                    return mu
-                else:
-                    return mu.children[opposite[direction]]    
-                                        
-    
-    '''
-    def has_children(self, position=None, flag=None):
-        """
-        Determine whether node has children
-        
-        TODO: Move to parent class
-        """
-        if position is None:
-            # Check for any children
-            if flag is None:
-                return any(child is not None for child in self.children.values())
-            else:
-                # Check for flagged children
-                for child in self.children.values():
-                    if child is not None and child.is_marked(flag):
-                        return True
-                return False
-        else:
-            #
-            # Check for child in specific position
-            # 
-            # Ensure position is valid
-            pos_error = 'Position should be one of: "L", or "R".'
-            assert position in ['L','R'], pos_error
-            if flag is None:
-                #
-                # No flag specified
-                #  
-                return self.children[position] is not None
-            else:
-                #
-                # With flag
-                # 
-                return (self.children[position] is not None) and \
-                        self.children[position].is_marked(flag) 
-    
-    '''
-    '''
-    def get_children(self, flag=None):
-        """
-        Returns a list of (flagged) children, ordered 
-        
-        Inputs: 
-        
-            flag: [None], optional marker
-        
-        Note: Only returns children that are not None 
-        
-        TODO: move to parent class
-        """
-        if self.has_children(flag=flag):
-            if self.type=='ROOT' and self.grid_size() is not None:
-                #
-                # Gridded root node - traverse from bottom to top, left to right
-                # 
-                nx = self.grid_size()
-                for i in range(nx):
-                    child = self.children[i]
-                    if child is not None:
-                        if flag is None:
-                            yield child
-                        elif child.is_marked(flag):
-                            yield child
-            #
-            # Traverse in left-to-right order
-            #  
-            else:
-                for pos in ['L','R']:
-                    child = self.children[pos]
-                    if child is not None:
-                        if flag is None:
-                            yield child
-                        elif child.is_marked(flag):
-                            yield child
-    '''                
-
-    
- 
-    
-    def split(self):
-        """
-        Add new child nodes to current node
-        """
-        #
-        # If node is linked to cell, split cell and attach children
-        #
-        assert not(self.has_children()),'Tree already has children.' 
-        if self._cell is not None: 
-            cell = self._cell
-            #
-            # Ensure cell has children
-            # 
-            if not(cell.has_children()):
-                cell.split()
-            for pos in self._child_positions:
-                self.children[pos] = BiNode(parent=self, position=pos, \
-                                            bicell=cell.children[pos])
-        else:
-            for pos in self._child_positions:
-                self.children[pos] = BiNode(parent=self, position=pos)
-                
-    
-class QuadNode(Tree):
-    """
-    Quadtree Tree
-    """
-    def __init__(self, parent=None, position=None, \
-                 grid=None, quadcell=None):
-        """
-        Constructor
-        
-        Inputs:
-                    
-            parent: Tree, parental node
-            
-            position: position within parent 
-                ['SW','SE','NE','NW'] if parent = Tree
-                None if parent = None
-                [i,j] if parent is a ROOT node with specified grid_size
-                
-            grid: DCEL object, specifying ROOT node's children
-                
-            cell: QuadCell, physical Cell associated with tree
-            
-        """  
-        super().__init__()           
-        #
-        # Types
-        # 
-        self.parent = parent
-        if parent is None:
-            #
-            # ROOT node
-            #
-            self.type = 'ROOT'
-            node_address = []
-            node_depth = 0
-            if grid is not None:
-                assert isinstance(grid, DCEL), \
-                    'Input "grid" should be a DCEL object.'
-                child_positions = list(range(grid.faces['n']))
-                node_children = dict.fromkeys(child_positions)
-            else:
-                node_children = {'SW':None, 'SE':None, 'NW':None, 'NE':None}
-                child_positions = ['SW', 'SE', 'NW', 'NE']
-        else:
-            #
-            # LEAF node
-            # 
-            self.type = 'LEAF'
-            node_address = parent.address + [self.pos2id(position)]
-            node_depth = parent.depth + 1
-            node_children = {'SW': None, 'SE': None, 'NW': None, 'NE': None}
-            child_positions = ['SW', 'SE', 'NW', 'NE']
-            if parent.type == 'LEAF':
-                parent.type = 'BRANCH'  # modify parent to branch
-            assert grid is None, 'LEAF nodes cannot have a grid.'
-
-        #
-        # Record Attributes
-        # 
-        self.address = node_address
-        self._cell = quadcell
-        self.children = node_children
-        self._child_positions = child_positions
-        self.depth = node_depth
-        self._dim = 2
-        self._flags  = set()
-        self.grid = grid
-        
-        self.position = position
-        self._support = False
-        
-           
-        
-    def get_neighbor(self, direction):
-        """
-        Description: Returns the deepest neighboring cell, whose depth is at 
-            most that of the given cell, or 'None' if there aren't any 
-            neighbors.
-         
-        Inputs: 
-         
-            direction: char, 'SW','S','SE','E','NE','N','NW','W'
-             
-        Output: 
-         
-            neighbor: QuadNode, neighboring node
-                        
-        """
-        if self.type == 'ROOT':
-            #
-            # ROOT Cells have no neighbors
-            # 
-            return None
-        #
-        # For a node in a grid, use the grid 
-        #
-        elif self.in_grid():
-            i_fc = self.position
-            grid = self.parent.grid
-            i_nb_fc = grid.get_neighbor(i_fc, direction)
-            if i_nb_fc is None:
-                return None
-            else:
-                return self.parent.children[i_nb_fc]
-        #
-        # Non-ROOT cells 
-        # 
-        else:
-            #
-            # Check for neighbors interior to parent cell
-            # 
-            if direction == 'N':
-                interior_neighbors_dict = {'SW': 'NW', 'SE': 'NE'}
-            elif direction == 'S':
-                interior_neighbors_dict = {'NW': 'SW', 'NE': 'SE'}
-            elif direction == 'E':
-                interior_neighbors_dict = {'SW': 'SE', 'NW': 'NE'}
-            elif direction == 'W':
-                interior_neighbors_dict = {'SE': 'SW', 'NE': 'NW'}
-            elif direction == 'SW':
-                interior_neighbors_dict = {'NE': 'SW'}
-            elif direction == 'SE':
-                interior_neighbors_dict = {'NW': 'SE'}
-            elif direction == 'NW':
-                interior_neighbors_dict = {'SE': 'NW'}
-            elif direction == 'NE':
-                interior_neighbors_dict = {'SW': 'NE'}
-            else:
-                print("Invalid direction. Use 'N', 'S', 'E', "+\
-                      "NE','SE','NW, 'SW', or 'W'.")
-            
-            if self.position in interior_neighbors_dict:
-                neighbor_pos = interior_neighbors_dict[self.position]
-                return self.parent.children[neighbor_pos]
-            #
-            # Check for (children of) parental neighbors
-            #
-            else:
-                if direction in ['SW','SE','NW','NE'] \
-                and direction != self.position:
-                    # Special case
-                    for c1,c2 in zip(self.position,direction):
-                        if c1 == c2:
-                            here = c1
-                    mu = self.parent.get_neighbor(here)
-                    if mu is not None \
-                    and mu.depth == self.depth-1 \
-                    and mu.has_children():
-                        #
-                        # Diagonal neighbors must share corner vertex
-                        # 
-                        opposite = {'N':'S', 'S':'N', 'W':'E', 'E':'W'}
-                        nb_pos = direction
-                        for i in range(len(direction)):
-                            if direction[i] == here:
-                                nb_pos = nb_pos.replace(here,opposite[here])
-                        child = mu.children[nb_pos]
-                        return child
-                    else:
-                        return None
-                else:
-                    mu = self.parent.get_neighbor(direction)
-                    if mu == None or mu.type == 'LEAF':
-                        return mu
-                    else:
-                        #
-                        # Reverse dictionary to get exterior neighbors
-                        # 
-                        exterior_neighbors_dict = \
-                           {v: k for k, v in interior_neighbors_dict.items()}
-                            
-                        if self.position in exterior_neighbors_dict:
-                            neighbor_pos = \
-                                exterior_neighbors_dict[self.position]
-                            return mu.children[neighbor_pos] 
-                        
-
-    '''
-    TODO: DELETE
-    def has_children(self, position=None, flag=None):
-        """
-        Determine whether node has children
-        """
-        if position is None:
-            # Check for any children
-            if flag is None:
-                return any(child is not None for child in self.children.values())
-            else:
-                # Check for flagged children
-                for child in self.children.values():
-                    if child is not None and child.is_marked(flag):
-                        return True
-                return False
-        else:
-            #
-            # Check for child in specific position
-            # 
-            # Ensure position is valid
-            pos_error = 'Position should be one of: "SW", "SE", "NW", or "NE"'
-            assert position in ['SW','SE','NW','NE'], pos_error
-            if flag is None:
-                #
-                # No flag specified
-                #  
-                return self.children[position] is not None
-            else:
-                #
-                # With flag
-                # 
-                return (self.children[position] is not None) and \
-                        self.children[position].is_marked(flag) 
-    
-    
-    
-    def get_children(self, flag=None):
-        """
-        Returns a list of (flagged) children, ordered 
-        
-        Inputs: 
-        
-            flag: [None], optional marker
-        
-        Note: Only returns children that are not None 
-        """
-        if self.has_children(flag=flag):
-            if self.type=='ROOT' and self.grid_size() is not None:
-                #
-                # Gridded root node - traverse from bottom to top, left to right
-                # 
-                nx, ny = self.grid_size()
-                for j in range(ny):
-                    for i in range(nx):
-                        child = self.children[(i,j)]
-                        if child is not None:
-                            if flag is None:
-                                yield child
-                            elif child.is_marked(flag):
-                                yield child
-            #
-            # Usual cell division: traverse in bottom-to-top mirror Z order
-            #  
-            else:
-                for pos in ['SW','SE','NW','NE']:
-                    child = self.children[pos]
-                    if child is not None:
-                        if flag is None:
-                            yield child
-                        elif child.is_marked(flag):
-                            yield child
-
-    '''
-    def info(self):
-        """
-        Displays relevant information about the QuadNode
-        """
-        print('-'*11)
-        print('Tree Info')
-        print('-'*11)
-        print('{0:10}: {1}'.format('Address', self.address))
-        print('{0:10}: {1}'.format('Type', self.type))
-        if self.type != 'ROOT':
-            print('{0:10}: {1}'.format('Parent', self.parent.address))
-            print('{0:10}: {1}'.format('Position', self.position))
-        print('{0:10}: {1}'.format('Flags', self._flags))
-        if self.has_children():
-            if self.type == 'ROOT' and self.grid is not None:
-                n = self.grid_size()
-                child_string = ''
-                for i in range(n):
-                    child_string += repr(i)
-                    if self.children[i] is not None:
-                        child_string += '1,  '
-                    else:
-                        child_string += '0,  '
-                    if i%10==0:
-                        child_string += '\n           '
-                print('{0:10}:'.format('Children'))
-            else:
-                child_string = ''
-                for key in ['SW','SE','NW','NE']:
-                    child = self.children[key]
-                    if child != None:
-                        child_string += key + ': 1,  '
-                    else:
-                        child_string += key + ': 0,  '
-                print('{0:10}: {1}'.format('Children',child_string))
-        else:
-            child_string = 'None'
-            print('{0:10}: {1}'.format('Children',child_string))
-
-   
-                   
-    def split(self):
-        """
-        Add new child nodes to current quadnode
-        """
-        #
-        # If node is linked to cell, split cell and attach children
-        #
-        assert not(self.has_children()),\
-        'QuadNode already has children.' 
-        if self._cell is not None: 
-            cell = self._cell
-            #
-            # Ensure cell has children
-            # 
-            if not(cell.has_children()):
-                cell.split()
-            for pos in self.children.keys():
-                self.children[pos] = \
-                    QuadNode(parent=self, position=pos, \
-                             quadcell=cell.children[pos])
-        else:
-            for pos in self._child_positions:
-                    self.children[pos] = QuadNode(parent=self, position=pos)
-    
-    
-    
-            
-   
-           
-class BCell(Cell):
-    """
-    Binary tree of sub-intervals in a 1d mesh
-    """       
-    def __init__(self, half_edges, parent=None, position=None, grid=None):
-        """
-        Constructor
-        """
-        super.__init__(self, parent=parent, position=position, grid=grid)
-        self.children = [None, None]
-        self.cell_type = 'interval'
-            
-
 '''
 class TriCell(object):
     """
@@ -5134,1544 +5215,3 @@ class TriCell(object):
             # Check wether given label is contained in cell's set
             return flag in self._flags
 '''                    
-          
-'''            
-class QuadCell(Cell):
-    """
-    (Tree of) Rectangular cell(s) in mesh
-        
-    Attributes: 
-    
-        type - Cells can be one of the following types:
-            
-            ROOT   - cell on coarsest level
-            BRANCH - cell has parent(s) as well as children
-            LEAF   - cell on finest refinement level
-         
-        parent: cell/mesh of which current cell is a sub-cell
-         
-        children: list of sub-cells of current cell
-        
-        flag: boolean, used to mark cells
-         
-        neighbors: addresses of neighboring cells
-         
-        depth: int, current refinement level 0,1,2,...
-        
-        address: address within root cell/mesh.
-         
-        min_size: double, minimum possible mesh width
-     
-    
-    Methods: 
-       
-    """ 
-    
-    
-    def __init__(self, parent=None, position=None, grid=None, 
-                 corner_vertices=None):
-        """
-        Constructor
-        
-        
-        Inputs:
-        
-            parent: QuadCell, parental cell (must be specified for LEAF cells).
-            
-            position: str/tuple, position within parental cell (must be 
-                specified for LEAF cells).
-            
-            grid: DCEL, object containing cell
-            
-            corner_vertices: vertices on the sw, se, ne, and nw corners
-                passed as a list of tuples/vertices or a dict of vertices,
-                or a rectangular box = [x_min, x_max, y_min, y_max]
-            
-        
-        Modified: 12/27/2016
-        
-        TODO: We only need 4 corner vertices plus 4 half-edges for each cell 
-        """
-        super().__init__()
-        
-        # =====================================================================
-        # Tree Attributes
-        # =====================================================================
-        in_grid = False
-        if parent is None:
-            #
-            # ROOT Tree
-            # 
-            cell_type = 'ROOT'
-            cell_depth = 0
-            cell_address = []
-            
-            if grid is not None:
-                #
-                # Cell contained in a DCEL
-                # 
-                assert position is not None, \
-                'Must specify "position" when ROOT QuadCell is in a grid.'  
-                
-                assert isinstance(grid, DCEL), \
-                'Input grid must be an instance of DCEL class.' 
-                
-                in_grid = True
-                self.grid = grid
-                self.grid.faces['Cell'][position] = self
-                
-            else:
-                #
-                # Free standing ROOT cell
-                # 
-                assert position is None, \
-                'Unattached ROOT cell has no position.'                
-        else:
-            #
-            # LEAF Tree
-            #  
-            position_missing = 'Position within parent cell must be specified.'
-            assert position is not None, position_missing
-        
-            cell_type = 'LEAF'
-            # Change parent type (from LEAF)
-            if parent.type == 'LEAF':
-                parent.type = 'BRANCH'
-            
-            cell_depth = parent.depth + 1
-            cell_address = parent.address + [self.pos2id(position)]    
-        #
-        # Set attributes
-        # 
-        self.type = cell_type
-        self.parent = parent
-        # TODO: Change to 0,1,2,3
-        self.children = {'SW': None, 'SE': None, 'NE':None, 'NW':None} 
-        self.depth = cell_depth
-        self._dim = 2
-        self.address = cell_address
-        self.position = position
-        # TODO: Unnecessary
-        self._child_positions = ['SW','SE','NW','NE']
-        
-        # TODO: Only want 4 vertices
-        self._vertex_positions = ['SW', 'S', 'SE', 'E', 
-                                  'NE', 'N', 'NW', 'W','M']
-        
-        # TODO: unnecessary
-        self._corner_vertex_positions = ['SW', 'SE', 'NE', 'NW']
-        self._in_grid = in_grid
-        
-        # =====================================================================
-        # Vertices and Edges
-        # =====================================================================
-        #
-        # Initialize
-        # 
-        vertex_keys = ['SW','S','SE','E','NE','N','NW','W','M']
-        vertices = dict.fromkeys(vertex_keys)
-        
-        # TODO: Don't need edges - use half_edges
-        edge_keys = [('M','SW'), ('M','S'), ('M','SE'), ('M','E'),
-                     ('M','NE'), ('M','N'), ('M','NW'), ('M','W'),
-                     ('SW','NE'), ('NW','SE'), ('SW','S'), ('S','SE'),
-                     ('SE','E'), ('E','NE'), ('NE','N'), ('N','NW'),
-                     ('NW','W'), ('W','SW'), ('SW','SE'), ('SE','NE'), 
-                     ('NE','NW'), ('NW','SW')] 
-        edges = dict.fromkeys(edge_keys)
-        
-        # Classify cell
-        is_free_root = self.type == 'ROOT' and not self.in_grid()
-        is_leaf = self.type == 'LEAF'
-        
-        
-        #
-        # Check whether cell's parent is a rectangle
-        # 
-        if self.parent is not None:
-            is_rectangle = self.parent.is_rectangle()
-        elif self.in_grid() and self.grid.is_rectangular:
-            is_rectangle = True
-        else:
-            is_rectangle = False    
-        #
-        # Corner vertices
-        #         
-        if is_free_root:
-            #
-            # ROOT Cell not in grid: Must specify the corner vertices
-            # 
-            if corner_vertices is None:
-                #
-                # Use default corner vertices
-                #
-                vertices['SW'] = Vertex((0,0))
-                vertices['SE'] = Vertex((1,0))
-                vertices['NE'] = Vertex((1,1))
-                vertices['NW'] = Vertex((0,1))
-                
-                is_rectangle = True
-            else:
-                #
-                # Determine the input type
-                # 
-                if type(corner_vertices) is list:
-                    assert len(corner_vertices) == 4, \
-                    '4 Vertices needed to specify QuadCell'
-                    
-                    if all([isinstance(v,numbers.Real) \
-                            for v in corner_vertices]):
-                        #
-                        # Box [x_min, x_max, y_min, y_max]
-                        # 
-                        x_min, x_max, y_min, y_max = corner_vertices
-                        
-                        assert x_min<x_max and y_min<y_max, \
-                        'Bounds of rectangular box should be ordered.'
-                        
-                        vertices['SW'] = Vertex((x_min, y_min))
-                        vertices['SE'] = Vertex((x_max, y_min))
-                        vertices['NE'] = Vertex((x_max, y_max))
-                        vertices['NW'] = Vertex((x_min, y_max))
-                        
-                        #
-                        # Cell is a rectangle: record it
-                        # 
-                        is_rectangle = True
-                        
-                    elif all([type(v) is tuple for v in corner_vertices]):
-                        #
-                        # Vertices passed as tuples 
-                        #
-                        
-                        # Check tuple length
-                        assert all([len(v)==2 for v in corner_vertices]), \
-                            'Vertex tuples should be of length 2.'
-                        
-                        vertices['SW'] = Vertex(corner_vertices[0])
-                        vertices['SE'] = Vertex(corner_vertices[1])
-                        vertices['NE'] = Vertex(corner_vertices[2])
-                        vertices['NW'] = Vertex(corner_vertices[3])
-                        
-                    elif all([isinstance(v, Vertex) for v in corner_vertices]):
-                        #
-                        # Vertices passed in list 
-                        #             
-                        vertices['SW'] = corner_vertices[0]
-                        vertices['SE'] = corner_vertices[1] 
-                        vertices['NE'] = corner_vertices[2]
-                        vertices['NW'] = corner_vertices[3]  
-
-                elif type(corner_vertices) is dict:
-                    #
-                    # Vertices passed in a dictionary
-                    #  
-                    for pos in ['SW', 'SE', 'NE', 'NW']:
-                        assert pos in corner_vertices.keys(), \
-                        'Dictionary should contain at least corner positions.'
-                    
-                    for pos in corner_vertices.keys():
-                        assert isinstance(corner_vertices[pos],Vertex), \
-                        'Dictionary values should be of type Vertex.'
-                        if vertices[pos] is None:
-                            vertices[pos] = corner_vertices[pos]
-                            
-        
-                #
-                # Check winding order by trying to compute 2x the area
-                #
-                cnr_positions = ['SW','SE','NE','NW']
-                winding_error = 'Cell vertices not ordered correctly.'
-                is_positive = 0
-                for i in range(4):
-                    v_prev = vertices[cnr_positions[(i-1)%4]].coordinates()
-                    v_curr = vertices[cnr_positions[i%4]].coordinates()
-                    is_positive += (v_curr[0]+v_prev[0])*(v_curr[1]-v_prev[1])
-                assert is_positive > 0, winding_error
-                
-        elif in_grid:    
-            #
-            # ROOT Cell contained in grid
-            # 
-            assert corner_vertices is None, \
-            'Input "cell_vertices" cannot be specified for cell in grid.'
-            
-            # Use the initial and final vertices of half-edges as cell
-            # corner vertices.
-            i_he = grid.faces['half_edge'][self.position]
-            sub_dirs = {'S': ['SW','SE'], 'E': ['SE', 'NE'], 
-                        'N': ['NE','NW'], 'W': ['NW','SW'] }
-            for i in range(3):
-                direction = grid.half_edges['position'][i_he]
-                for j in range(2):
-                    sub_dir = sub_dirs[direction][j]
-                    i_vtx = grid.half_edges['connectivity'][i_he][j] 
-                    vertices[sub_dir] = grid.points['coordinates'][i_vtx]
-                # Proceed to next half-edge
-                i_he = grid.half_edges['next'][i_he]
-                
-        elif is_leaf:
-            #
-            # LEAF cells inherit corner vertices from parents
-            # 
-            inherited_vertices = \
-                {'SW': {'SW':'SW', 'SE':'S', 'NE':'M', 'NW':'W'},
-                 'SE': {'SW':'S', 'SE':'SE', 'NE':'E', 'NW':'M'}, 
-                 'NE': {'SW':'M', 'SE':'E', 'NE':'NE', 'NW':'N'}, 
-                 'NW': {'SW':'W', 'SE':'M', 'NE':'N', 'NW':'NW'}}
-            
-            for cv,pv in inherited_vertices[position].items():
-                vertices[cv] = parent.vertices[pv]
-        
-        #
-        # Record corner vertex coordinates
-        #
-        x_sw, y_sw = vertices['SW'].coordinates()
-        x_se, y_se = vertices['SE'].coordinates()
-        x_ne, y_ne = vertices['NE'].coordinates()
-        x_nw, y_nw = vertices['NW'].coordinates()    
-    
-        
-        #
-        # Check one last time whether cell is rectangular
-        # 
-        if self.parent is None and not is_rectangle:
-            is_rectangle = (isclose(x_sw,x_nw) and isclose(x_se,x_ne) and \
-                            isclose(y_sw,y_se) and isclose(y_nw,y_ne))
-        
-        #
-        # Edge midpoint vertices
-        #       
-        opposite = {'N':'S', 'S':'N', 'W':'E', 'E':'W'}
-        sub_directions = {'S': ['SW','SE'], 'N': ['NE','NW'], 
-                          'E': ['SE','NE'], 'W': ['NW','SW']}
-        for direction in ['N','E','S','W']:
-            #
-            # Check neighbors
-            # 
-            nbr = self.get_neighbor(direction)
-            if nbr is not None and nbr.depth==self.depth:
-                vertices[direction] = nbr.vertices[opposite[direction]]
-            else:
-                x0, y0 = vertices[sub_directions[direction][0]].coordinates()
-                x1, y1 = vertices[sub_directions[direction][1]].coordinates()
-                vertices[direction] = Vertex((0.5*(x0+x1), 0.5*(y0+y1)))    
-        #
-        # Middle vertex
-        # 
-        vertices['M'] = vertices['M'] = Vertex((0.25*(x_sw+x_se+x_ne+x_nw),\
-                                                0.25*(y_sw+y_se+y_ne+y_nw)))
-        
-        #
-        # Half-Edges 
-        # 
-        if in_grid:
-            #
-            # Cell in grid, obtain half-edges from doubly connected edge list
-            #
-            half_edges = [None, None, None, None] 
-            i_he = grid.faces['half_edge'][self.position]
-            for i in range(4):
-                #
-                # New half-edge using base and head vertices
-                #
-                i_base, i_head = grid.half_edges['connectivity'][i_he]
-                v_base = grid.points['coordinates'][i_base]
-                v_head = grid.points['coordinates'][i_head]
-                half_edges[i] = HalfEdge(v_base, v_head, cell=self)
-                #
-                # Next half-edge
-                # 
-                i_he = grid.half_edges['next'][i_he]
-            
-            #
-            # Assign previous and next half-edges
-            # 
-            
-                    
-        #
-        # Edges
-        # 
-        if is_leaf:
-            #
-            # LEAF cells inherit edges from parents
-            # 
-            inherited_edges = \
-                {'SW': { ('SW','SE'):('SW','S'), ('SE','NE'):('M','S'), 
-                         ('NE','NW'):('M','W'), ('NW','SW'):('W','SW'),
-                         ('SW','NE'):('M','SW') }, 
-                 'SE': { ('SW','SE'):('S','SE'), ('SE','NE'):('SE','E'),
-                         ('NE','NW'):('M','E'), ('NW','SW'):('M','S'), 
-                         ('NW','SE'):('M','SE') },
-                 'NE': { ('SW','SE'):('M','E'), ('SE','NE'):('E','NE'), 
-                         ('NE','NW'):('NE','N'), ('NW','SW'):('M','N'),
-                         ('SW','NE'):('M','NE') }, 
-                 'NW': { ('SW','SE'):('M','W'), ('SE','NE'):('M','N'), 
-                         ('NE','NW'):('N','NW'), ('NW','SW'):('NW','W'),
-                         ('NW','SE'):('M','NW') } }
-                 
-            for ce,pe in inherited_edges[position].items():
-                edges[ce] = parent.edges[pe]
-        #
-        # New interior Edges
-        # 
-        edges[('M','SW')] = Edge(vertices['M'],vertices['SW'])
-        edges[('M','S')]  = Edge(vertices['M'],vertices['S'])
-        edges[('M','SE')] = Edge(vertices['M'],vertices['SE'])
-        edges[('M','E')]  = Edge(vertices['M'],vertices['E'])
-        edges[('M','NE')] = Edge(vertices['M'],vertices['NE'])
-        edges[('M','N')]  = Edge(vertices['M'],vertices['N'])
-        edges[('M','NW')] = Edge(vertices['M'],vertices['NW'])
-        edges[('M','W')]  = Edge(vertices['M'],vertices['W'])
-        
-        if is_free_root:
-            #
-            # Specify all interior edges of free cell
-            # 
-            edges[('SW','NE')] = Edge(vertices['SW'],vertices['NE']) 
-            edges[('NW','SE')] = Edge(vertices['NW'],vertices['SE'])                        
-            edges[('SW','S') ] = Edge(vertices['SW'],vertices['S'])
-            edges[('S','SE') ] = Edge(vertices['S'],vertices['SE']) 
-            edges[('SE','E') ] = Edge(vertices['SE'],vertices['E'])
-            edges[('E','NE') ] = Edge(vertices['E'],vertices['NE'])
-            edges[('NE','N') ] = Edge(vertices['NE'],vertices['N'])
-            edges[('N','NW') ] = Edge(vertices['N'],vertices['NW'])
-            edges[('NW','W') ] = Edge(vertices['NW'],vertices['W'])
-            edges[('W','SW') ] = Edge(vertices['W'],vertices['SW'])
-            edges[('SW','SE')] = Edge(vertices['SW'],vertices['SE'])
-            edges[('SE','NE')] = Edge(vertices['SE'],vertices['NE'])
-            edges[('NE','NW')] = Edge(vertices['NE'],vertices['NW'])
-            edges[('NW','SW')] = Edge(vertices['NW'],vertices['SW'])      
-                                        
-        else:   
-            edge_keys = {'N': [('NE','N'),('N','NW')], 
-                         'S': [('SW','S'),('S','SE')],
-                         'E': [('SE','E'),('E','NE')],
-                         'W': [('NW','W'),('W','SW')] }
-            
-            for direction in ['N','S','E','W']:
-                nbr = self.get_neighbor(direction)
-                if nbr is None or nbr.depth < self.depth:
-                    #
-                    # No/too big neighbor, specify new edges
-                    #   
-                    for edge_key in edge_keys[direction]:
-                        v1, v2 = edge_key
-                        edges[edge_key] = Edge(vertices[v1], vertices[v2])
-                            
-                    if nbr is not None and nbr.depth < self.depth-1:
-                        #
-                        # Enforce the 2-1 rule
-                        # 
-                        nbr.split()
-                             
-                elif nbr.depth == self.depth:
-                    #
-                    # Neighbor on same level use neighboring edges
-                    #            
-                    for edge_key in edge_keys[direction]:
-                        e0 = edge_key[0].replace(direction,opposite[direction])
-                        e1 = edge_key[1].replace(direction,opposite[direction])
-                        opp_edge_key = (e1,e0)
-                        edges[edge_key] = nbr.edges[opp_edge_key]
-                else:
-                    raise Exception('Cannot parse neighbor')
-            
-            #
-            # Possibly new diagonal edges
-            #
-            for edge_key in [('SW','NE'), ('NW','SE')]:
-                if edges[edge_key] is None:
-                    v1, v2 = edge_key
-                    edges[edge_key] = Edge(vertices[v1],vertices[v2])
-        #
-        # Store vertices and edges
-        #  
-        self.vertices = vertices
-        self.edges = edges    
-        
-        #
-        self._is_rectangle = is_rectangle
-    
-    
-    def area(self):
-        """
-        Compute the area of the quadcell
-        """
-        V = self.get_vertices(pos='corners', as_array=True)
-        n_points = V.shape[0]
-        area = 0
-        for i in range(n_points):
-            j = (i-1)%4
-            area += (V[i,0]+V[j,0])*(V[i,1]-V[j,1])
-        return area/2
-
-
-    def is_rectangle(self):
-        """
-        Is the cell a rectangle?
-        """
-        return self._is_rectangle
-    
-               
-    def get_edges(self, pos=None):
-        """
-        Returns edge with a given position or all
-        
-        TODO: Modify to get_half_edges 
-        """
-        edge_dict = {'W':('NW','SW'),'E':('SE','NE'),'S':('SW','SE'),'N':('NE','NW')}   
-        if pos == None:
-            return [self.edges[edge_dict[key]] for key in ['W','E','S','N']]
-        else:
-            return self.edges[edge_dict[pos]] 
-    
-    
-    def get_neighbor(self, direction):
-        """
-        Returns the deepest neighboring cell, whose depth is at most that of the
-        given cell, or 'None' if there aren't any neighbors.
-         
-        Inputs: 
-         
-            direction: char, 'N'(north), 'S'(south), 'E'(east), or 'W'(west)
-             
-        Output: 
-         
-            neighbor: QuadCell, neighboring cell
-            
-        TODO: Use half-edge to get directions
-        """
-        #
-        # Free-standing ROOT
-        # 
-        if self.type == 'ROOT' and not self.in_grid():
-            return None
-        #
-        # ROOT cell in grid
-        #
-        elif self.in_grid():
-            i_fc = self.position
-            i_nb_fc = self.grid.get_neighbor(i_fc, direction)
-            if i_nb_fc is None:
-                return None
-            else:
-                return self.grid.faces['Cell'][i_nb_fc]
-            
-        #
-        # Non-ROOT cells 
-        # 
-        else:
-            #
-            # Check for neighbors interior to parent cell
-            # 
-            if direction == 'N':
-                interior_neighbors_dict = {'SW': 'NW', 'SE': 'NE'}
-            elif direction == 'S':
-                interior_neighbors_dict = {'NW': 'SW', 'NE': 'SE'}
-            elif direction == 'E':
-                interior_neighbors_dict = {'SW': 'SE', 'NW': 'NE'}
-            elif direction == 'W':
-                interior_neighbors_dict = {'SE': 'SW', 'NE': 'NW'}
-            else:
-                print("Invalid direction. Use 'N', 'S', 'E', or 'W'.")
-            
-            if self.position in interior_neighbors_dict:
-                neighbor_pos = interior_neighbors_dict[self.position]
-                return self.parent.children[neighbor_pos]
-            #
-            # Check for (children of) parental neighbors
-            #
-            else:
-                mu = self.parent.get_neighbor(direction)
-                if mu is None or mu.type == 'LEAF':
-                    return mu
-                else:
-                    #
-                    # Reverse dictionary to get exterior neighbors
-                    # 
-                    exterior_neighbors_dict = \
-                       {v: k for k, v in interior_neighbors_dict.items()}
-                        
-                    if self.position in exterior_neighbors_dict:
-                        neighbor_pos = exterior_neighbors_dict[self.position]
-                        return mu.children[neighbor_pos]                       
-
-    
-    
-    def contains_point(self, points):
-        """
-        Determine whether the given cell contains a point
-        
-        Input: 
-        
-            point: tuple (x,y), list of tuples, or (n,2) array
-            
-        Output: 
-        
-            contains_point: boolean array, True if cell contains point, 
-            False otherwise
-        
-        
-        Note: Points on the boundary between cells belong to both adjoining
-            cells.
-            
-        """          
-        is_single_point = False
-        if type(points) is tuple:
-            x, y = points
-            in_cell = True
-            is_single_point = True
-        elif type(points) is list:
-            for pt in points:
-                assert type(pt) is tuple or type(pt) is np.ndarray,\
-                'List entries should be 2-tuples or numpy arrays.'
-                 
-            assert len(pt)==2, \
-                'Points passed in list should have 2 components '
-                  
-            points = np.array(points)
-        elif type(points) is np.ndarray:
-            assert points.shape[1] == 2,\
-                'Array should have two columns.'
-            
-        if not is_single_point:    
-            x, y = points[:,0], points[:,1]
-            n_points = len(x)
-            in_cell = np.ones(n_points, dtype=np.bool)
-          
-        for i in range(4):
-            #
-            # Traverse vertices in counter-clockwise order
-            # 
-            pos_prev = self._corner_vertex_positions[(i-1)%4]
-            pos_curr = self._corner_vertex_positions[i%4]
-            
-            x0, y0 = self.vertices[pos_prev].coordinates()
-            x1, y1 = self.vertices[pos_curr].coordinates()
-
-            # Determine which points lie outside cell
-            pos_means_left = (y-y0)*(x1-x0)-( x-x0)*(y1-y0) 
-            if is_single_point:
-                in_cell = False
-                break
-            else:
-                in_cell[pos_means_left<0] = False
-            
-        return in_cell
-            
-
-    
-    def intersects_line_segment(self, line):
-        """
-        Determine whether cell intersects with a given line segment
-        
-        Input: 
-        
-            line: double, list of two tuples (x0,y0) and (x1,y1)
-            
-        Output:
-        
-            intersects: bool, true if line segment and cell intersect
-            
-        Modified: 06/04/2016
-        """               
-        #
-        # Check whether line is contained in rectangle
-        # 
-        if self.contains_point(line[0]) and self.contains_point(line[1]):
-            return True
-        
-        #
-        # Check whether line intersects with any cell edge
-        # 
-        for edge in self.edges.values():
-            if edge.intersects_line_segment(line):
-                return True
-            
-        #
-        # If function has not terminated yet, there is no intersection
-        #     
-        return False
-    
-               
-    def locate_point(self, point):
-        """
-        Returns the smallest cell containing a given point or None if current 
-        cell doesn't contain the point
-        
-        Input:
-            
-            point: tuple (x,y)
-            
-        Output:
-            
-            cell: smallest cell that contains (x,y)
-                
-        """
-        # TESTME: locate_point
-        
-        if self.contains_point(point):
-            if self.type == 'LEAF': 
-                return self
-            else:
-                #
-                # If cell has children, find the child containing the point and continue looking from there
-                # 
-                for child in self.children.values():
-                    if child.contains_point(point):
-                        return child.locate_point(point)                     
-        else:
-            return None    
-    
-    
-    def unit_normal(self, edge):
-        """
-        Return the cell's outward unit normal vector along given edge
-        
-        Input:
-        
-            edge: Edge, along which the unit normal is to be computed
-        
-        TODO: Modify using half-edges    
-        """ 
-        #
-        # Get vertex coordinates
-        # 
-        xm, ym = self.vertices['M'].coordinates()
-        v0,v1 = edge.vertices()
-        x0,y0 = v0.coordinates() 
-        x1,y1 = v1.coordinates()
-        #
-        # Form the vector along edge
-        #
-        v_01 = np.array([x1-x0, y1-y0])
-        #
-        # Form vector from initial to center
-        #
-        v_0m = np.array([x0-xm, y0-ym])
-        #
-        # Construct a normal 
-        # 
-        n = np.array([v_01[1], -v_01[0]])
-        #
-        # Adjust if it isn't outward pointing
-        # 
-        is_outward = np.dot(n, v_0m) > 0
-        if is_outward:
-            return n/np.linalg.norm(n)
-        else:
-            return -n/np.linalg.norm(n)
-        
-    
-    def reference_map(self, x, jacobian=False, mapsto='physical'):
-        """
-        Map a list of points between a physical quadrilateral and a reference 
-        cell.
-        
-        
-        Inputs: 
-        
-            x: double, list of of n (2,) arrays of input points, either in 
-                the physical cell (if mapsto='reference') or in the reference
-                cell (if mapsto='physical'). 
-                
-            jacobian: bool, specify whether to return the Jacobian of the
-                transformation. 
-                
-            mapsto: str, 'reference' if mapping onto the refence cell [0,1]^2
-                or 'physical' if mapping onto the physical cell. Default is 
-                'physical'
-            
-            
-        Outputs:
-        
-            y: double, list of n (2,) arrays of mapped points
-            
-            jac: double, list of n (2,2) arrays of jacobian matrices
-            
-            
-        Reference: "Perspective Mappings", David Eberly (2012). 
-        """
-        #
-        # Check whether input x are in the right format
-        # 
-        assert type(x) is list, 'Input "x" should be a list of arrays.'
-        for xi in x:
-            assert type(xi) is np.ndarray,\
-                'Each entry of input "x" must be an array.'
-            assert xi.shape == (2,),\
-                'Each entry of input "x" must be a (2,) array.'
-        
-        #
-        # Get cell corner vertices
-        #  
-        x_verts = self.get_vertices(pos='corners', as_array=True)
-        x_sw = x_verts[0,:]
-        x_se = x_verts[1,:]
-        x_ne = x_verts[2,:]
-        x_nw = x_verts[3,:]
-        
-        #
-        # Translated 1,0 and 0,1 vertices form basis
-        # 
-        Q = np.array([x_se-x_sw, x_nw-x_sw]).T
-    
-        #
-        # Express upper right corner i.n terms of (1,0) and (0,1)
-        # 
-        b = x_ne-x_sw
-        a = np.linalg.solve(Q,b)
-        
-        if mapsto=='reference':
-            #
-            # Map from physical cell to [0,1]^2
-            #
-            y = []
-            jac = []
-            for xi in x:
-                #
-                # Express centered point in terms of Q basis
-                # 
-                xii = np.linalg.solve(Q, xi-x_sw)
-                #
-                # Common denominator
-                #  
-                c = a[0]*a[1] + a[1]*(a[1]-1)*xii[0] + a[0]*(a[0]-1)*xii[1]
-                #
-                # Reference coordinates
-                # 
-                y0 = a[1]*(a[0]+a[1]-1)*xii[0]/c
-                y1 = a[0]*(a[0]+a[1]-1)*xii[1]/c
-                y.append(np.array([y0,y1]))
-                
-                if jacobian:
-                    #
-                    # Compute the Jacobian for each point
-                    #
-                    dy0_dx0 = a[1]*(a[0]+a[1]-1)*(1/c+a[1]*(1-a[1])*xii[0]/c**2)
-                    dy0_dx1 = a[1]*(a[0]+a[1]-1)*a[0]*(1-a[0])*xii[0]/c**2
-                    dy1_dx0 = a[0]*(a[0]+a[1]-1)*a[1]*(1-a[1])*xii[1]/c**2
-                    dy1_dx1 = a[0]*(a[0]+a[1]-1)*(1/c+a[0]*(1-a[0])*xii[1]/c**2)
-                    dydx = np.array([[dy0_dx0, dy0_dx1],[dy1_dx0, dy1_dx1]])
-                    jac.append(dydx.dot(np.linalg.inv(Q)))
-            #
-            # Return mapped points (and jacobian)
-            # 
-            if jacobian:        
-                return y, jac
-            else:
-                return y
-            
-        elif mapsto=='physical':
-            #
-            # Map from reference cell [0,1]^2 to physical cell
-            # 
-            y = []
-            jac = []
-            for xi in x:
-                #
-                # Common denominator 
-                # 
-                c = a[0] + a[1] - 1 + (1-a[1])*xi[0] + (1-a[0])*xi[1]
-                #
-                # Physical coordinates in terms of Q basis
-                #
-                y0 = a[0]*xi[0]/c
-                y1 = a[1]*xi[1]/c
-                #
-                # Transform, translate, and store physical coordinates 
-                # 
-                yi = x_sw + np.dot(Q,np.array([y0,y1]))
-                y.append(yi)
-                    
-                if jacobian:
-                    #
-                    # Compute the jacobian for each point
-                    # 
-                    dy0_dx0 = a[0]/c + (a[1]-1)*a[0]*xi[0]/c**2
-                    dy0_dx1 = (a[0]-1)*a[0]*xi[0]/c**2
-                    dy1_dx0 = (a[1]-1)*a[1]*xi[1]/c**2
-                    dy1_dx1 = a[1]/c + (a[0]-1)*a[1]*xi[1]/c**2 
-                    dydx = np.array([[dy0_dx0, dy0_dx1],[dy1_dx0, dy1_dx1]])
-                    jac.append(np.dot(Q,dydx))
-            #
-            # Return mapped points (and jacobian)
-            #
-            if jacobian:
-                return y, jac
-            else:
-                return y
-    
-    def map_from_reference(self, x_ref, jacobian=False):
-        """
-        Map point from reference cell [0,1]^2 to physical cell
-        
-        Inputs: 
-        
-            x_ref: double, (n_points, dim) array of points in the reference
-                cell. 
-                
-        Output:
-        
-            x: double, (n_points, dim) array of points in the physical cell
-            
-            
-        Note: Older version that only works with rectangles
-        TODO: Delete
-        """
-        x0,x1,y0,y1 = self.box()
-        x = np.array([x0 + (x1-x0)*x_ref[:,0], 
-                      y0 + (y1-y0)*x_ref[:,1]]).T
-        return x
-    
-    
-    
-    
-    def derivative_multiplier(self, derivative):
-        """
-        Determine the 
-        
-        TODO: Delete
-        """
-        c = 1
-        if derivative[0] in {1,2}:
-            # 
-            # There's a map and we're taking derivatives
-            #
-            x0,x1,y0,y1 = self.box()
-            for i in derivative[1:]:
-                if i==0:
-                    c *= 1/(x1-x0)
-                elif i==1:
-                    c *= 1/(y1-y0)
-        return c
-    
-                
-    
-        
-                                
-    def split(self):
-        """
-        Split cell into subcells
-        """
-        assert not self.has_children(), 'Cell is already split.'
-        for pos in self.children.keys():
-            self.children[pos] = QuadCell(parent=self, position=pos)
-            
-
-    def is_balanced(self):
-        """
-        Check whether the tree is balanced
-        
-        """
-        children_to_check = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
-                             'E': ['NW', 'SW'], 'W': ['NE', 'SE']}        
-        for leaf in self.get_leaves():
-            for direction in ['N','S','E','W']:
-                nb = leaf.get_neighbor(direction)
-                if nb is not None and nb.has_children():
-                    for pos in children_to_check[direction]:
-                        child = nb.children[pos]
-                        if child.type != 'LEAF':
-                            return False
-        return True
-    
-        
-    def balance(self):
-        """
-        Ensure that subcells of current cell conform to the 2:1 rule
-        
-        TODO: Modify to work with labels, half-edges
-        """
-        leaves = set(self.get_leaves())  # set: no duplicates
-        leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
-                     'E': ['NW', 'SW'], 'W': ['NE', 'SE']} 
-
-        while len(leaves) > 0:            
-            leaf = leaves.pop()
-            flag = False
-            #
-            # Check if leaf needs to be split
-            # 
-            for direction1 in ['N', 'S', 'E', 'W']:
-                nb = leaf.get_neighbor(direction1) 
-                if nb == None:
-                    pass
-                elif nb.type == 'LEAF':
-                    pass
-                else:
-                    for pos in leaf_dict[direction1]:
-                        #
-                        # If neighor's children nearest to you aren't LEAVES,
-                        # then split and add children to list of leaves! 
-                        #
-                        if nb.children[pos].type != 'LEAF':
-                            leaf.split()
-                            for child in leaf.children.values():
-                                child.mark('support')
-                                leaves.add(child)
-                                
-                                    
-                            #
-                            # Check if there are any neighbors that should 
-                            # now also be split.
-                            #  
-                            for direction2 in ['N', 'S', 'E', 'W']:
-                                nb = leaf.get_neighbor(direction2)
-                                if (nb is not None) and \
-                                   (nb.type == 'LEAF') and \
-                                   (nb.depth < leaf.depth):
-                                    leaves.add(nb)
-                                
-                            flag = True
-                            break
-                if flag:
-                    break
-        self.__balanced = True
-        
-    
-    def remove_supports(self):
-        """
-        Remove the supporting cell. This is useful after coarsening
-        
-        TODO: Modify to work with cells/flags
-        """    
-        leaves = self.get_leaves()
-        while len(leaves) > 0:
-            leaf = leaves.pop()
-            if leaf.is_marked('support'):
-                #
-                # Check whether its safe to delete the support cell
-                # 
-                safe_to_coarsen = True
-                for direction in ['N', 'S', 'E', 'W']:
-                    nb = leaf.get_neighbor(direction)
-                    if nb!=None and nb.has_children():
-                        safe_to_coarsen = False
-                        break
-                if safe_to_coarsen:
-                    parent = leaf.parent
-                    parent.merge()
-                    leaves.append(parent)
-        self.__balanced = False    
-    
-    ============
-    OLD VERSION
-    ============    
-    def split(self):
-        """
-        Split cell into subcells.
-
-        """
-        assert not self.has_children(), 'QuadCell has children and cannot be split.'
-        if self.type == 'ROOT' and self.grid_size != None:
-            #
-            # ROOT cell's children may be stored in a grid 
-            #
-            nx, ny = self.grid_size
-            cell_children = {}
-            xmin, ymin = self.vertices['SW'].coordinates()
-            xmax, ymax = self.vertices['NE'].coordinates()
-            x = np.linspace(xmin, xmax, nx+1)
-            y = np.linspace(ymin, ymax, ny+1)
-            for i in range(nx):
-                for j in range(ny):
-                    if i == 0 and j == 0:
-                        # Vertices
-                        v_sw = Vertex((x[i]  ,y[j]  ))
-                        v_se = Vertex((x[i+1],y[j]  ))
-                        v_ne = Vertex((x[i+1],y[j+1]))
-                        v_nw = Vertex((x[i]  ,y[j+1]))
-                        
-                        # Edges
-                        e_w = Edge(v_sw, v_nw, parent=self)
-                        e_e = Edge(v_se, v_ne, parent=self)
-                        e_s = Edge(v_sw, v_se, parent=self)
-                        e_n = Edge(v_nw, v_ne, parent=self)
-                        
-                    elif i > 0 and j == 0:
-                        # Vertices
-                        v_se = Vertex((x[i+1],y[j]  ))
-                        v_ne = Vertex((x[i+1],y[j+1]))
-                        v_sw = cell_children[i-1,j].vertices['SE']
-                        v_nw = cell_children[i-1,j].vertices['NE']
-                        
-                        # Edges
-                        e_w = cell_children[i-1,j].edges['E']
-                        e_e = Edge(v_se, v_ne, parent=self)
-                        e_s = Edge(v_sw, v_se, parent=self)
-                        e_n = Edge(v_nw, v_ne, parent=self)
-                        
-                    elif i == 0 and j > 0:
-                        # Vertices
-                        v_ne = Vertex((x[i+1],y[j+1]))
-                        v_nw = Vertex((x[i]  ,y[j+1]))
-                        v_sw = cell_children[i,j-1].vertices['NW']
-                        v_se = cell_children[i,j-1].vertices['NE']
-                        
-                        # Edges
-                        e_w = Edge(v_sw, v_nw, parent=self)
-                        e_e = Edge(v_se, v_ne, parent=self)
-                        e_s = cell_children[i,j-1].edges['N']
-                        e_n = Edge(v_nw, v_ne, parent=self)
-                                            
-                    elif i > 0 and j > 0:
-                        # Vertices
-                        v_ne = Vertex((x[i+1],y[j+1]))
-                        v_nw = cell_children[i-1,j].vertices['NE']
-                        v_sw = cell_children[i,j-1].vertices['NW']
-                        v_se = cell_children[i,j-1].vertices['NE']
-                        
-                        # Edges
-                        e_w = cell_children[i-1,j].edges['E']
-                        e_e = Edge(v_se, v_ne, parent=self)
-                        e_s = cell_children[i,j-1].edges['N']
-                        e_n = Edge(v_nw, v_ne, parent=self)
-                        
-                    child_vertices = {'SW': v_sw, 'SE': v_se, \
-                                      'NE': v_ne,'NW': v_nw}
-                    child_edges = {'W':e_w, 'E':e_e, 'S':e_s, 'N':e_n}
-                                        
-                    child_position = (i,j)
-                    cell_children[i,j] = QuadCell(vertices=child_vertices, \
-                                              parent=self, edges=child_edges, \
-                                              position=child_position)
-            self.children = cell_children
-        else: 
-            if self.type == 'LEAF':    
-                #
-                # Reclassify LEAF cells to BRANCH (ROOTS remain as they are)
-                #  
-                self.type = 'BRANCH'
-            #
-            # Add cell vertices
-            #
-            x0, y0 = self.vertices['SW'].coordinates()
-            x1, y1 = self.vertices['NE'].coordinates()
-            hx = 0.5*(x1-x0)
-            hy = 0.5*(y1-y0)
-             
-            if not 'M' in self.vertices:
-                self.vertices['M'] = Vertex((x0 + hx, y0 + hy))        
-            #
-            # Add edge midpoints to parent
-            # 
-            mid_point = {'N': (x0 + hx, y1), 'S': (x0 + hx, y0), 
-                         'W': (x0, y0 + hy), 'E': (x1, y0 + hy)}
-            
-            #
-            # Add dictionary for edges
-            #  
-            directions = ['N', 'S', 'E', 'W']
-            edge_dict = dict.fromkeys(directions)
-            sub_edges = dict.fromkeys(['SW','SE','NE','NW'],edge_dict)
-            
-            opposite_direction = {'N': 'S', 'S': 'N', 'W': 'E', 'E': 'W'}
-            for direction in directions:
-                #
-                # Check wether we already have a record of this
-                # MIDPOINT vertex
-                #
-                if not (direction in self.vertices):
-                    neighbor = self.get_neighbor(direction)
-                    opposite_dir = opposite_direction[direction]
-                    if neighbor == None: 
-                        #
-                        # New vertex - add it only to self
-                        # 
-                        v_new =  Vertex(mid_point[direction])
-                        self.vertices[direction] = v_new
-                        
-                        #
-                        # New sub-edges - add them to dictionary
-                        # 
-                        for edge_key in sub_edges.keys():
-                            if direction in list(edge_key):
-                                sub_edges[edge_key][direction] = \
-                                    Edge(self.vertices[direction], \
-                                         self.vertices[edge_key])
-                        
-                    elif neighbor.type == 'LEAF':
-                        #
-                        # Neighbor has no children add new vertex to self and 
-                        # neighbor.
-                        #  
-                        v_new =  Vertex(mid_point[direction])
-                        self.vertices[direction] = v_new
-                        neighbor.vertices[opposite_dir] = v_new 
-                        
-                        #
-                        # Add new sub-edges to dictionary (same as above)
-                        #
-                        for edge_key in sub_edges.keys():
-                            if direction in list(edge_key):
-                                sub_edges[edge_key][direction] = \
-                                    Edge(self.vertices[direction], \
-                                         self.vertices[edge_key]) 
-                    else:
-                        #
-                        # Vertex exists already - get it from neighoring Tree
-                        # 
-                        self.vertices[direction] = \
-                            neighbor.vertices[opposite_dir]
-                        
-                        #
-                        # Edges exist already - get them from the neighbor    
-                        # 
-                        for edge_key in sub_edges.keys():
-                            if direction in list(edge_key):
-                                nb_ch_pos = edge_key.replace(direction,\
-                                                 opposite_dir)
-                                nb_child = neighbor.children[nb_ch_pos]
-                                sub_edges[edge_key][direction] = \
-                                    nb_child.edges[opposite_dir]
-            #            
-            # Add child cells
-            # 
-            sub_vertices = {'SW': ['SW', 'S', 'M', 'W'], 
-                            'SE': ['S', 'SE', 'E', 'M'], 
-                            'NE': ['M', 'E', 'NE', 'N'],
-                            'NW': ['W', 'M', 'N', 'NW']}   
-     
-              
-            for i in sub_vertices.keys():
-                child_vertices = {}
-                child_vertex_pos = ['SW', 'SE', 'NE', 'NW'] 
-                for j in range(4):
-                    child_vertices[child_vertex_pos[j]] = self.vertices[sub_vertices[i][j]] 
-                child = QuadCell(child_vertices, parent=self, position=i)
-                self.children[i] = child
-    
-                    
-      
-    def merge(self):
-        """
-        Delete child nodes
-        """
-        #
-        # Delete unnecessary vertices of neighbors
-        # 
-        opposite_direction = {'N': 'S', 'S': 'N', 'W': 'E', 'E': 'W'}
-        for direction in ['N','S','E','W']:
-            neighbor = self.get_neighbor(direction)
-            if neighbor==None:
-                #
-                # No neighbor on this side delete midpoint vertices
-                # 
-                del self.vertices[direction]
-                
-            elif not neighbor.has_children():
-                #
-                # Neighbouring cell has no children - delete edge midpoints of both
-                # 
-                del self.vertices[direction]
-                op_direction = opposite_direction[direction]
-                del neighbor.vertices[op_direction] 
-        #
-        # Delete all children
-        # 
-        self.children.clear()
-        self.type = 'LEAF'
-    
-
-    
-    =================================
-    OBSOLETE: TREE IS ALwAYS BALANCED
-    =================================
-    def balance_tree(self):
-        """
-        Ensure that subcells of current cell conform to the 2:1 rule
-        """
-        leaves = self.get_leaves()
-        leaf_dict = {'N': ['SE', 'SW'], 'S': ['NE', 'NW'],
-                     'E': ['NW', 'SW'], 'W': ['NE', 'SE']} 
-
-        while len(leaves) > 0:
-            leaf = leaves.pop()
-            flag = False
-            #
-            # Check if leaf needs to be split
-            # 
-            for direction in ['N', 'S', 'E', 'W']:
-                nb = leaf.get_neighbor(direction) 
-                if nb == None:
-                    pass
-                elif nb.type == 'LEAF':
-                    pass
-                else:
-                    for pos in leaf_dict[direction]:
-                        #
-                        # If neighor's children nearest to you aren't LEAVES,
-                        # then split and add children to list of leaves! 
-                        #
-                        if nb.children[pos].type != 'LEAF':
-                            leaf.mark()
-                            leaf.split()
-                            for child in leaf.children.values():
-                                child.mark_support_cell()
-                                leaves.append(child)
-                            
-                            #
-                            # Check if there are any neighbors that should 
-                            # now also be split.
-                            #  
-                            for direction in ['N', 'S', 'E', 'W']:
-                                nb = leaf.get_neighbor(direction)
-                                if nb != None and nb.depth < leaf.depth:
-                                    leaves.append(nb)
-                                
-                            flag = True
-                            break
-                if flag:
-                    break
-    
-                
-        
-    def pos2id(self, pos):
-        """ 
-        Convert position to index: 'SW' -> 0, 'SE' -> 1, 'NW' -> 2, 'NE' -> 3 
-        """
-        if type(pos) is int:
-            return pos
-        elif pos in ['SW','SE','NW','NE']:
-            pos_to_id = {'SW': 0, 'SE': 1, 'NW': 2, 'NE': 3}
-            return pos_to_id[pos]
-        else:
-            raise Exception('Unidentified format for position.')
-    
-    
-    def id2pos(self, idx):
-        """
-        Convert index to position: 0 -> 'SW', 1 -> 'SE', 2 -> 'NW', 3 -> 'NE'
-        """
-        if type(idx) is tuple:
-            #
-            # DCEL index and positions coincide
-            # 
-            assert len(idx) == 2, 'Expecting a tuple of integers.'
-            return idx
-        
-        elif idx in ['SW', 'SE', 'NW', 'NE']:
-            #
-            # Input is already a position
-            # 
-            return idx
-        elif idx in [0,1,2,3]:
-            #
-            # Convert
-            # 
-            id_to_pos = {0: 'SW', 1: 'SE', 2: 'NW', 3: 'NE'}
-            return id_to_pos[idx]
-        else:
-            raise Exception('Unrecognized format.')
-    '''    
-
-       
-       
-        
-              
-class Edge(object):
-    '''
-    Description: Edge object in quadtree
-    
-    
-    Attributes:
-    
-    v_begin: Vertex, vertex where edge begins
-    
-    v_end: Vertex, vertex where edge ends
-    
-    children: Edge, list of Edge's between [v_begin,v_middle], and between 
-              [v_middle,v_end].
-
-    incident_face: Cell, lying to the left of the edge
-    
-    on_boundary: bool, True if edge lies on boundary 
-    
-    
-    TODO: Delete 
-    '''
-    
-    def __init__(self, v1, v2, parent=None):
-        """
-        Description: Constructor
-        
-        Inputs: 
-        
-            v1, v2: Vertex, two vertices that define the edge
-            
-            parent: One QuadCell/TriCell containing the edge (not necessary?)
-            
-            on_boundary: Either None (if not set) or Boolean (True if edge lies on boundary)
-        """
-        self.__vertices = set([v1,v2])
-        
-        dim = len(v1.coordinates())
-        if dim == 1:
-            x0, = v1.coordinates()
-            x1, = v2.coordinates()
-            nnorm = np.abs(x1-x0)
-        elif dim == 2:
-            x0,y0 = v1.coordinates()
-            x1,y1 = v2.coordinates()
-            nnorm = np.sqrt((y1-y0)**2+(x1-x0)**2)
-        self.__length = nnorm
-        self._flags = set()
-        self.__parent = parent 
-     
-     
-    def info(self):
-        """
-        Display information about edge
-        """
-        v1, v2 = self.vertices()
-        print('{0:10}: {1} --> {2}'.format('Vertices', v1.coordinates(), v2.coordinates()))
-        #print('{0:10}: {1}'.format('Length', self.length()))
-    
-    
-    def box(self):
-        """
-        Return the edge endpoint coordinates x0,y0,x1,y1, where 
-        edge: (x0,y0) --> (x1,y1) 
-        To ensure consistency, the points are sorted, first in the x-component
-        then in the y-component.
-        """    
-        verts = self.vertex_coordinates()
-        verts.sort()
-        x0,y0 = verts[0]
-        x1,y1 = verts[1]
-        return x0,x1,y0,y1
-        
-        
-    def mark(self, flag=None):
-        """
-        Mark Edge
-        
-        Inputs:
-        
-            flag: optional label used to mark edge
-        """  
-        if flag is None:
-            self._flags.add(True)
-        else:
-            self._flags.add(flag)
-            
-        
-    def unmark(self, flag=None):
-        """
-        Unmark Edge
-        
-        Inputs: 
-        
-            flag: label to be removed
-            
-        """
-        if flag is None:
-            # No flag specified -> delete all
-            self._flags.clear()
-        else:
-            # Remove specified flag (if present)
-            if flag in self._flags: self._flags.remove(flag)         
- 
-         
-    def is_marked(self,flag=None):
-        """
-        Check whether Edge is marked
-        
-        Input: flag, label for QuadCell: usually one of the following:
-            True (catchall), 'split' (split cell), 'count' (counting)
-        """ 
-        if flag is None:
-            # No flag -> check whether set is empty
-            if self._flags:
-                return True
-            else:
-                return False
-        else:
-            # Check wether given label is contained in cell's set
-            return flag in self._flags     
-      
-       
-    def vertices(self):
-        """
-        Returns the set of vertices
-        """
-        return self.__vertices
-
-    
-    def vertex_coordinates(self):
-        """
-        Returns the vertex coordinates as list of tuples
-        """        
-        v1,v2 = self.__vertices
-        return [v1.coordinates(), v2.coordinates()]
-
-        
-    def length(self):
-        """
-        Returns the length of the edge
-        """
-        return self.__length
-    
-    
-    def intersects_line_segment(self, line):
-        """
-        Determine whether the edge intersects with a given line segment
-        
-        Input: 
-        
-            line: double, list of two tuples
-            
-        Output:
-        
-            boolean, true if intersection, false otherwise.
-        """        
-        # Express edge as p + t*r, t in [0,1]
-        v1,v2 = self.vertices()
-        p = np.array(v1.coordinates())
-        r = np.array(v2.coordinates()) - p
-        
-        # Express line as q + u*s, u in [0,1] 
-        q = np.array(line[0]) 
-        s = np.array(line[1]) - q
-        
-        if abs(np.cross(r,s)) < 1e-14:
-            #
-            # Lines are parallel
-            # 
-            if abs(np.cross(q-p,r)) < 1e-14:
-                #
-                # Lines are collinear
-                # 
-                t0 = np.dot(q-p,r)/np.dot(r,r)
-                t1 = t0 + np.dot(s,r)/np.dot(r,r)
-                
-                if (max(t0,t1) >= 0) and (min(t0,t1) <= 1):
-                    # 
-                    # Line segments overlap
-                    # 
-                    return True
-                else:
-                    return False
-            else:
-                #
-                # Lines not collinear
-                # 
-                return False 
-        else:
-            #
-            # Lines not parallel
-            #   
-            t = np.cross(q-p,s)/np.cross(r,s)
-            u = np.cross(p-q,r)/np.cross(s,r)
-            
-            if 0 <= t <= 1 and 0 <= u <= 1:
-                #
-                # Line segments meet
-                # 
-                return True
-            else:
-                return False 
-                 
-    

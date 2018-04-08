@@ -93,7 +93,7 @@ class TestTree(unittest.TestCase):
                          'Tree should have depth 0')
         
         # Split node 10 times 
-        for _ in range(10):
+        for i in range(10):
             node.split()
             node = node.get_child(1)
         
@@ -461,7 +461,7 @@ class TestTree(unittest.TestCase):
         # Depth first order
         # 
         addresses_depth_first = [[0,0],[0,1],[1]]
-        leaves = node.get_leaves(nested=False)
+        leaves = node.get_leaves(mode='depth-first')
         for i in range(len(leaves)):
             leaf = leaves[i]
             self.assertEqual(leaf.get_node_address(), \
@@ -471,7 +471,7 @@ class TestTree(unittest.TestCase):
         # Breadth first order
         # 
         addresses_breadth_first = [[1],[0,0],[0,1]]
-        leaves = node.get_leaves(nested=True)
+        leaves = node.get_leaves(mode='breadth-first')
         for i in range(len(leaves)):
             leaf = leaves[i]
             self.assertEqual(leaf.get_node_address(),\
@@ -481,7 +481,7 @@ class TestTree(unittest.TestCase):
         
         node.get_child(0).get_child(0).mark('1')
         node.get_child(1).mark('1')
-        leaves = node.get_leaves(flag='1', nested='True')
+        leaves = node.get_leaves(flag='1')
         self.assertEqual(len(leaves),2, \
                          'There should only be 2 flagged leaves')
         
@@ -502,11 +502,11 @@ class TestTree(unittest.TestCase):
         #
         # Nested traversal
         #
-        leaves = node.get_leaves(nested=True)
+        leaves = node.get_leaves(mode='breadth-first')
         self.assertEqual(leaves[0].get_node_address(),[1], \
             'The first leaf in the nested enumeration should have address [1]')
         
-        leaves = node.get_leaves()
+        leaves = node.get_leaves(mode='depth-first')
         self.assertEqual(leaves[0].get_node_address(), [0,0], \
                          'First leaf in un-nested enumeration should be [0,0].')
         
@@ -530,14 +530,15 @@ class TestTree(unittest.TestCase):
                         'Node should be a marked leaf node.')
     
         node.split()
-        sw_child = node.get_child(0)
-        sw_child.split()
-        sw_child.mark(1)
-        self.assertEqual(node.get_leaves(flag=1), \
-                         [sw_child], 'SW child should be only marked leaf')
+        child0 = node.get_child(0)
+        child0.split()
+        child0.mark(1)
+        node.make_rooted_subtree(1)
         
-        sw_child.remove()
-        self.assertEqual(node.get_leaves(flag=1), \
+        self.assertEqual(node.get_leaves(rs_flag=1), [child0])
+        
+        child0.remove()
+        self.assertEqual(node.get_leaves(rs_flag=1), \
                          [node], 'node should be only marked leaf')
         
         #
@@ -550,8 +551,8 @@ class TestTree(unittest.TestCase):
             
         node.get_child(1).mark(1, recursive=True)
         node.get_child(3).mark(1)
-        
-        leaves = node.get_leaves(nested=True, flag=1)
+        node.make_rooted_subtree(1)
+        leaves = node.get_leaves(rs_flag=1)
         self.assertEqual(len(leaves), 5, 
                          'This tree has 5 flagged LEAF nodes.')
         self.assertEqual(leaves[0], node.get_child(3), 

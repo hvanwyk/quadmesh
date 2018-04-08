@@ -1,8 +1,9 @@
-from mesh import Cell, QuadCell, HalfEdge, Vertex
+from mesh import Cell, HalfEdge, Vertex
 from mesh import convert_to_array
 from fem import GaussRule
 import numpy as np
 import unittest
+
 
 class TestCell(unittest.TestCase):
     """

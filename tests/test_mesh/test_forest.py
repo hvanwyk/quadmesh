@@ -1,6 +1,7 @@
 import unittest
 from mesh import Tree, Forest
 import numpy as np
+from softwareproperties.AptAuth import dummy
 
 class TestForest(unittest.TestCase):
     """
@@ -33,7 +34,7 @@ class TestForest(unittest.TestCase):
         # Split tree 0 three times
         # 
         tree = forest.get_child(0)
-        for _ in range(3):
+        for dummy in range(3):
             tree.split()
             tree = tree.get_child(0)
             
@@ -125,7 +126,7 @@ class TestForest(unittest.TestCase):
         # Depth first order
         # 
         addresses_depth_first = [[0,0,0],[0,0,1],[0,1]]
-        leaves = forest.get_leaves(nested=False)
+        leaves = forest.get_leaves(mode='depth-first')
         for i in range(len(leaves)):
             leaf = leaves[i]
             self.assertEqual(leaf.get_node_address(), addresses_depth_first[i],
@@ -134,7 +135,7 @@ class TestForest(unittest.TestCase):
         # Breadth first order
         # 
         addresses_breadth_first = [[0,1],[0,0,0],[0,0,1]]
-        leaves = node.get_leaves(nested=True)
+        leaves = node.get_leaves(mode='breadth-first')
         for i in range(len(leaves)):
             leaf = leaves[i]
             self.assertEqual(leaf.get_node_address(), addresses_breadth_first[i],
@@ -143,7 +144,8 @@ class TestForest(unittest.TestCase):
         
         node.get_child(0).get_child(0).mark('1')
         node.get_child(1).mark('1')
-        leaves = node.get_leaves(flag='1', nested='True')
+        node.make_rooted_subtree('1')
+        leaves = node.get_leaves(rs_flag='1')
         self.assertEqual(len(leaves),2, \
                          'There should only be 2 flagged leaves')
         
@@ -165,11 +167,11 @@ class TestForest(unittest.TestCase):
         #
         # Nested traversal
         #
-        leaves = node.get_leaves(nested=True)
+        leaves = node.get_leaves()
         self.assertEqual(leaves[0].get_node_address(),[0,1], \
             'The first leaf in the nested enumeration should have address [1]')
         
-        leaves = node.get_leaves()
+        leaves = node.get_leaves(mode='depth-first')
         self.assertEqual(leaves[0].get_node_address(), [0,0,0], \
                          'First leaf in un-nested enumeration should be [0,0].')
         
@@ -197,11 +199,11 @@ class TestForest(unittest.TestCase):
         sw_child = node.get_child(0)
         sw_child.split()
         sw_child.mark(1)
-        self.assertEqual(node.get_leaves(flag=1), \
+        self.assertEqual(node.get_leaves(rs_flag=1), \
                          [sw_child], 'SW child should be only marked leaf')
         
         sw_child.remove()
-        self.assertEqual(forest.get_leaves(flag=1), \
+        self.assertEqual(forest.get_leaves(subforest_flag=1), \
                          [node], 'node should be only marked leaf')
         
         #
@@ -215,8 +217,8 @@ class TestForest(unittest.TestCase):
             
         node.get_child(1).mark(1, recursive=True)
         node.get_child(3).mark(1)
-        
-        leaves = forest.get_leaves(nested=True, flag=1)
+        forest.make_forest_of_rooted_subtrees(1)
+        leaves = forest.get_leaves(subforest_flag=1)
         self.assertEqual(len(leaves), 5, 
                          'This tree has 5 flagged LEAF nodes.')
         self.assertEqual(leaves[0], node.get_child(3), 
@@ -289,7 +291,7 @@ class TestForest(unittest.TestCase):
     
     def test_record(self):
         forest = Forest([Tree(2),Tree(2),Tree(2)])
-        for _ in range(5):
+        for dummy in range(5):
             for child in forest.get_children():
                 if np.random.rand() > 0.5:
                     child.split()
@@ -299,61 +301,181 @@ class TestForest(unittest.TestCase):
     
     
     def test_coarsen(self):
+        # =====================================================================
+        # Simple Coarsening
+        # =====================================================================
         # Define a new forest with two quadtrees
         forest = Forest([Tree(4), Tree(4)])
         
+        # Coarsen, nothing should happen
+        forest.coarsen()
+        
+        # Check that forest is as it was
+        count = 0
+        for dummy in forest.traverse():
+            count += 1
+        self.assertEqual(count, 2)
+        
         # Refine and coarsen again
-        forest.refine()
+        forest.refine()        
         forest.coarsen()
-        
+                
         # Check that forest is as it was
         count = 0
-        for _ in forest.traverse():
-            count += 1
-        self.assertEqual(count, 2)
- 
-        # Coarsen forest - there should be no change        
-        forest.coarsen()
-        
-        # Check that forest is as it was
-        count = 0
-        for _ in forest.traverse():
+        for dummy in forest.traverse():
             count += 1
         self.assertEqual(count, 2)
         
+        # =====================================================================
+        # Coarsening Flag
+        # =====================================================================        
         # Refine and mark one child 
         forest.refine()
         
         # Check that forest is as it was
         count = 0
-        for _ in forest.traverse():
+        for dummy in forest.traverse():
             count += 1
         self.assertEqual(count, 10)
-        
+            
         forest.get_child(0).get_child(0).mark(1)
-        forest.coarsen(label=1)
+        forest.coarsen(coarsening_flag=1)
         
-        # Check that forest is as it was
+        # Tree 0 should not have children, while Tree 1 should have 4
         count = 0
-        for _ in forest.traverse():
+        for dummy in forest.traverse():
             count += 1
-        self.assertEqual(count, 10)
+        self.assertEqual(count, 6)
+        
+        self.assertFalse(forest.get_child(0).has_children())
+        self.assertTrue(forest.get_child(1).has_children())
         
         # Nothing is marked 1
         self.assertFalse(any(child.is_marked(1) for child in forest.traverse()))
     
-        # Now actually delete nodes marked 1 
-        forest.get_child(0).mark(1)
-        forest.coarsen(coarsening_flag=1)
+        # =====================================================================
+        # Coarsening with subforests
+        # ===================================================================== 
+        forest = Forest([Tree(2), Tree(2)])
         
-        # Check that one node deleted its children
+        forest.refine()
+        
+        # Make a subforest [0],[0,0], [1]  
+        forest.get_child(0).get_child(0).mark(2)
+        forest.make_forest_of_rooted_subtrees(2)
+        
         count = 0
-        for _ in forest.traverse():
+        for dummy in forest.traverse(flag=2):
+            count += 1
+        self.assertEqual(count, 3)
+        
+        # Coarsen the subforest
+        forest.coarsen(subforest_flag=2)
+        
+        # Subforest now contains [0], [1]
+        count = 0
+        for dummy in forest.traverse(flag=2):
+            count += 1
+        self.assertEqual(count, 2)
+        
+        # Forest still contains 6
+        count = 0
+        for dummy in forest.traverse():
             count += 1
         self.assertEqual(count, 6)
         
+        # New subforest: [0],[0,0], [1],[1,1]
+        forest.get_child(0).get_child(0).mark(2)
+        forest.get_child(1).get_child(1).mark(2)
+        
+        # Count subforest nodes
+        count = 0
+        for dummy in forest.traverse(2):
+            count += 1
+        self.assertEqual(count,4)
+
+        # Coarsening flag at a node not in the subforest 
+        forest.get_child(0).get_child(1).mark(1)
+        
+        forest.coarsen(subforest_flag=2, coarsening_flag=1)
+        
+        # Count subforest nodes
+        count = 0
+        for dummy in forest.traverse(2):
+            count += 1
+        self.assertEqual(count,4)
+
+        # Apply coarsening flag to a node in the subforest
+        forest.get_child(0).get_child(0).mark(1)
+        
+        # Coarsen
+        forest.coarsen(subforest_flag=2, coarsening_flag=1)
+        
+        # Now there should be 3 subnodes
+        count = 0
+        for dummy in forest.traverse(2):
+            count += 1
+        self.assertEqual(count,3)
+    
+        # Make sure the coarsening flag is deleted.
+        self.assertFalse(forest.get_child(1).get_child(1).is_marked(1))
+        
+        # =====================================================================
+        # Coarsening with new_label
+        # =====================================================================
+        # Subforest is: [0], [0,0], [1], [1,1] 
+        forest.get_child(0).get_child(0).mark(2)
+        
+        # Mark [0,0] with coarsening flag
+        forest.get_child(0).get_child(0).mark(1)
+        
+        # Coarsen subforest and label with new_label 
+        forest.coarsen(subforest_flag=2, coarsening_flag=1, new_label=3)
+        
+        # Check that subforest still has the same nodes
+        count = 0
+        for dummy in forest.traverse(2):
+            count += 1
+        self.assertEqual(count,4)
+        
+        # Check that the new submesh has fewer 
+        count = 0
+        for dummy in forest.traverse(3):
+            count += 1
+        self.assertEqual(count,3)
+        
+        #
+        # Now with no submesh
+        #
+        # Check that forest still has 6 nodes
+        count = 0
+        for dummy in forest.traverse():
+            count += 1
+        self.assertEqual(count,6)
+        
+        # Mark with coarsening flag
+        forest.get_child(0).get_child(1).mark(1)
+        
+        # Coarsen
+        forest.coarsen(coarsening_flag=1, new_label=4)
+        
+        # Check that forest still has 6 nodes
+        count = 0
+        for dummy in forest.traverse():
+            count += 1
+        self.assertEqual(count,6)
+        
+        # Check that subforest has 5 nodes
+        count = 0
+        for dummy in forest.traverse(4):
+            count += 1
+        self.assertEqual(count,5)
+        
         
     def test_refine(self):
+        # =====================================================================
+        # Simple Refineement
+        # =====================================================================
         # Define a new forest with two binary trees
         forest = Forest([Tree(2), Tree(2)])
         
@@ -362,57 +484,110 @@ class TestForest(unittest.TestCase):
         
         # Check wether the trees have been split
         count = 0
-        for _ in forest.traverse():
+        for dummy in forest.traverse():
             count += 1
         self.assertEqual(count, 6)
         
+        # =====================================================================
+        # Refinement Label
+        # =====================================================================
         # Mark second tree and refine only by its label
-        tree = forest.get_child(1)
-        tree.mark(1)
-        forest.refine(label=1)
+        forest.get_child(1).mark(1)
+        forest.refine(refinement_flag=1)
         
-        # Check that all the tree's children are labeled 1 
-        self.assertTrue(all([child.is_marked(1) for child in tree.get_children()]))
-        
-        # Other node still not labeled
-        self.assertFalse(forest.get_child(0).is_marked(1))
-        should_be_false = any([gchild.is_marked(1) for gchild in \
-                               forest.get_child(0).get_children()])
-        self.assertFalse(should_be_false)
-        
-        # Check whether forest has expanded - it shouldn't have
+        # Nothing should have happened (because child is not a leaf)
         count = 0
-        for _ in forest.traverse():
+        for dummy in forest.traverse():
             count += 1
         self.assertEqual(count, 6)
-        
-        # Now add another marker to identify nodes to be refined
-        tree.get_child(1).mark(2)
-        forest.refine(label=1, refinement_flag=2)
-        
-        # Check the depth
-        self.assertEqual(tree.tree_depth(),2)
-        
-        # Check that all tree's progeny are marked 1.
-        for node in tree.traverse():
-            self.assertTrue(node.is_marked(1))
-        
-        # Check whether forest has expanded - it should have
+
+        forest.get_child(1).get_child(1).mark(1)
+        forest.refine(refinement_flag=1)
+                          
         count = 0
-        for _ in forest.traverse():
+        for dummy in forest.traverse():
             count += 1
         self.assertEqual(count, 8)
         
-        # Try to refine a tree that is not labeled 1
-        forest.get_child(0).mark(3)
-        forest.refine(label=1, refinement_flag=3)
         
-        # Check whether forest has expanded - it shouldn't have
+        # =====================================================================
+        # Refinement of subforest
+        # =====================================================================
+        forest = Forest([Tree(2), Tree(2)])
+        forest.refine()
+        
+        # Define subforest
+        forest.get_child(0).get_child(0).mark(1)
+        forest.make_forest_of_rooted_subtrees(1)
+        
+        # Check node count
         count = 0
-        for _ in forest.traverse():
+        for dummy in forest.traverse(1):
             count += 1
-        self.assertEqual(count, 8)
+        self.assertEqual(count, 3)
         
-        # Check that child(0) is not marked
-        for child in forest.get_child(0).traverse():
-            self.assertFalse(child.is_marked(1))
+        forest.refine(subforest_flag=1)
+        
+        # Check node count
+        count = 0
+        for dummy in forest.traverse(1):
+            count += 1
+        self.assertEqual(count, 7)
+        
+        forest.coarsen(subforest_flag=1)
+        
+        # Now try with a refinement flag
+        forest.get_child(1).mark(2)
+        
+        forest.refine(subforest_flag=1, refinement_flag=2)
+        
+        # Check node count
+        count = 0
+        for dummy in forest.traverse(1):
+            count += 1
+        self.assertEqual(count, 5)
+        
+        
+        # =====================================================================
+        # Refine with new label
+        # =====================================================================
+        forest = Forest([Tree(2), Tree(2)])
+        forest.refine()
+        
+        # Define subforest
+        forest.get_child(0).get_child(0).mark(1)
+        forest.make_forest_of_rooted_subtrees(1)
+        
+        # Check node count
+        count = 0
+        for dummy in forest.traverse(1):
+            count += 1
+        self.assertEqual(count, 3)
+        
+        forest.refine(subforest_flag=1, new_label=4)
+        
+        # Node count of new label 
+        count = 0
+        for dummy in forest.traverse(4):
+            count += 1
+        self.assertEqual(count, 7)
+ 
+        # Node count for original submesh
+        count = 0
+        for dummy in forest.traverse(1):
+            count += 1
+        self.assertEqual(count, 3)
+        
+        # Refinement marker
+        forest.get_child(1).mark(3)
+        
+        # Refine
+        forest.refine(subforest_flag=1, refinement_flag=3, new_label=5)
+        
+        # Check node count
+        count = 0
+        for dummy in forest.traverse(5):
+            count += 1
+        self.assertEqual(count, 5)
+        
+        

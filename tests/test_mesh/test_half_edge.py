@@ -1,4 +1,4 @@
-from mesh import HalfEdge, Vertex
+from mesh import HalfEdge, Vertex, Cell
 import numpy as np
 import unittest
 
@@ -58,11 +58,25 @@ class TestHalfEdge(unittest.TestCase):
     
     
     def test_cell(self):
-        pass
-    
+        points = [(0,0),(1,0),(1,1),(0,1)]
+        vertices = [Vertex(point) for point in points]
+        half_edges = [HalfEdge(vertices[i], vertices[(i+1)%4]) for i in range(4)]
+        cell = Cell(half_edges)
+        for he in half_edges:
+            self.assertEqual(he.cell(), cell)
     
     def test_assign_cell(self):
-        pass
+        # Make a cell
+        points = [(0,0),(1,0),(1,1),(0,1)]
+        vertices = [Vertex(point) for point in points]
+        half_edges = [HalfEdge(vertices[i], vertices[(i+1)%4]) for i in range(4)]
+        cell = Cell(half_edges)
+        
+        # Make a (different) half_edge
+        he = HalfEdge(Vertex((0,0)), Vertex((1,1)))
+        he.assign_cell(cell)
+        
+        self.assertEqual(he.cell(),cell)
     
     
     def test_twin(self):
@@ -442,3 +456,19 @@ class TestHalfEdge(unittest.TestCase):
         line_4 = [(1,2), (3,3)]
         self.assertFalse(h_edge.intersects_line_segment(line_4),\
                         'HalfEdge should intersect line_4.')
+        
+        
+    def test_reference_map(self):
+        v1 = Vertex((1,1))
+        v2 = Vertex((2,3))
+        
+        h = HalfEdge(v1,v2)
+        
+        x = np.linspace(0, 1, 5)
+        points = h.reference_map(x, jacobian=False, hessian=False)
+                
+        y = h.reference_map(points, jacobian=False, hessian=False, mapsto='reference')
+        for (yi,xi) in zip(x,y):
+            self.assertAlmostEqual(xi,yi)
+            
+    

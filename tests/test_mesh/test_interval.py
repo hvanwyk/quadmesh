@@ -128,7 +128,7 @@ class TestInterval(unittest.TestCase):
         self.assertEqual(middle_child.n_children(), 3)
         
         # Check that middle child's right child has no next interval
-        self.assertIsNone(middle_child.get_child(2).next())
+        self.assertEqual(middle_child.get_child(2).next(), I.get_child(2))
         
         # 
         # Split the right child

@@ -5,6 +5,7 @@ Created on Feb 8, 2017
 '''
 
 import matplotlib.pyplot as plt
+from mesh import QuadMesh
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
@@ -18,15 +19,16 @@ class Plot(object):
     Plots related to finite element mesh and functions
     """
     
-    def __init__(self):
+    def __init__(self, quickview=True):
         """
         Constructor
         """
+        self.__quickview = quickview
+     
         
-        
-    def mesh(self, ax, mesh, element=None, show_axis=False, color_marked=None,
+    def mesh(self, mesh, ax=None, element=None, show_axis=False, color_marked=None,
              vertex_numbers=False, edge_numbers=False, cell_numbers=False, 
-             dofs=False, node_flag=None, nested=False):
+             dofs=False, mesh_flag=None, nested=False):
         """
         Plot computational mesh
         
@@ -46,7 +48,7 @@ class Plot(object):
             
             *dofs: boolean, display degrees of freedom
             
-            *node_flag: boolean, plot only cells with the given flag
+            *mesh_flag: boolean, plot only cells with the given flag
             
             *nested: boolean, traverse grid in a nested fashion. 
         
@@ -56,29 +58,82 @@ class Plot(object):
             ax: axis, 
             
         """
-        node = mesh.root_node()
-        
+        if self.__quickview:
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+        else:
+            assert ax is not None, 'Axis not specified.'
+        #
+        # Two dimensional mesh
+        #
         if mesh.dim() == 2:
             #
-            # Two dimensional mesh
+            # Set bounding box
             # 
-            v_cnr = node.cell().get_vertices(pos='corners', as_array=True)            
-            x0, x1 = v_cnr[:,0].min(), v_cnr[:,0].max()
-            y0, y1 = v_cnr[:,0].min(), v_cnr[:,0].max()
-        
+            x0, x1, y0, y1 = mesh.bounding_box()    
+            hx = x1 - x0
+            hy = y1 - y0
+            ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
+            ax.set_ylim(y0-0.1*hy, y1+0.1*hy) 
+            #
+            # Plot background rectangle
+            # 
+            points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+            rect = plt.Polygon(points, fc='darkgrey', edgecolor='k', alpha=0.1)
+            ax.add_patch(rect)
+            #
+            # Plot Cells
+            # 
+            if isinstance(mesh, QuadMesh):
+                cells = mesh.cells.get_leaves(flag=mesh_flag)    
+            else:
+                cells = mesh.cells
             
-        hx = x1 - x0
-        hy = y1 - y0
-        ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
-        ax.set_ylim(y0-0.1*hy, y1+0.1*hy) 
-        
-        points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-        rect = plt.Polygon(points, fc='darkgrey', edgecolor='k', alpha=0.1)
-        ax.add_patch(rect)
-        
-        #
-        # Plot QuadCells
+            
+            for cell in cells:
+                #
+                # Plot cells
+                # 
+                vertices = [v.coordinates() for v in cell.get_vertices()]
+                rect = plt.Polygon(vertices, fc='w', edgecolor='k')
+                ax.add_patch(rect)
+                #
+                # Plot half-edges
+                #
+                if False: 
+                    for he in cell.get_half_edges():
+                        ax.annotate(s='', xy=he.head().coordinates(), \
+                                    xytext=he.base().coordinates(),\
+                                    arrowprops=dict(arrowstyle="->",\
+                                                    connectionstyle="arc3" )) 
+                #
+                # Plot vertices
+                # 
+                for v in vertices:
+                    ax.plot(*v, '.k')
+                    
+        elif mesh.dim()==1:
+            #
+            # Bounding box
+            # 
+            x0, x1 = mesh.bounding_box()
+            l = x1 - x0
+            ax.set_xlim([x0-0.1*l, x1+0.1*l])
+            ax.set_ylim([-0.1,0.1])
+            ax.get_yaxis().set_ticks([])
+            for interval in mesh.intervals.get_leaves(flag=mesh_flag):
+                a, = interval.base().coordinates()
+                b, = interval.head().coordinates()
+                ax.plot([a,b], [0,0], '-|k')
+                
+        #    
+        # Plot immediately or save
         # 
+        if self.__quickview:
+            plt.show()
+        else:  
+            return ax
+        """        
         color_list = ['gold', 'darkorange','r']                      
         for node in mesh.root_node().get_leaves(flag=node_flag, \
                                                  nested=nested):
@@ -86,7 +141,91 @@ class Plot(object):
             x0, x1, y0, y1 = cell.box()
             points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
             if color_marked is not None:
+                count = 0color_list = ['gold', 'darkorange','r']                      
+        for node in mesh.root_node().get_leaves(flag=node_flag, \
+                                                 nested=nested):
+            cell = node.cell()
+            x0, x1, y0, y1 = cell.box()
+            points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+            if color_marked is not None:
+                count = 0color_list = ['gold', 'darkorange','r']                      
+        for node in mesh.root_node().get_leaves(flag=node_flag, \
+                                                 nested=nested):
+            cell = node.cell()
+            x0, x1, y0, y1 = cell.box()
+            points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+            if color_marked is not None:
+                count = 0color_list = ['gold', 'darkorange','r']                      
+        for node in mesh.root_node().get_leaves(flag=node_flag, \
+                                                 nested=nested):
+            cell = node.cell()
+            x0, x1, y0, y1 = cell.box()
+            points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+            if color_marked is not None:
+                count = 0color_list = ['gold', 'darkorange','r']                      
+        for node in mesh.root_node().get_leaves(flag=node_flag, \
+                                                 nested=nested):
+            cell = node.cell()
+            x0, x1, y0, y1 = cell.box()
+            points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+            if color_marked is not None:
                 count = 0
+                if not any(node.is_marked(flag) for flag in color_marked):
+                    # Node contains none of the listed flags -> make it white
+                    rect = plt.Polygon(points, fc='w', ec='k')
+                else:
+                    for flag in color_marked:
+                        if node.is_marked(flag):  
+                            # Color cell                      
+                            rect = plt.Polygon(points, fc=color_list[count],\
+                                               edgecolor='k')    
+                        count += 1
+            else:
+                rect = plt.Polygon(points, fc='w', edgecolor='k')
+            ax.add_patch(rect)
+        
+                if not any(node.is_marked(flag) for flag in color_marked):
+                    # Node contains none of the listed flags -> make it white
+                    rect = plt.Polygon(points, fc='w', ec='k')
+                else:
+                    for flag in color_marked:
+                        if node.is_marked(flag):  
+                            # Color cell                      
+                            rect = plt.Polygon(points, fc=color_list[count],\
+                                               edgecolor='k')    
+                        count += 1
+            else:
+                rect = plt.Polygon(points, fc='w', edgecolor='k')
+            ax.add_patch(rect)
+        
+                if not any(node.is_marked(flag) for flag in color_marked):
+                    # Node contains none of the listed flags -> make it white
+                    rect = plt.Polygon(points, fc='w', ec='k')
+                else:
+                    for flag in color_marked:
+                        if node.is_marked(flag):  
+                            # Color cell                      
+                            rect = plt.Polygon(points, fc=color_list[count],\
+                                               edgecolor='k')    
+                        count += 1
+            else:
+                rect = plt.Polygon(points, fc='w', edgecolor='k')
+            ax.add_patch(rect)
+        
+                if not any(node.is_marked(flag) for flag in color_marked):
+                    # Node contains none of the listed flags -> make it white
+                    rect = plt.Polygon(points, fc='w', ec='k')
+                else:
+                    for flag in color_marked:
+                        if node.is_marked(flag):  
+                            # Color cell                      
+                            rect = plt.Polygon(points, fc=color_list[count],\
+                                               edgecolor='k')    
+                        count += 1
+            else:
+                rect = plt.Polygon(points, fc='w', edgecolor='k')
+            ax.add_patch(rect)
+        
                 if not any(node.is_marked(flag) for flag in color_marked):
                     # Node contains none of the listed flags -> make it white
                     rect = plt.Polygon(points, fc='w', ec='k')
@@ -130,7 +269,8 @@ class Plot(object):
                     x_pos, y_pos = 0.5*(x0+x1),0.5*(y0+y1)
                     if x0 == x1:
                         # vertical
-                        x_offset = 0*np.abs(x1-x0)
+                        x_offset =
+                         0*np.abs(x1-x0)
                         ax.text(x_pos,y_pos-x_offset,str(e_count),
                                 rotation=-90, size='7',
                                 verticalalignment='center',
@@ -188,9 +328,8 @@ class Plot(object):
                             backgroundcolor='w')
         if not show_axis:
             ax.axis('off')
-            
-        return ax
-
+        """
+    
 
 
     def contour(self, ax, fig, f, mesh, element=None, derivative=(0,), \

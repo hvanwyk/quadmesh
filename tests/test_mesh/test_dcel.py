@@ -27,6 +27,9 @@ class TestDCEL(unittest.TestCase):
         self.assertEqual(grid.points['n'], 3, \
                          'There should be 3 points.')
         
+        grid = DCEL(box=(0,1), resolution=(2,), periodic={0})
+        self.assertEqual(grid.half_edges['next'][-1],0)
+
         #
         # 2D cartesian grid
         #
@@ -41,6 +44,28 @@ class TestDCEL(unittest.TestCase):
             self.assertAlmostEqual(xy, xy_loc[i], 8, \
                                    'First cell vertices incorrect')
         
+        #
+        # Periodic Grid
+        # 
+        grid = DCEL(box=(0,1,0,1), resolution=(2,2), periodic={0})
+       
+        
+        # Check that grid is periodic in the x-direction 
+        self.assertEqual(grid.half_edges['twin'][5], 3)
+        
+        # Check that grid is not periodic in y-direction
+        self.assertEqual(grid.half_edges['twin'][0], -1)
+       
+        #
+        # Grid periodic in both directions
+        # 
+        grid = DCEL(box=(0,1,0,1), resolution=(2,2), periodic={0,1})
+        
+        # Check periodicity in x-direction
+        self.assertEqual(grid.half_edges['twin'][5], 3)
+        
+        # Check periodicity in y-direction
+        self.assertEqual(grid.half_edges['twin'][14], 4)
         '''
         #
         # Check boundary edges
@@ -115,7 +140,7 @@ class TestDCEL(unittest.TestCase):
         #
         # Check boundary half_edges have no twins
         # 
-        bnd_hes = dcel.get_boundary_half_edges()
+        bnd_hes = dcel.get_boundary_half_edges()[0]
         for i_he in bnd_hes:
             self.assertEqual(dcel.half_edges['twin'][i_he], -1)
         
@@ -156,7 +181,7 @@ class TestDCEL(unittest.TestCase):
         #
         # Check boundary half_edges have no twins
         # 
-        bnd_hes = dcel.get_boundary_half_edges()
+        bnd_hes = dcel.get_boundary_half_edges()[0]
         self.assertEqual(len(bnd_hes),6)
         for i_he in bnd_hes:
             self.assertEqual(dcel.half_edges['twin'][i_he], -1)
@@ -207,7 +232,7 @@ class TestDCEL(unittest.TestCase):
         #
         # Check boundary half_edges have no twins
         # 
-        bnd_hes = dcel.get_boundary_half_edges()
+        bnd_hes = dcel.get_boundary_half_edges()[0]
         self.assertEqual(len(bnd_hes),5)
         for i_he in bnd_hes:
             self.assertEqual(dcel.half_edges['twin'][i_he], -1)
@@ -220,7 +245,7 @@ class TestDCEL(unittest.TestCase):
                     'finite_elements/mesh/gmsh_matlab/examples/'+\
                     'quarter_disk.msh'
         grid = DCEL(file_path=file_path)
-        boundary_edges = grid.get_boundary_half_edges()
+        boundary_edges = grid.get_boundary_half_edges()[0]
         for i_e in boundary_edges:
             self.assertEqual(grid.half_edges['twin'][i_e],-1,\
                              'Neighbor of boundary half-edge should be -1.')
