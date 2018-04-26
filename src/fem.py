@@ -1,12 +1,12 @@
 import numpy as np
 from scipy import sparse, linalg
 import numbers
-from mesh import QuadCell, Vertex
+from mesh import Vertex, HalfEdge 
+from mesh import Cell, QuadCell, Interval
+from mesh import RHalfEdge, RInterval, RQuadCell
 from mesh import convert_to_array
-from bisect import bisect_left       
-from _operator import index
+from bisect import bisect_left
 from itertools import count
-
 """
 Finite Element Classes
 """
@@ -36,10 +36,12 @@ class FiniteElement(object):
         
 class QuadFE(FiniteElement):
     """
-    Continuous Galerkin finite elements on quadrilateral cells 
+    Galerkin finite elements on quadrilateral cells 
     """
     def __init__(self, dim, element_type):
         FiniteElement.__init__(self, dim, element_type)
+        
+        
         
         if element_type == 'DQ0':
             """
@@ -49,9 +51,7 @@ class QuadFE(FiniteElement):
             
             -----     
             | 0 |
-            -----
-            
-            TODO: Test
+            -----            
             """
             p = [lambda x: np.ones(shape=x.shape)]
             px = [lambda x: np.zeros(shape=x.shape)]
@@ -61,11 +61,8 @@ class QuadFE(FiniteElement):
             dofs_per_cell = 1
             if dim == 1: 
                 basis_index = [0]
-                ref_nodes = 0.5
             elif dim == 2: 
                 basis_index = [(0,0)]
-                ref_nodes = np.array([[0.5, 0.5]])
-                pattern = ['I']
             else:
                 raise Exception('Only 1D and 2D supported.')
                 
@@ -75,8 +72,8 @@ class QuadFE(FiniteElement):
             Linear Elements
             -------------------------------------------------------------------
         
-            2---3
-            |   |
+            3---2
+            |   |      0---1
             0---1
             """
             
@@ -91,7 +88,6 @@ class QuadFE(FiniteElement):
                 dofs_per_edge = 0
                 dofs_per_cell = 0
                 basis_index  = [0,1]
-                ref_nodes = [0.0,1.0]
             elif dim == 2:
                 #
                 # Two Dimensional
@@ -99,21 +95,19 @@ class QuadFE(FiniteElement):
                 dofs_per_vertex = 1
                 dofs_per_edge = 0
                 dofs_per_cell = 0
-                basis_index = [(0,0),(1,0),(0,1),(1,1)]
-                ref_nodes = np.array([[0,0],[1,0],[0,1],[1,1]])
-                pattern = ['SW','SE','NW','NE']
+                basis_index = [(0,0),(1,0),(1,1),(0,1)]
         
         elif element_type in ['Q2','DQ2']:
             """
             -------------------------------------------------------------------
-            Quadratic Elements 
+            Quadratic Elements
             -------------------------------------------------------------------
         
-            2---7---3
+            3---6---2
             |       |
-            4   8   5 
+            7   8   5      0---2---1 
             |       |
-            0---6---1
+            0---4---1
         
             """
             
@@ -137,7 +131,6 @@ class QuadFE(FiniteElement):
                 dofs_per_edge = 0
                 dofs_per_cell = 1
                 basis_index = [0,1,2]
-                ref_nodes = np.array([0.0,1.0,0.5])
             elif dim == 2:
                 #
                 # Two Dimensional
@@ -145,12 +138,8 @@ class QuadFE(FiniteElement):
                 dofs_per_vertex = 1 
                 dofs_per_edge = 1
                 dofs_per_cell = 1
-                basis_index = [(0,0),(1,0),(0,1),(1,1),
-                               (0,2),(1,2),(2,0),(2,1),(2,2)]
-                ref_nodes = np.array([[0.0,0.0],[1.0,0.0],[0.0,1.0],[1.0,1.0],
-                                  [0.0,0.5],[1.0,0.5],[0.5,0.0],[0.5,1.0],
-                                  [0.5,0.5]])
-                pattern = ['SW','SE','NW','NE','W','E','S','N','I']
+                basis_index = [(0,0),(1,0),(1,1),(0,1),
+                               (2,0),(1,2),(2,1),(0,2),(2,2)]
             else:
                 raise Exception('Only 1D and 2D currently supported.')
              
@@ -160,13 +149,13 @@ class QuadFE(FiniteElement):
             Cubic Elements
             -------------------------------------------------------------------
             
-            2---10---11---3
+            3----9---8----2
             |             |
-            5   14   15   7
+            10  14   15   7
+            |             |    0---2---3---1
+            11  12   13   6
             |             |
-            4   12   13   6
-            |             |
-            0----8---9----1 
+            0----4---5----1 
             """
             
             p = [lambda x: -4.5*(x-1./3.)*(x-2./3.)*(x-1.),
@@ -192,7 +181,7 @@ class QuadFE(FiniteElement):
                 dofs_per_edge = 0
                 dofs_per_cell = 2
                 basis_index = [0,1,2,3]
-                ref_nodes = np.array([0.0,1.0,1/3.0,2/3.0])
+                #ref_nodes = np.array([0.0,1.0,1/3.0,2/3.0])
             elif dim == 2:
                 #
                 # Two Dimensional
@@ -200,19 +189,19 @@ class QuadFE(FiniteElement):
                 dofs_per_vertex = 1 
                 dofs_per_edge = 2
                 dofs_per_cell = 4
-                basis_index = [(0,0),(1,0),(0,1),(1,1),
-                               (0,2),(0,3),(1,2),(1,3),(2,0),(3,0),(2,1),(3,1),
+                basis_index = [(0,0),(1,0),(1,1),(0,1),
+                               (2,0),(3,0),(1,2),(1,3),(3,1),(2,1),(0,3),(0,2),
                                (2,2),(3,2),(2,3),(3,3)]
-                ref_nodes = np.array([[0.0,0.0],[1.0,0.0],
-                                      [0.0,1.0],[1.0,1.0],
-                                      [0.0,1./3.],[0.0,2./3.],
-                                      [1.0,1./3.],[1.0,2./3.], 
-                                      [1./3.,0.0],[2./3.,0.0], 
-                                      [1./3.,1.0],[2./3.,1.0],
-                                      [1./3.,1./3.],[2./3.,1./3.],
-                                      [1./3.,2./3.],[2./3.,2./3.]])
-                pattern = ['SW','SE','NW','NE','W','W','E','E','S','S','N','N',
-                           'I','I','I','I']
+                #ref_nodes = np.array([[0.0,0.0],[1.0,0.0],
+                #                      [0.0,1.0],[1.0,1.0],
+                #                      [0.0,1./3.],[0.0,2./3.],
+                #                      [1.0,1./3.],[1.0,2./3.], 
+                #                      [1./3.,0.0],[2./3.,0.0], 
+                #                      [1./3.,1.0],[2./3.,1.0],
+                #                      [1./3.,1./3.],[2./3.,1./3.],
+                #                      [1./3.,2./3.],[2./3.,2./3.]])
+                #pattern = ['SW','SE','NW','NE','W','W','E','E','S','S','N','N',
+                #           'I','I','I','I']
         self._cell_type = 'quadrilateral' 
         self.__dofs = {'vertex':dofs_per_vertex, 'edge':dofs_per_edge,'cell':dofs_per_cell}               
         self.__basis_index = basis_index
@@ -220,13 +209,19 @@ class QuadFE(FiniteElement):
         self.__px = px
         self.__pxx = pxx
         self.__element_type = element_type
-        self.__ref_nodes = ref_nodes
         self.__torn_element = True if element_type[:2]=='DQ' else False
-        if dim == 2:
-            self.pattern = pattern
+        if self.dim()==1:
+            self.__reference_cell = RInterval(self)
+        elif self.dim()==2:
+            self.__reference_cell = RQuadCell(self)
+        else: 
+            raise Exception('Can only construct 1D and 2D Reference Cells')
+        #if dim == 2:
+        #    self.pattern = pattern
     
-    
+    '''
     def local_dof_matrix(self):
+        # TODO: Delete
         if hasattr(self, '__local_dof_matrix'):
             #
             # Return matrix if already computed
@@ -278,14 +273,11 @@ class QuadFE(FiniteElement):
             
             self.__local_dof_matrix = local_dof_matrix
             return local_dof_matrix
-        
+    '''
+            
     def basis_index(self):
         return self.__basis_index
-    
-      
-    #def cell_type(self):
-    #    return self.__cell_type
-    
+        
     
     def element_type(self):
         """
@@ -322,9 +314,20 @@ class QuadFE(FiniteElement):
             assert key in self.__dofs.keys(), 'Use "vertex","edge", "cell" for key'
             return self.__dofs[key]
     
+    
+    def reference_nodes(self):
+        """
+        Returns all dof vertices of reference cell
+        """
+        x = self.reference_cell().get_dof_vertices()
+        return convert_to_array(x, self.dim())
+        
+    '''    
     def loc_dofs_on_edge(self,direction):
         """
         Returns the local dofs on a given edge
+        
+        TODO: DELETE
         """    
         edge_dofs = []
         for i in range(self.n_dofs()):
@@ -362,13 +365,13 @@ class QuadFE(FiniteElement):
         dpe = self.n_dofs('edge')
         pos_ordered = [min_pos] + [(direction,i) for i in range(dpe)] + [max_pos]       
         return pos_ordered
+    '''
     
-    
-    def reference_nodes(self):
+    def reference_cell(self):
         """
-        Returns vertices used to define nodal basis functions on reference cell
+        Returns the referernce cell
         """
-        return self.__ref_nodes
+        return self.__reference_cell
     
      
         
@@ -383,7 +386,7 @@ class QuadFE(FiniteElement):
             x: double, point at which function is to be evaluated
                (double if dim=1, or tuple if dim=2) 
         """
-        x = np.array(x)
+        x = convert_to_array(x)
         assert n < self.n_dofs(), 'Basis function index exceeds n_dof'
         #
         # 1D 
@@ -395,7 +398,6 @@ class QuadFE(FiniteElement):
         # 2D
         # 
         elif self.dim() == 2:
-            # TODO: Doesn't work for tuples...
             i1,i2 = self.__basis_index[n]
             return self.__p[i1](x[:,0])*self.__p[i2](x[:,1])
             
@@ -545,7 +547,7 @@ class QuadFE(FiniteElement):
         # Convert x to array
         #
         x = convert_to_array(x)      
-        n_points, dim = x.shape
+        n_points = x.shape[0]
         
         #
         # Only one derivative specified
@@ -1566,9 +1568,6 @@ class Function(object):
         return fg
     
     
-   
-    
-    
 class DofHandler(object):
     """
     Degrees of freedom handler
@@ -1592,65 +1591,39 @@ class DofHandler(object):
         self.__dof_count = 0
         
                 
-    def distribute_dofs(self, nested=False):
+    def distribute_dofs(self, subforest_flag=None):
         """
-        global enumeration of degrees of freedom
+        Global enumeration of degrees of freedom        
         
-        Note: When root's children are in a grid, then the root has no DOFs 
+        The counting procedure is nested
+        
         """
         #
         # Ensure the mesh is balanced
         # 
-        assert self.mesh.root_node().is_balanced(), \
+        assert self.mesh.is_balanced(), \
             'Mesh must be balanced before dofs can be distributed.'
-            
-        if not nested:
+        
+        for cell in self.mesh.cells.traverse(mode='breadth-first', 
+                                             flag=subforest_flag):
             #
-            # Only LEAF nodes get dofs
+            # Fill own dofs
             # 
-            for node in self.mesh.root_node().get_leaves():
-                # 
-                # Fill in own nodes
-                # 
-                self.fill_dofs(node)
-                
+            self.fill_dofs(cell)
+            
+            if not self.element.torn_element():
                 #
-                # Non-DG elements
+                # Continuous element: share dofs with neighbors 
                 # 
-                if not self.element.torn_element(): 
-                    # 
-                    # Share dofs with neighbors
-                    #
-                    self.share_dofs_with_neighbors(node)
-                    
-        else:
-            #
-            # ALL nodes get dofs
-            # 
-            for node in self.mesh.root_node().traverse(mode='breadth-first'):
-                if node.type == 'ROOT' and node.grid is not None:
-                    pass
-                else:       
-                    #
-                    # Fill in own nodes
-                    # 
-                    self.fill_dofs(node)
-                    
-                    #
-                    # Share dofs with neighbors
-                    # 
-                    if not self.element.torn_element(): 
-                        #
-                        # Share nodes with neighbors
-                        # 
-                        self.share_dofs_with_neighbors(node, nested=True)
-                    
-                    #
-                    # Share dofs with children
-                    # 
-                    self.share_dofs_with_children(node)
+                self.share_dofs_with_neighbors(cell)
             
-    
+            if cell.has_children(flag=subforest_flag):
+                #
+                # Cell has children: share dofs with them
+                # 
+                self.share_dofs_with_children(cell)
+                 
+    '''
     def share_dofs_with_children(self, node):
         """
         Assign shared degrees of freedom with children 
@@ -1733,9 +1706,101 @@ class DofHandler(object):
                     # Dofs can be shared by neighbors
                     #  
                     self.assign_dofs(child, position, dofs) 
-                
-                         
-                    
+    '''
+    def share_dofs_with_children(self, cell):
+        """
+        Share cell's dofs with its children (only works for quadcells)
+        """
+        assert cell.has_children(), 'Cell should have children'
+        cell_dofs = self.get_global_dofs(cell)
+        for child in cell.get_children():
+            dofs = []
+            pos = []
+            i_child = child.get_node_position()
+            for vertex in self.element.reference_cell().get_dof_vertices():
+                if vertex.get_pos(1, i_child) is not None:
+                    pos.append(vertex.get_pos(1, i_child))
+                    dofs.append(cell_dofs[vertex.get_pos(0)])
+            self.assign_dofs(dofs, child, pos=pos)
+
+             
+    def share_dofs_with_neighbors(self, cell, pivot=None, flag=None):                     
+        """
+        Assign shared degrees of freedom to neighboring cells
+        
+        Inputs:
+        
+            cell: Cell in Mesh
+            
+            *pivot: Vertex or HalfEdge wrt which we seek neighbors
+            
+            *flag: marker, restricting the neighboring cells 
+        """
+        if self.element.torn_element():
+            #
+            # Discontinuous Elements don't share dofs
+            # 
+            return 
+        if pivot is None:
+            #
+            # No pivot specified: Share with all neighbors
+            # 
+            for vertex in cell.get_vertices():
+                #
+                # 1D and 2D: Share dofs with neighbors about vertices
+                #
+                self.share_dofs_with_neighbors(cell, vertex, flag=flag)
+            if self.element.dim()==2:
+                #
+                # 2D
+                # 
+                for half_edge in cell.get_half_edges():
+                    #
+                    # Share dofs with neighbors about half_edges
+                    #
+                    self.share_dofs_with_neighbors(cell, half_edge, flag=flag)
+        else:
+            dofs = self.get_global_dofs(cell, pivot)
+            if len(dofs)!=0:
+                if isinstance(pivot, Vertex):
+                    # 
+                    # Vertex
+                    #
+                    if self.element.dim()==1:
+                        #
+                        # 1D
+                        # 
+                        # Get neighbor and check that it's not None
+                        nbr = cell.get_neighbor(pivot)
+                        if nbr is None:
+                            return
+                        v_nbr = pivot.get_periodic_pair(nbr)
+                        if pivot.is_periodic() and v_nbr is not None:
+                            self.assign_dofs(dofs, nbr, v_nbr)
+                        else:
+                            self.assign_dofs(dofs, nbr, pivot)
+                    elif self.element.dim()==2:
+                        #
+                        # 2D
+                        # 
+                        for nbr in cell.get_neighbors(pivot, flag=flag):
+                            if pivot.is_periodic() and \
+                            pivot.get_periodic_pair(nbr) is not None:
+                                self.assign_dofs(dofs, nbr, \
+                                                 pivot.get_periodic_pair(nbr))
+                            else:
+                                self.assign_dofs(dofs, nbr, pivot)
+                        
+                elif isinstance(pivot, HalfEdge):
+                    #
+                    # HalfEdge
+                    # 
+                    nbr = cell.get_neighbors(pivot, flag=flag)
+                    if nbr is not None:
+                        dofs.reverse()
+                        self.assign_dofs(dofs, nbr, pivot.twin())
+                        
+    '''
     def share_dofs_with_neighbors(self, node, nested=False):
         """
         Assign shared degrees of freedom to neighboring cells
@@ -1831,9 +1896,10 @@ class DofHandler(object):
                             j = fine_index.index(coarse_index[i])
                             to_dofs.append(dofs[j]) 
                     self.assign_dofs(nb, to_pos, to_dofs)
-
+    '''
+    
             
-    def fill_dofs(self,node):
+    def fill_dofs(self, cell):
         """
         Fill in cell's dofs 
         
@@ -1848,94 +1914,165 @@ class DofHandler(object):
             __n_global_dofs: updated global dofs count
         """
         dofs_per_cell = self.element.n_dofs()
-        if not node in self.__global_dofs:
+        if not cell in self.__global_dofs:
             #
             # Add node to dictionary if it's not there
             # 
-            self.__global_dofs[node] = None
-        cell_dofs = self.__global_dofs[node]
+            self.__global_dofs[cell] = None
+        cell_dofs = self.__global_dofs[cell]
+        count = self.__dof_count
         if cell_dofs is None:
             #
             # Instantiate new list
             # 
-            count = self.__dof_count
-            self.__global_dofs[node] = list(range(count,count+dofs_per_cell))
+            self.__global_dofs[cell] = list(range(count,count+dofs_per_cell))
             self.__dof_count += dofs_per_cell
         else:
             #
             # Augment existing list
             #
-            count = self.__dof_count
             for k in range(dofs_per_cell):
                 if cell_dofs[k] is None:
                     cell_dofs[k] = count
                     count += 1
-            self.__global_dofs[node] = cell_dofs
+            self.__global_dofs[cell] = cell_dofs
             self.__dof_count = count        
                     
-            
-    def assign_dofs(self, node, positions, dofs):
+    
+    def assign_dofs(self, dofs, cell, entity=None, pos=None):
         """
-        Assign the degrees of freedom (dofs) to positions in cell (node). 
+        Assign the degrees of freedom (dofs) to entities in cell. 
         The result is stored in the DofHandler's "global_dofs" dictionary. 
         
         Inputs:
         
-            node: Node, represents the cell
+            dofs: int, list of dofs to be assigned
+        
+            cell: Cell/Interval, within which to assign dofs
             
-            positions: str, list of positions given by cardinal directions.
-            
-            dofs: int, list (same length as positions) of degrees of freedom.    
-        """    
+            entity: Cell/Interval entity indicating the locations at which dofs
+                are assigned.
+                In 1D: Interval, Vertex
+                In 2D: Cell, HalfEdge, Vertex
+                
+            pos: int, list (same length as dofs) of locations
+                at which to assign dofs.         
+        """
+        dim = self.mesh.dim()
         #
         # Preprocessing
         #
-        if not node in self.__global_dofs:
+        if not cell in self.__global_dofs:
             #
-            # Node not in dictionary -> add it
+            # Cell not in dictionary -> add it
             # 
-            self.__global_dofs[node] = None
+            self.__global_dofs[cell] = [None]*self.element.n_dofs()
+        cell_dofs = self.get_global_dofs(cell)  
+        
+                
+        if pos is not None:
+            # =================================================================
+            # Simplest way: list of positions and dofs provided
+            # =================================================================
+            assert len(pos)==len(dofs), \
+                'The number of dofs must equal the number of assigned positions'
+            for i in range(len(pos)):
+                if cell_dofs[pos[i]] is None:
+                    cell_dofs[pos[i]] = dofs[i]
+                     
+        elif entity is None:
+            # =================================================================
+            # No entity specified, fill in all cell's dofs
+            # =================================================================
+            # Check that there are enough dofs in the dofs vector
+            assert len(dofs)==len(cell_dofs), \
+                'Number of dofs should equal number of assigned positions'
             
-        cell_dofs = self.__global_dofs[node]
-        if cell_dofs is None:
-            # 
-            # New doflist necessary
-            # 
-            cell_dofs = [None]*self.element.n_dofs()
-        #
-        # Turn positions and dofs into lists and check compatibility
-        # 
-        if not(type(positions) is list):
-            positions = [positions]
-        if not(type(dofs) is list):
-            dofs = [dofs]
-        lengths_do_not_match = 'Number of dofs and positions do not match.'
-        assert len(positions)==len(dofs),lengths_do_not_match
-        #
-        # Ensure dofs have correct format
-        # 
-        dof_is_int = all([type(d) is np.int for d in dofs])
-        assert dof_is_int, 'Degrees of freedom should be integers.' 
-        dof_is_nonneg = all([d>=0 for d in dofs])
-        assert dof_is_nonneg, 'Degrees of freedom should be nonnegative.'
+            for i in range(len(dofs)):
+                if cell_dofs[i] is None:
+                    cell_dofs[i] = dofs[i]
         
-        pos_is_int = all([type(p) is np.int for p in positions])
-        if not pos_is_int:
-            #
-            # Convert positions to integers
-            # 
-            positions = self.pos_to_int(positions)
+        elif isinstance(entity, Vertex):
+            # =================================================================
+            # Fill in dof associated with Vertex (first couple)
+            # =================================================================
+            i = 0
+            dpv = self.element.n_dofs('vertex')
+            assert len(dofs)==self.element.n_dofs('vertex'), \
+                'Number of dofs should be 1.'
+            if dpv==0:
+                return
+            for vertex in cell.get_vertices():
+                if vertex==entity:
+                    # Check that spaces are empty
+                    for j in range(dpv):
+                        if cell_dofs[i+j] is None:
+                            cell_dofs[i+j] = dofs[j]   
+                    break
+                i += dpv
+                
+        elif isinstance(entity, Interval):
+            # =================================================================
+            # Dofs associated with Interval
+            # =================================================================
+            dpv = self.element.n_dofs('vertex')
+            dpc = self.element.n_dofs('cell')
+            assert len(dofs)==dpc, 'Number of dofs incorrect for HalfEdge.'
+            if dpc==0:
+                # No dofs associated with HalfEdge
+                return
+            i = 2*dpv
+            for j in range(dpc):
+                if cell_dofs[i+j] is None:
+                    cell_dofs[i+j] = dofs[j]    
+        elif isinstance(entity, HalfEdge) and dim==2:
+            # =================================================================
+            # Dofs associated with HalfEdge
+            # =================================================================
+            dpv = self.element.n_dofs('vertex')
+            dpe = self.element.n_dofs('edge')
+            assert len(dofs)==dpe, 'Number of dofs incorrect for HalfEdge.'
+            if dpe==0:
+                # No dofs associated with HalfEdge
+                return
+            i = cell.n_vertices()*dpv
+            for half_edge in cell.get_half_edges():
+                if half_edge==entity:
+                    # Check that spaces are empty
+                    #assert all(dof is None for dof in cell_dofs[i:i+dpe]),\
+                    #    'Cannot overwrite existing dofs.'
+                    for j in range(dpe):
+                        if cell_dofs[i+j] is None:
+                            cell_dofs[i+j] = dofs[j]
+                    break
+                i += dpe   
+                    
+        elif entity==cell:
+            # =================================================================
+            # Dofs associated with cell
+            # =================================================================
+            dpv = self.element.n_dofs('vertex')
+            dpe = self.element.n_dofs('edge')
+            dpc = self.element.n_dofs('cell')
+            assert len(dofs)==dpc, 'Number of dofs incorrect for Cell'
+            if dpc==0:
+                # No dofs associated with Cell
+                return
+            i = cell.n_vertices()*dpv + cell.n_half_edges()*dpe
+            #assert all(dof is None for dof in cell_dofs[i:i+dpc]),\
+            #    'Cannot overwrite exisiting dofs'
+            for j in range(dpc):
+                if cell_dofs[i+j] is None:
+                    cell_dofs[i+j] = dofs[j]
+        else:
+            # =================================================================
+            # Not recognized
+            # =================================================================
+            raise Exception('Entity not recognized.')
+        self.__global_dofs[cell] = cell_dofs
         
-        for pos,dof in zip(positions,dofs):
-            if cell_dofs[pos] is not None:
-                incompatible_dofs = 'Incompatible dofs. Something fishy.'
-                assert cell_dofs[pos] == dof, incompatible_dofs
-            else:
-                cell_dofs[pos] = dof
         
-        self.__global_dofs[node] = cell_dofs
-        
-    
+    '''
     def pos_to_int(self, positions):
         """
         Convert a list of positions into indices 
@@ -1969,7 +2106,7 @@ class DofHandler(object):
             # Return list of integers
             #
             return index
-    
+
     
     def pos_to_dof(self, dof_list, positions):
         """
@@ -2015,57 +2152,97 @@ class DofHandler(object):
         if not(type(positions) is list):
             dofs = dofs[0]
         return dofs    
+    '''
     
-    
-    def get_global_dofs(self, node=None, edge_dir=None, flag=None):
+    def get_global_dofs(self, cell=None, entity=None, subforest_flag=None, 
+                        mode='breadth-first', nested=False):
         """
-        Return all global dofs corresponding to a given cell, or one of its 
+        Return all global dofs corresponding to a given cell, or one of its Vertices/HalfEdges 
         edges.
         
         Inputs:
         
-            node: Node, quadtree node associated with cell. If None, return 
-                a list of all dofs in (sub)mesh.
+            cell: Cell, whose dofs we seek. 
             
-            edge_dir: str, edge direction (WESN)
+            entity: get_verticesVertex/HalfEdge within cell, whose dofs we seek
             
-            flag: str/int, node marker restricting mesh
+            subforest_flag: flag, specifying submesh.
+            
+            mode: str, ['breadth-first'] or 'depth-first', mode of mesh traversal
+            
+            nested: bool, if true, get dofs for all cells, otherwise just for leaves 
             
             
         Outputs:
         
-             global_dofs: list of cell dofs or edge dofs. 
+             global_dofs: list of global dofs 
         """
-        if node is not None:
-            #
-            # Node given
-            # 
-            if node in self.__global_dofs:
-                cell_dofs = self.__global_dofs[node]
-                if edge_dir is None:
-                    return cell_dofs
-                else: 
-                    assert edge_dir in ['W','E','S','N'], \
-                    'Edge should be one of W, E, S, or N.'    
-                    edge_dofs = []
-                    for i in range(self.element.n_dofs()):
-                        if edge_dir in self.element.pattern[i]:
-                            #
-                            # If edge appears in an entry, record the dof
-                            # 
-                            edge_dofs.append(cell_dofs[i])
-                    return edge_dofs
-            else:
-                return None
-        else:
-            #
-            # No node specified, return all dofs of (sub)mesh
-            # 
+        if not cell in self.__global_dofs:
+            return None
+        
+        # =====================================================================
+        # Get everything
+        # =====================================================================
+        if cell is None and entity is None: 
+         
             mesh_dofs = set()
-            for leaf in self.mesh.root_node().get_leaves(flag=flag):
-                mesh_dofs = mesh_dofs.union(self.__global_dofs[leaf])
+            if nested:
+                cells = self.mesh.cells
+                for cell in cells.traverse(flag=subforest_flag, mode=mode):
+                    mesh_dofs = mesh_dofs.union(self.__global_dofs[cell])
+            else:
+                cells = self.mesh.cells
+                for cell in cells.get_leaves(subforest_flag=subforest_flag, mode=mode):
+                    mesh_dofs = mesh_dofs.union(self.__global_dofs[cell])
             return list(mesh_dofs)
-            
+        
+        # =====================================================================
+        # Cell's Dofs
+        # =====================================================================
+        if cell is not None and entity is None:
+            return self.__global_dofs[cell]
+        
+        if entity is not None:
+            # =================================================================
+            # HalfEdge or Vertix's Dof(s)
+            # =================================================================
+
+            if isinstance(entity, Vertex):
+                # =============================================================
+                # Vertex (need a cell)
+                # =============================================================
+                assert cell is not None, 'Need cell.'
+                cell_dofs = self.__global_dofs[cell]
+                i = 0
+                dpv = self.element.n_dofs('vertex')
+                for vertex in cell.get_vertices():
+                    if vertex==entity:
+                        return cell_dofs[i:i+dpv]
+                    i += dpv
+            elif isinstance(entity, HalfEdge):
+                # =============================================================
+                # HalfEdge
+                # =============================================================
+                dpv = self.element.n_dofs('vertex')
+                dpe = self.element.n_dofs('edge')
+                cell = entity.cell()
+                cell_dofs = self.__global_dofs[cell]
+                i = cell.n_vertices()*dpv
+                for half_edge in cell.get_half_edges():
+                    if entity==half_edge:
+                        return cell_dofs[i:i+dpe]
+                    i += dpe
+            elif isinstance(entity, Cell):
+                # =============================================================
+                # Cell
+                # =============================================================
+                dpv = self.element.n_dofs('vertex')
+                dpe = self.element.n_dofs('edge')
+                dpc = self.element.n_dofs('cell')
+                cell_dofs = self.__global_dofs[cell]
+                i = cell.n_vertices()*dpv + cell.n_half_edges()*dpe
+                return cell_dofs[i:i+dpc]
+        return None
         
          
     
@@ -2085,22 +2262,36 @@ class DofHandler(object):
             return len(dof_set)
             
      
-    def dof_vertices(self, node=None, flag=None):
+    def get_dof_vertices(self, cell=None, subforest_flag=None, 
+                         mode='breadth-first'):
         """
-        Return the mesh vertices (or vertices corresponding to node).
+        Return the dofs and associated vertices of a (sub)mesh
+    
+        Inputs:
         
-        TODO: Not dimension aware
+            cell: Cell, specifying which vertices to compute
+            
+            subforest_flag: flag specifying a rooted subforest
+            
+            mode: str, specifying the order in which leaves are returned:
+                'breadth-first', or 'depth-first'.
+                
+        
+        Outputs:
+        
+            vertices: Vertex, list of dof vertices
+            
         """
         assert hasattr(self, '_DofHandler__dof_count'), \
             'First distribute dofs.'
-        rule = GaussRule(1,shape='quadrilateral')
+        
         x_ref = self.element.reference_nodes()
-        if node is not None:
+        if cell is not None:
             #
-            # Vertices corresponding to a single Node->QuadCell
+            # Vertices corresponding to a single cell
             # 
-            g_dofs = self.get_global_dofs(node)
-            x = rule.map(node.cell(),x=x_ref)
+            g_dofs = self.get_global_dofs(cell)
+            x = cell.reference_map(x_ref)
         else:
             #
             # Vertices over entire mesh
@@ -2108,12 +2299,85 @@ class DofHandler(object):
             x = np.empty((self.n_dofs(),2))
             x.fill(np.nan)
             
-            for leaf in self.mesh.root_node().get_leaves(flag=flag):
+            for leaf in self.mesh.root_node().\
+                get_leaves(subforest_flag=subforest_flag, mode=mode):
                 g_dofs = self.get_global_dofs(leaf)
                 x[g_dofs,:] = np.array(leaf.cell().reference_map(list(x_ref)))
         return x[np.logical_not(np.isnan(x[:,0])),:]
     
-                
+    
+    
+    def set_hanging_nodes(self, subforest_flag=None):
+        """
+        Set up the constraint matrix satisfied by the mesh's hanging nodes.
+        
+        Note: Hanging nodes can only be found once the mesh has been balanced.
+        """
+        #
+        # Discontinuous elements don't have hanging nodes
+        # 
+        if self.element.torn_element(): 
+            return 
+        hanging_nodes = {}
+        for cell in self.mesh.cells.get_leaves(subforest_flag=subforest_flag):
+            for half_edge in cell.get_half_edges():
+                #
+                # Search in all directions
+                # 
+                nb = cell.get_neighbors(half_edge, flag=subforest_flag)
+                if nb is not None:
+                    if nb.has_children(flag=subforest_flag):
+                        #
+                        # Neighbor has children -> Look for hanging nodes
+                        #
+                        dofs = self.get_global_dofs(nb)
+                        twin = half_edge.twin() 
+                        i_twin = nb.get_half_edges().index(twin)
+                        print(i_twin)
+                        #
+                        # Look for equivalent half_edge in reference cell
+                        # 
+                        reference_cell = self.element.reference_cell()
+                        rhe = reference_cell.get_half_edge(i_twin)
+                        
+                        #
+                        # Determine indices of the supporting dofs
+                        # 
+                        coarse_vertices = [rhe.base(), rhe.head()]
+                        coarse_vertices.extend(rhe.get_edge_dof_vertices())
+                        
+                        
+                        i_supp_dofs = set()
+                        for v in coarse_vertices:
+                            i_supp_dofs.add(v.get_pos(0)) 
+                        supporting_dofs = [dofs[i] for i in i_supp_dofs]
+                        #
+                        # Determine the indices of the hanging nodes
+                        #
+                        for i_child in range(2):
+                            rch = rhe.get_child(i_child)
+                            fine_vertices = [rch.base(), rch.head()]
+                            fine_vertices.extend(rch.get_edge_dof_vertices())
+                            for v in fine_vertices:
+                                v.get_pos(0, debug=True)
+                                if v.get_pos(0) is None:
+                                    # 
+                                    # Hanging node
+                                    #
+                                    
+                                    # Compute constraint coefficients  
+                                    constraint_coefficients = []
+                                    for i in i_supp_dofs:
+                                        constraint_coefficients.append(self.element.phi(i, v))
+                                    
+                                    # Store in dictionary
+                                    print(v.get_pos(1,i_child))
+                                    hanging_nodes[dofs[v.get_pos(1, i_child)]] = \
+                                        (supporting_dofs, constraint_coefficients)
+        self.__hanging_nodes = hanging_nodes                
+
+    
+    '''               
     def set_hanging_nodes(self):
         """
         Set up the constraint matrix satisfied by the mesh's hanging nodes.
@@ -2160,7 +2424,7 @@ class DofHandler(object):
                         else:
                             print('Child is None')
         self.__hanging_nodes = hanging_nodes
-           
+    '''      
       
     def get_hanging_nodes(self):
         """
@@ -2468,173 +2732,7 @@ class GaussRule(object):
         Return the size of the rule
         """
         return len(self.__weights)
-    
-        
-    def map(self, entity, x=None):
-        """
-        Map from reference to physical cell
-        
-        Inputs:
-        
-            entity: QuadCell or Edge to which points are mapped
-            
-            x: double, points in reference cell in the form of 
-                either (i) a length n list of dim-tuples or 
-                (ii) an (n,dim) array  
-                
-        TODO: You cannot map reference edge nodes onto physical edge nodes
-            with one dimensional rule. 
-        Note: You can map a 1D rule onto an Edge by either 
-            (i) directly mapping the 1d nodes onto an edge entity, OR
-            (ii) specifying the edge location on the reference cell and then
-                mapping the 2D nodes onto the cell. 
-        """
-        dim = self.__dim
-        cell_type = self.__cell_type
-        if x is None:
-            x_ref = self.__nodes
-        else:
-            x_ref = np.array(x)
-        if dim == 1:
-            #
-            # One dimensional mesh
-            # 
-            if cell_type == 'interval':
-                #
-                # Interval on real line
-                # 
-                x0, x1 = entity.box()
-                x_phys = x0 + (x1-x0)*x_ref
-            elif cell_type == 'edge':
-                # 
-                # Line segment in 2D
-                # 
-                x0,x1,y0,y1 = entity.box()
-                x = x0 + x_ref*(x1-x0)
-                y = y0 + x_ref*(y1-y0)
-                x_phys = np.array([x,y]).T              
-        elif dim == 2:
-            #
-            # Two dimensional mesh
-            # 
-            if cell_type == 'triangle':
-                #
-                # Triangles not supported yet
-                #  
-                pass
-            elif cell_type == 'quadrilateral':
-                x0,x1,y0,y1 = entity.box()
-                x_phys = np.array([x0 + (x1-x0)*x_ref[:,0], 
-                                   y0 + (y1-y0)*x_ref[:,1]]).T
-        return x_phys
-
-
-    def inverse_map(self, entity, x, mapto='2d'):
-        """
-        Return a point in the given entity, mapped to the standard reference
-        domain. 
-        
-        Inputs:
-        
-            entity: QuadCell or (Edge,direction) containing points x
-            
-            x: (n_points,dim) numpy array of points in cell/on edge
-            
-            mapto: str, '2d' - map points to 2d reference domain
-                        '1d' - map points on edge (or 1d cell) to 1d ref domain 
-            
-        Output:
-        
-            x_ref: numpy array of equivalent points on the reference cell 
-        
-        """
-        dim = len(x.shape)
-        cell_type = self.__cell_type
-        x = np.array(x)
-        n_points = x.shape[0]
-        if dim==1:
-            #
-            # Map from interval to reference interval
-            #
-            x0, x1 = entity.box()
-            x_ref = (x - x0)/(x1-x0)
-        elif cell_type=='edge':
-            #
-            # Map from edge
-            #
-            assert len(entity)==2 and isinstance(entity[0],Edge),\
-                'entity should be a tuple (Edge,direction)' 
-            if mapto=='1d':
-                #
-                # Map to 1D reference           
-                # 
-                if entity[1] in ['W','E']:
-                    y0,y1 = entity[0].box()
-                    x_ref = (x[:,1]-y0)/(y1-y0)
-                elif entity[1] in ['N','S']:
-                    x0,x1 = entity[0].box()
-                    x_ref = (x[:,0]-x0)/(x1-x0)
-            elif mapto=='2d':
-                x_ref = np.zeros((n_points,2))
-                #
-                # Map to 2D reference
-                #
-                if entity[1] in ['W','E']:
-                    y0,y1 = entity[0].box()
-                    x_ref[:,1] = (x[:,1]-y0)/(y1-y0)
-                    if entity[1]=='E':
-                        x_ref[:,0] = 1.0
-                elif entity[1] in ['N','S']:
-                    x0,x1 = entity[0].box()
-                    x_ref[:,0] = (x[:,0]-x0)/(x1-x0)
-                    if entity[1]=='N':
-                        x_ref[:,1] = 1.0
-        elif cell_type=='quadrilateral':
-            #
-            # Map from edge to 2d reference 
-            #
-            assert isinstance(entity, QuadCell), 'Entity should be a cell.'
-            x0,x1,y0,y1 = entity.box()
-            x_ref = np.zeros((n_points,2))
-            x_ref[:,0] = (x[:,0]-x0)/(x1-x0)
-            x_ref[:,1] = (x[:,1]-y0)/(y1-y0)
-        elif cell_type == 'triangle':
-            raise Exception('Triangles not supported (yet).')        
-        return x_ref
-        
-        
-    def jacobian(self, entity):
-        """
-        Jacobian of the Mapping from reference to physical cell
-        """
-        dim = self.__dim
-        entity_type = self.__cell_type
-        if dim == 1:
-            #
-            # One dimensional mesh
-            # 
-            if entity_type == 'interval':
-                x0, x1 = entity.box()
-                jac = x1-x0
-            elif entity_type == 'edge':
-                # Length of edge
-                jac = entity.length()
-                
-        elif dim == 2:
-            #
-            # Two dimensional mesh
-            #
-            if entity_type == 'triangle':
-                #
-                # Triangles not yet supported
-                # 
-                pass
-            elif entity_type == 'quadrilateral':
-                x0,x1,y0,y1 = entity.box()
-                jac = (x1-x0)*(y1-y0)
-        return jac
-        
- 
+  
     def rule(self, entity):
         """
         Returns the Gauss nodes and weights on a physical entity - QuadCell, 

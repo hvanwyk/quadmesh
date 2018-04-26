@@ -1333,7 +1333,9 @@ class Vertex(object):
         self.__coordinate = coordinates
         self._flags = set()
         self.__dim = dim
-    
+        self.__periodic_pair = {}
+        self.__is_periodic = False
+        
     
     def coordinates(self):
         """
@@ -1403,7 +1405,71 @@ class Vertex(object):
             # Check wether given label is contained in cell's set
             return flag in self._flags
 
-
+    
+    def is_periodic(self):
+        """
+        Determine whether a Vertex lies on a periodic boundary
+        """
+        return self.__is_periodic
+        
+      
+    def set_periodic_pair(self, half_edge):
+        """
+        Pair a vertex with its periodic counterpart
+        """
+        assert half_edge.is_periodic(), 'HalfEdge is periodic'
+        if self.dim()==1:
+            #
+            # 1D: Determine periodic pair 
+            # 
+            if self == half_edge.base():
+                p_interval = half_edge.previous() 
+                vertex = p_interval.head()
+            elif self == half_edge.head():
+                p_interval = half_edge.next()
+                vertex = p_interval.base()
+            
+            # Store information
+            self.__periodic_pair[half_edge] = vertex
+            self.__is_periodic = True
+            
+            # Pair other vertex with self
+            if vertex.get_periodic_pair(p_interval) is None:
+                vertex.set_periodic_pair(p_interval)
+                
+        elif self.dim()==2:
+            #
+            # 2D Determine periodic pair
+            # 
+            twin = half_edge.twin()
+            cell = twin.cell()
+            if self == half_edge.base():
+                vertex = twin.head()
+            elif self == half_edge.head():
+                vertex = twin.base()
+            else:
+                raise Exception('Vertex not contained in half_edge')
+            
+            self.__periodic_pair[cell] = vertex
+            self.__is_periodic = True
+            
+            # Pair other vertex with self        
+            if vertex.get_periodic_pair(half_edge.cell()) is None:
+                vertex.set_periodic_pair(twin)
+        
+        
+    def get_periodic_pair(self, cell, debug=False):
+        """
+        Returns the another vertex that is mapped onto self through periodicity
+        """
+        if debug:
+            print(self.__periodic_pair)
+        if cell in self.__periodic_pair:
+            return self.__periodic_pair[cell]
+        else:
+            return None
+        
+    
 class HalfEdge(Tree):
     """
     Description: Half-Edge in Quadtree mesh
@@ -1424,7 +1490,7 @@ class HalfEdge(Tree):
     """ 
     def __init__(self, base, head, cell=None, previous=None, nxt=None, 
                  twin=None, parent=None, position=None, n_children=2, 
-                 regular=True, forest=None, flag=None):
+                 regular=True, forest=None, flag=None, periodic=False):
         """
         Constructor
         
@@ -1506,12 +1572,55 @@ class HalfEdge(Tree):
         if twin is not None: 
             assert isinstance(twin, HalfEdge), \
                 'Input "twin" should be a HalfEdge object.'
-            assert self.head()==twin.base() and self.base()==twin.head(),\
-                'Base and head vertices of "twin" should equal own head '\
-                'and base vertices respectively.'
+            if not periodic:
+                assert self.head()==twin.base() and self.base()==twin.head(),\
+                    'Base and head vertices of "twin" should equal own head '\
+                    'and base vertices respectively.'
         self.__twin = twin
-        
+        self.__is_periodic = periodic
+        #
+        # Pair up periodic vertices
+        # 
+        if self.is_periodic():
+            self.pair_periodic_vertices()
+
        
+    def is_periodic(self):
+        """
+        Returns True is the HalfEdge lies on a periodic boundary
+        """
+        return self.__is_periodic
+        
+        
+    def set_periodic(self, periodic=True):
+        """
+        Flag HalfEdge as periodic
+        """
+        self.__is_periodic = periodic
+    
+    
+    def pair_periodic_vertices(self):
+        """
+        Pair up HalfEdge vertices that are periodic
+        """
+        if self.is_periodic(): 
+            # Pair up periodic vertices along half_edge
+            #print('pairing up periodic vertices')
+            #print('He:')
+            #print(self.base().coordinates(), self.head().coordinates())
+            #print('twin')
+            #twin = self.twin()
+            #print(twin.base().coordinates(), twin.head().coordinates())
+            self.base().set_periodic_pair(self)
+            self.head().set_periodic_pair(self)
+            
+            #print('checking...')
+            #nbr = self.twin().cell()
+            #print(self.base().coordinates(), self.base().get_periodic_pair(nbr).coordinates())
+            #print(self.head().coordinates(), self.head().get_periodic_pair(nbr).coordinates())
+            
+            
+    
     def base(self):
         """
         Returns half-edge's base vertex
@@ -1547,11 +1656,11 @@ class HalfEdge(Tree):
         return self.__twin
     
     
-    def assign_twin(self, twin, periodic=False):
+    def assign_twin(self, twin):
         """
         Assigns twin to half-edge
         """
-        if not periodic:
+        if not self.is_periodic():
             assert self.base()==twin.head() and self.head()==twin.base(),\
                 'Own head vertex should be equal to twin base vertex & vice versa.'
         self.__twin = twin
@@ -1561,6 +1670,8 @@ class HalfEdge(Tree):
         """
         Construct a twin HalfEdge
         """
+        assert not self.is_periodic(), \
+        'Twin HalfEdge of a periodic HalfEdge may have different vertices.'
         if self.has_parent() and self.get_parent().twin() is not None:
             twin_parent = self.get_parent().twin()
             twin_position = 1-self.get_node_position()
@@ -1581,19 +1692,19 @@ class HalfEdge(Tree):
         return self.__next
     
     
-    def assign_next(self, nxt, periodic=False):
+    def assign_next(self, nxt):
         """
         Assigns half edge to next
         """
         if nxt is None:
             return
         else:
-            if not periodic:
+            if not self.is_periodic():
                 assert self.head() == nxt.base(), \
                     'Own head vertex is not equal to next base vertex.'
             self.__next = nxt
             if nxt.previous() != self:
-                nxt.assign_previous(self, periodic=periodic)
+                nxt.assign_previous(self)
             
     
     def previous(self):
@@ -1603,19 +1714,19 @@ class HalfEdge(Tree):
         return self.__previous
         
     
-    def assign_previous(self, previous, periodic=False):
+    def assign_previous(self, previous):
         """
         Assigns half-edge to previous
         """
         if previous is None:
             return 
         else:
-            if not periodic:
+            if not self.is_periodic():
                 assert self.base() == previous.head(), \
                     'Own base vertex is not equal to previous head vertex.'
             self.__previous = previous
             if previous.next()!=self:
-                previous.assign_next(self, periodic=periodic)
+                previous.assign_next(self)
         
         
     def split(self):
@@ -1631,7 +1742,7 @@ class HalfEdge(Tree):
         # Check if twin has been split 
         #  
         twin = self.twin()
-        if twin is not None and twin.has_children():
+        if twin is not None and twin.has_children() and not self.is_periodic():
             #
             # Share twin's midpoint Vertex
             # 
@@ -1640,8 +1751,8 @@ class HalfEdge(Tree):
             #
             # Define own children and combine with twin children 
             # 
-            c0 = HalfEdge(self.base(), vm, parent=self, twin=t1, position=0)
-            c1 = HalfEdge(vm, self.head(), parent=self, twin=t0, position=1)
+            c0 = HalfEdge(self.base(), vm, parent=self, twin=t1, position=0, periodic=self.is_periodic())
+            c1 = HalfEdge(vm, self.head(), parent=self, twin=t0, position=1, periodic=self.is_periodic())
             t0.assign_twin(c1)
             t1.assign_twin(c0)
         else:
@@ -1881,6 +1992,8 @@ class HalfEdge(Tree):
             return y
 
 
+   
+
 class Interval(HalfEdge):
     """
     Interval Class (1D equivalent of a Cell)
@@ -1913,24 +2026,24 @@ class Interval(HalfEdge):
         return self.base() if position==0 else self.head()
     
 
-    def assign_previous(self, prev, periodic=False):
+    def assign_previous(self, prev):
         """
         Assign a previous interval
         """
         if prev is not None:
             assert isinstance(prev, Interval), \
                 'Input "prev" should be an Interval.'
-        HalfEdge.assign_previous(self, prev, periodic=periodic)
+        HalfEdge.assign_previous(self, prev)
     
     
-    def assign_next(self, nxt, periodic=False):
+    def assign_next(self, nxt):
         """
         Assign the next interval
         """
         if nxt is not None:
             assert isinstance(nxt, Interval), \
                 'Input "nxt" should be an Interval.'
-        HalfEdge.assign_next(self,nxt, periodic=periodic)
+        HalfEdge.assign_next(self,nxt)
      
      
     def get_neighbor(self, pivot, flag=None):
@@ -1941,8 +2054,21 @@ class Interval(HalfEdge):
         
             pivot: int, 0 (=left) or 1 (=right)
             
-            flag (optional): marker to specify 
+            flag (optional): marker to specify
+
+        Note that neighbors in 1D can live on different levels. 
         """
+        #
+        # Pivot is a vertex
+        # 
+        if isinstance(pivot, Vertex):
+            if pivot==self.base():
+                pivot = 0
+            elif pivot==self.head():
+                pivot = 1
+            else:
+                raise Exception('Vertex not an interval endpoint')
+        
         #
         # Move left or right
         # 
@@ -2032,9 +2158,10 @@ class Interval(HalfEdge):
         #
         # Check that self contains the point
         #
-        if not self.is_marked(flag):
-            return None  
-        elif self.contains_points(point):
+        if flag is not None:
+            if not self.is_marked(flag):
+                return None  
+        if self.contains_points(point):
             #
             # Look for child that contains the point
             #  
@@ -2132,11 +2259,12 @@ class Interval(HalfEdge):
             return y
      
                         
-class Cell(object):
+class Cell(Tree):
     """
     Cell object: A two dimensional polygon 
+    
     """
-    def __init__(self, half_edges):            
+    def __init__(self, half_edges, n_children=0, parent=None, position=None, grid=None):            
         """
         Constructor
         
@@ -2145,6 +2273,9 @@ class Cell(object):
             half_edges: HalfEdge, list of half-edges that determine the cell
  
         """    
+        Tree.__init__(self, n_children=n_children, parent=parent, \
+                      position=position, forest=grid)
+        
         # =====================================================================
         # Half-Edges
         # =====================================================================
@@ -2275,7 +2406,7 @@ class Cell(object):
         """
         Return a specific vertex
         """    
-        assert position < self.n_vertices(), 'Input "position" not '
+        assert position < self.n_vertices(), 'Input "position" incorrect.'
         half_edge = self.get_half_edge(position)
         return half_edge.base()
     
@@ -2314,7 +2445,7 @@ class Cell(object):
             
                 - If the pivot is a HalfEdge, then return a Cell/None
                 
-                - If the pivot is a Vertex, then return a list 
+                - If the pivot is a Vertex, then return a list of Cells 
             
             
         Note: Neighbors are chosen via shared edges, which means
@@ -2486,9 +2617,8 @@ class QuadCell(Cell, Tree):
         """
         assert len(half_edges)==4, 'QuadCells contain only 4 HalfEdges.'
         
-        Tree.__init__(self, n_children=4, parent=parent, 
-                      position=position, forest=grid)
-        Cell.__init__(self, half_edges)
+        Cell.__init__(self, half_edges, n_children=4, parent=parent,
+                      position=position, grid=grid)
         
         #
         # Check whether cell's parent is a rectangle
@@ -2515,9 +2645,9 @@ class QuadCell(Cell, Tree):
         return self._is_rectangle
     
         
-    def split(self):
+    def split(self, flag=None):
         """
-        Split QuadCell into 4 subcells
+        Split QuadCell into 4 subcells (and mark children with flag)
         """
         assert not self.has_children(), 'Cell already split.'
         
@@ -2554,15 +2684,21 @@ class QuadCell(Cell, Tree):
             h2 = interior_half_edges[i][0]
             h3 = interior_half_edges[(i-1)%self.n_half_edges()][1]
             h4 = half_edge.previous().get_child(1)
+            hes = deque([h1, h2, h3, h4])
+            hes.rotate(i)
+            hes = list(hes)
             #
             # Define new QuadCell
             # 
-            self._children[i] = QuadCell([h1, h2, h3, h4], parent=self, position=i)
+            self._children[i] = QuadCell(hes, parent=self, position=i)
 
             # Increment counter
             i += 1
-    
-    
+            
+        if flag is not None:
+            for child in self.get_children():
+                child.mark(flag)
+                
     def locate_point(self, point, flag=None):
         """
         Returns the smallest subcell that contains a given point
@@ -2790,9 +2926,732 @@ class QuadCell(Cell, Tree):
             return x_mapped, hess
         else: 
             return x_mapped
-               
-              
+
+
+class RVertex(Vertex):
+    """
+    Vertex on the reference cell
+    """
+    def __init__(self, coordinates):
+        """
+        Constructor
+        """
+        Vertex.__init__(self, coordinates)
+        self.__pos = {0: None, 1: {0: None, 1: None, 2: None, 3: None}}
+        self.__basis_index = None
+    
+    
+    def set_pos(self, pos, level=0, child=None):
+        """
+        Set the position of the Dof Vertex
+        
+        Inputs: 
+        
+            pos: int, a number not exceeding the element's number of dofs
+            
+            level: int in {0,1}, number specifying the refinement level
+                ( 0 = coarse, 1 = fine ).
+                
+            child: int in {0,1,2,3}, number specifying the child cell
+        
+        """
+        assert level in [0,1], 'Level should be either 0 or 1.'
+        if level==0:
+            self.__pos[level] = pos
+        if level==1:
+            assert child in [0,1,2,3], 'Level=1. Child should be specified.'
+            self.__pos[level][child] = pos
+
+
+    def get_pos(self, level, child=None, debug=False):
+        """
+        Return the dof vertice's position at a given level for a given child
+        """
+        if debug:
+            print(self.__pos)
+        if level==1:
+            assert child is not None, 'On fine level, child must be specified.'
+            return self.__pos[level][child]
+        else:
+            return self.__pos[level]
+        
+
+    def set_basis_index(self, idx):
+        self.__basis_index = idx
+        
+
+class RHalfEdge(HalfEdge):
+    """
+    HalfEdge for reference element
+    """
+    def __init__(self, base, head, dofs_per_edge, 
+                 parent=None, position=None, twin=None):
+        """
+        Constructor
+        """
+        HalfEdge.__init__(self, base, head, parent=parent, \
+                          position=position, twin=twin)
+        #
+        # Assign edge dof vertices
+        #
+        self.__dofs_per_edge = dofs_per_edge
+        self.assign_edge_dof_vertices()
+        
+    
+    def get_edge_dof_vertices(self, pos=None):
+        """
+        Returns all dof vertices associated with HalfEdge
+        """
+        if pos is None:
+            return self.__edge_dof_vertices
+        else:
+            return self.__edge_dof_vertices[pos]
+    
+    
+    def assign_edge_dof_vertices(self):
+        if self.twin() is not None:
+            #
+            # Use RHalfEdge's twin's dof vertices
+            # 
+            assert isinstance(self.twin(),RHalfEdge), \
+                'Twin should also be an RHalfEdge'
+            edge_dofs = self.twin().get_edge_dof_vertices()
+            edge_dofs.reverse()
+        else:
+            #
+            # Make new dof Vertices
+            # 
+            dofs_per_edge = self.n_dofs()
+            x0, y0 = self.base().coordinates()
+            x1, y1 = self.head().coordinates()
+            edge_dofs = []
+            if dofs_per_edge!=0:
+                h = 1/(dofs_per_edge+1)
+                for i in range(dofs_per_edge):
+                    #
+                    # Compute coordinates for dof vertex
+                    #
+                    t = (i+1)*h
+                    x = x0 + t*(x1-x0)
+                    y = y0 + t*(y1-y0)
+                    v = RVertex((x,y))
+                    if self.has_parent():
+                        #
+                        # Check if vertex already exists
+                        #
+                        for v_p in self.get_parent().get_edge_dof_vertices():
+                            if np.allclose(v.coordinates(),v_p.coordinates()):
+                                v = v_p
+                    edge_dofs.append(v)
+        #
+        # Store edge dof vertices
+        #
+        self.__edge_dof_vertices = edge_dofs
+    
+    
+    def make_twin(self):
+        """
+        Returns the twin RHalfEdge
+        """
+        return RHalfEdge(self.head(), self.base(), self.n_dofs(), twin=self)
+        
+        
+    def n_dofs(self):
+        """
+        Returns the number of dofs associated with the HalfEdge
+        """
+        return self.__dofs_per_edge
+    
+    
+    def split(self):
+        """
+        Refine current half-edge (overwrite Tree.split)
+        """
+        #
+        # Compute new midpoint vertex
+        #
+        x = convert_to_array([self.base().coordinates(),\
+                              self.head().coordinates()]) 
+        xm = 0.5*(x[0,:]+x[1,:]) 
+        vm = RVertex(tuple(xm))
+        for v in self.get_edge_dof_vertices():
+            if np.allclose(vm.coordinates(), v.coordinates()):
+                vm = v
+        #
+        # Define own children independently of neighbor
+        # 
+        c0 = RHalfEdge(self.base(), vm, self.n_dofs(), parent=self, position=0)
+        c1 = RHalfEdge(vm, self.head(), self.n_dofs(), parent=self, position=1)  
+        #
+        # Save the babies
+        # 
+        self._children[0] = c0
+        self._children[1] = c1
+         
+class RQuadCell(QuadCell):
+    """
+    Quadrilateral Reference Cell
+    """
+    def __init__(self, element, half_edges=None, parent=None, position=None):
+        """
+        Constructor 
+        """
+        #
+        # Check if the element is correct
+        #
+        self.element = element
+        
+        # Extract numbers of degrees of freedom
+        dofs_per_vertex = element.n_dofs('vertex') 
+        assert dofs_per_vertex<=1, \
+            'Only elements with at most one dof per vertex supported'
+        #
+        # Determine Cell's RHalfEdges
+        # 
+        if parent is None:
+            #
+            # Corner Vertices
+            #
+            vertices = [RVertex((0,0)), RVertex((1,0)), 
+                        RVertex((1,1)), RVertex((0,1))]
+            #
+            # Reference HalfEdges
+            #
+            dofs_per_edge = element.n_dofs('edge')
+            half_edges = []
+            for i in range(4):
+                he = RHalfEdge(vertices[i], vertices[(i+1)%4], dofs_per_edge)
+                half_edges.append(he)
+        else:
+            assert half_edges is not None, 'Cell has parent. Specify RefHalfEdges.'
+            
+        # Define Quadcell
+        QuadCell.__init__(self, half_edges, parent=parent, position=position)
+        
+        #
+        # Assign cell dof vertices
+        #
+        self.assign_cell_dof_vertices()
+        
+        
+        if not self.has_parent():
+            #
+            # Assign positions on coarse level
+            #
+            self.assign_dof_positions(0)
+            
+            #
+            # Split
+            #
+            self.split()
+            
+            #
+            # Assign positions
+            # 
+            self.assign_dof_positions(1)
+        
+        
+    def split(self):
+        """
+        Split refQuadCell into 4 subcells
+        """
+        assert not self.has_children(), 'Cell already split.'
+        
+        #
+        # Middle Vertex
+        #
+        xx = convert_to_array(self.get_vertices())
+        v_m = RVertex((np.mean(xx[:,0]),np.mean(xx[:,1]))) 
+
+        # Check if this vertex is contained in cell
+        for v_p in self.get_dof_vertices():
+            if np.allclose(v_m.coordinates(), v_p.coordinates()):
+                
+                # Vertex already exists
+                v_m = v_p
+                break
+            
+        
+        dofs_per_edge = self.element.n_dofs('edge')
+        interior_half_edges = []
+        for half_edge in self.get_half_edges():
+            #
+            # Split each half_edge
+            #
+            if not half_edge.has_children():
+                half_edge.split()     
+            #
+            # Form new HalfEdges to and from the center
+            # 
+            h_edge_up = RHalfEdge(half_edge.get_child(0).head(),v_m, dofs_per_edge)
+            h_edge_down = h_edge_up.make_twin()
+            
+            # Add to list
+            interior_half_edges.append([h_edge_up, h_edge_down])   
+        #
+        # Form new cells using new half_edges
+        # 
+        i = 0
+        for half_edge in self.get_half_edges():
+            #
+            # Define Child's HalfEdges
+            # key
+            h1 = half_edge.get_child(0)
+            h2 = interior_half_edges[i][0]
+            h3 = interior_half_edges[(i-1)%self.n_half_edges()][1]
+            h4 = half_edge.previous().get_child(1)
+            hes = deque([h1, h2, h3, h4])
+            hes.rotate(i)
+            hes = list(hes)
+            #hes = [h1, h2, h3, h4]
+            #
+            # Define new QuadCell
+            # 
+            self._children[i] = RQuadCell(self.element, hes, parent=self, position=i)
+
+            # Increment counter
+            i += 1
+            
+        
+    def assign_cell_dof_vertices(self):
+        """
+        Assign interior dof vertices to cell
+        """
+        dofs_per_cell = self.element.n_dofs('cell')        
+        cell_dofs = []
+        if dofs_per_cell!=0:
+            n = int(np.sqrt(dofs_per_cell))  # number of dofs per direction
+            x0, x1, y0, y1 = self.bounding_box()
+            h = 1/(n+1)  # subcell width
+            for i in range(n):  # y-coordinates
+                for j in range(n):  # x-coordinates
+                    #
+                    # Compute new Vertex
+                    #
+                    v_c = RVertex((x0+(j+1)*h*(x1-x0),y0+(i+1)*h*(y1-y0)))
+                    
+                    #
+                    # Check if vertex exists within parent cell
+                    # 
+                    inherits_dof_vertex = False
+                    if self.has_parent():
+                        for v_p in self.get_parent().get_cell_dof_vertices():
+                            if np.allclose(v_c.coordinates(), v_p.coordinates()):
+                                cell_dofs.append(v_p)
+                                inherits_dof_vertex = True
+                                break
+                    if not inherits_dof_vertex:
+                        cell_dofs.append(v_c)
+                
+        self.__cell_dof_vertices = cell_dofs
+    
+    
+    def get_cell_dof_vertices(self, pos=None): 
+        """
+        Return the interior dof vertices
+        """                 
+        if pos is None:
+            return self.__cell_dof_vertices
+        else:
+            return self.__cell_dof_vertices[pos]
+    
+    
+    def assign_dof_positions(self, level):
+        """
+        """
+        
+        if level==0:
+            #
+            # Level 0: Assign positions to vertices on coarse level
+            #
+            self.__dof_vertices = {0: [], 1: {0: [], 1: [], 2: [], 3: []}}
+            count = 0
+            
+            # Corner dof vertices
+            for vertex in self.get_vertices():
+                if self.element.n_dofs('vertex')!=0:
+                    vertex.set_pos(count, level)
+                    self.__dof_vertices[level].append(vertex)
+                    count += 1
+            
+            # HalfEdge dof vertices
+            for half_edge in self.get_half_edges():
+                for vertex in half_edge.get_edge_dof_vertices():
+                    vertex.set_pos(count, level)
+                    self.__dof_vertices[level].append(vertex)
+                    count += 1
+                    
+            # Cell dof vertices        
+            for vertex in self.get_cell_dof_vertices():
+                vertex.set_pos(count, level)
+                self.__dof_vertices[level].append(vertex)
+                count += 1
+        elif level==1:       
+            #
+            # Assign positions to child vertices
+            #
+            coarse_dofs = [i for i in range(self.element.n_dofs())]    
+            for i_child in range(4):
+                #
+                # Add all dof vertices to one list
+                #
+                child = self.get_child(i_child) 
+                child_dof_vertices = []
+                
+                # Dofs at Corners 
+                for vertex in child.get_vertices():
+                    if self.element.n_dofs('vertex')!=0:
+                        child_dof_vertices.append(vertex)
+                
+                # Dofs on HalfEdges
+                for half_edge in child.get_half_edges():
+                    for vertex in half_edge.get_edge_dof_vertices():
+                        child_dof_vertices.append(vertex)
+                
+                # Dofs in Cell
+                for vertex in child.get_cell_dof_vertices():
+                    child_dof_vertices.append(vertex)
+                
+                count = 0
+                for vertex in child_dof_vertices: 
+                    if not self.element.torn_element():
+                        #
+                        # Continuous Element (Dof Vertex can be inherited multiple times)
+                        #
+                        vertex.set_pos(count, level=level, child=i_child)
+                        self.__dof_vertices[level][i_child].append(vertex)
+                        count += 1
+                    else:
+                        #
+                        # Discontinuous Element (Dof Vertex can be inherited once)
+                        # 
+                        if vertex in self.__dof_vertices[0]:
+                            i_vertex = self.__dof_vertices[0].index(vertex)
+                            if i_vertex in coarse_dofs:
+                                #
+                                # Use vertex within child cell
+                                # 
+                                vertex.set_pos(count, level=level, child=i_child)
+                                self.__dof_vertices[level][i_child].append(vertex)
+                                count += 1
+                                
+                                # Delete the entry (preventing reuse).
+                                coarse_dofs.pop(coarse_dofs.index(i_vertex))
+                            else:
+                                #
+                                # Vertex has already been used, make a new one
+                                # 
+                                vcopy = RVertex(vertex.coordinates())
+                                vcopy.set_pos(count, level=level, child=i_child)
+                                self.__dof_vertices[level][i_child].append(vcopy)
+                                count += 1
+                        else:
+                            #
+                            # Not contained in coarse vertex set
+                            # 
+                            vertex.set_pos(count, level=level, child=i_child)
+                            self.__dof_vertices[level][i_child].append(vertex)
+                            count += 1
+                                
+    
+    def get_dof_vertices(self, level=0, child=None, pos=None):
+        """
+        Returns all dof vertices in cell
+        """
+        if level==0:
+            return self.__dof_vertices[0]
+        elif level==1:
+            assert child is not None, 'On level 1, child must be specified.'
+            if pos is None:
+                return self.__dof_vertices[1][child]
+            else:
+                return self.__dof_vertices[1][child][pos]
+        
+        
+class RInterval(Interval):
+    def __init__(self, element, base=None, head=None, 
+                 parent=None, position=None):
+        """
+        Constructor
+        """    
+        assert element.dim()==1, 'Element must be one dimensional'
+        self.element = element
+        
+        if parent is None:
+            base = RVertex(0)
+            head = RVertex(1)
+        else:
+            assert isinstance(head, RVertex), 'Input "head" must be an RVertex.'
+            assert isinstance(base, RVertex), 'Input "base" must be an RVertex.'
+        
+        Interval.__init__(self, base, head, parent=parent, position=position)
+            
+        
+        #
+        # Assign cell dof vertices
+        #
+        self.assign_cell_dof_vertices()
+        
+        
+        if not self.has_parent():
+            #
+            # Assign positions on coarse level
+            #
+            self.assign_dof_positions(0)
+            
+            #
+            # Split
+            #
+            self.split()
+            
+            #
+            # Assign positions
+            # 
+            self.assign_dof_positions(1)
+        
+     
+     
+    
+    def split(self):
+        """
+        Split a given interval into 2 subintervals
+        """                 
+        #
+        # Determine interval endpoints
+        # 
+        x0, = self.base().coordinates()
+        x1, = self.head().coordinates()
+        n = self.n_children()
+        #
+        # Loop over children
+        # 
+        for i in range(n):
+            #
+            # Determine children base and head Vertices
+            # 
+            if i==0:
+                base = self.base()  
+                 
+            if i==n-1:
+                head = self.head()
+            else:
+                head = RVertex(x0+(i+1)*(x1-x0)/n)
+                #
+                # Check whether Vertex appears in parent
+                # 
+                for v_p in self.get_dof_vertices():
+                    if np.allclose(head.coordinates(), v_p.coordinates()):
+                        head = v_p
+            #     
+            # Define new child interval
+            # 
+            subinterval = RInterval(self.element, base, head, \
+                                    parent=self, position=i)
+            #
+            # Store in children
+            # 
+            self._children[i] = subinterval
+            #
+            # The head of the current subinterval 
+            # becomes the base of the next one 
+            base = subinterval.head()
+        #
+        # Assign previous/next
+        #
+        for child in self.get_children(): 
+            i = child.get_node_position()
+            #
+            # Assign previous
+            #
+            if i==0:
+                # Leftmost child assign own previous
+                child.assign_previous(self.previous())
+            else:
+                # Child in the middle
+                #print(child.get_node_position(), child.base().coordinates())
+                #print(self.get_child(i-1).get_node_position(), child.base().coordinates())
+                child.assign_previous(self.get_child(i-1))
+            #
+            # Assign next
+            # 
+            if i==n-1:
+                # Rightmost child, assign own right
+                child.assign_next(self.next())
+          
+        
+    def assign_cell_dof_vertices(self):
+        dofs_per_cell = self.element.n_dofs('cell')
+        cell_dofs = []
+        if dofs_per_cell !=0:
+            #
+            # Compute coordinates for cell dof vertices
+            # 
+            x0, = self.base().coordinates()
+            x1, = self.head().coordinates()
+            h = 1/(dofs_per_cell+1)
+            for i in range(dofs_per_cell):
+                x = x0 + (i+1)*h*(x1-x0)
+                v_c = RVertex(x)
+                #
+                # Check if vertex exists within parent cell
+                # 
+                inherits_dof_vertex = False
+                if self.has_parent():
+                    for v_p in self.get_parent().get_cell_dof_vertices():
+                        if np.allclose(v_c.coordinates(), v_p.coordinates()):
+                            cell_dofs.append(v_p)
+                            inherits_dof_vertex = True
+                            break
+                if not inherits_dof_vertex:
+                    cell_dofs.append(v_c)
+        self.__cell_dof_vertices = cell_dofs
+        
+    
+    def get_cell_dof_vertices(self, pos=None):
+        """
+        Returns the Dofs associated with the interior of the cell
+        """
+        if pos is None:
+            return self.__cell_dof_vertices
+        else:
+            return self.__cell_dof_vertices[pos]
+ 
+    
+    def get_dof_vertices(self, level=0, child=None, pos=None):
+        """
+        Returns all dof vertices in cell
+        
+        Inputs: 
+        
+            level: int 0/1, 0=coarse, 1=fine
+            
+            child: int, child node position within parent (0/1)
+            
+            pos: int, 0,...n_dofs-1, dof number within cell
+        """
+        if level==0:
+            return self.__dof_vertices[0]
+        elif level==1:
+            assert child is not None, 'On level 1, child must be specified.'
+            if pos is None:
+                return self.__dof_vertices[1][child]
+            else:
+                return self.__dof_vertices[1][child][pos]
+        
+        
+    def assign_dof_positions(self, level):
+        """
+        Assigns a number to each dof vertex in the interval.
+        
+        Note: We only deal with bisection
+        """ 
+        if level==0:
+            #
+            # Level 0: Assign position to vertices on coarse level
+            #
+            self.__dof_vertices = {0: [], 1: {0: [], 1: []}}
+        
+            count = 0
+            #
+            # Add endpoints
+            # 
+            for vertex in self.get_vertices():
+                vertex.set_pos(count, level)
+                self.__dof_vertices[level].append(vertex)
+                count += 1
+            #
+            # Add cell dof vertices
+            # 
+            for vertex in self.get_cell_dof_vertices():
+                vertex.set_pos(count, level)
+                self.__dof_vertices[level].append(vertex)
+                count += 1
+        
+        elif level==1:
+            #
+            # Assign positions to child vertices
+            # 
+            coarse_dofs = [i for i in range(self.element.n_dofs())]
+            for i_child in range(2):
+                # 
+                # Add all dof vertices to a list
+                #
+                child = self.get_child(i_child)
+                child_dof_vertices = []
+                
+                # Dofs at corners
+                for vertex in child.get_vertices():
+                    if self.element.n_dofs('vertex')!=0:
+                        child_dof_vertices.append(vertex)
+                        
+                # Dofs in Interval
+                for vertex in child.get_cell_dof_vertices():
+                    child_dof_vertices.append(vertex)
+                #
+                # Inspect each vertex in the child, to see 
+                # whether there are duplicated in the parent.
+                # 
+                count = 0
+                for vertex in child_dof_vertices:
+                    if not self.element.torn_element():
+                        #
+                        # Continuous Element (Dof Vertex can be inherited multiple times)
+                        # 
+                        vertex.set_pos(count, level=level, child=i_child)
+                        self.__dof_vertices[level][i_child].append(vertex)
+                        count += 1
+                    else:
+                        #
+                        # Discontinuous Element (Dof Vertex can be inherited once)
+                        # 
+                        if vertex in self.__dof_vertices[0]:
+                            i_vertex = self.__dof_vertices[0].index(vertex)
+                            if i_vertex in coarse_dofs:
+                                #
+                                # Use vertex within child cell
+                                # 
+                                vertex.set_pos(count, level=level, child=i_child)
+                                self.__dof_vertices[level][i_child].append(vertex)
+                                count += 1
+                                
+                                # Delete the entry (preventing reuse).
+                                coarse_dofs.pop(coarse_dofs.index(i_vertex))
+                            else:
+                                #
+                                # Vertex has already been used, make a new one
+                                # 
+                                vcopy = RVertex(vertex.coordinates())
+                                vcopy.set_pos(count, level=level, child=i_child)
+                                self.__dof_vertices[level][i_child].append(vcopy)
+                                count += 1
+                        else:
+                            #
+                            # Not contained in coarse vertex set
+                            # 
+                            vertex.set_pos(count, level=level, child=i_child)
+                            self.__dof_vertices[level][i_child].append(vertex)
+                            count += 1
+                                
+                                       
 '''    
+
+
+class Mesh(object):
+    """
+    Mesh class, consisting of a grid (a doubly connected edge list), as well
+    as a list of root cells, -half-edges and vertices. 
+    
+    Attributes:
+    
+    Methods:
+
+    
+    """
+    def __init__(self, grid):
+        """
+        Constructor
+        
+
 class Mesh(object):
     """
     Mesh class, consisting of a grid (a doubly connected edge list), as well
@@ -3503,6 +4362,7 @@ class DCEL(object):
                 assert self.is_rectangular, \
                     'Only rectangular meshes can be made periodic'
             self.make_periodic(periodic, box)
+            self.is_periodic = True
             
                             
     def initialize_grid_structure(self):
@@ -4566,15 +5426,15 @@ class Mesh1D(Mesh):
             i_nxt = self.dcel.half_edges['next'][i]
             if i_nxt!=-1:
                 if self.dcel.is_periodic:
-                    intervals[i].assign_next(intervals[i_nxt], \
-                                             periodic=True)
-                else:
-                    intervals[i].assign_next(intervals[i_nxt], \
-                                             periodic=False)
+                    if intervals[i].head() != intervals[i_nxt].base():
+                        intervals[i].set_periodic()
+                        intervals[i_nxt].set_periodic()
+                intervals[i].assign_next(intervals[i_nxt])
+                
         #
         # Store intervals in Forest
         # 
-        self.intervals = Forest(intervals)
+        self.cells = Forest(intervals)
         self.__periodic_coordinates = self.dcel.periodic_coordinates
 
     
@@ -4599,7 +5459,7 @@ class Mesh1D(Mesh):
             cell: smallest cell that contains x
                 
         """
-        for interval in self.intervals.get_children(flag=flag):
+        for interval in self.cells.get_children(flag=flag):
             if interval.contains_points(point):
                 if flag is not None:
                     if not interval.is_marked(flag):
@@ -4613,8 +5473,8 @@ class Mesh1D(Mesh):
         """
         Returns the interval endpoints
         """
-        x0, = self.intervals.get_child(0).base().coordinates()
-        x1, = self.intervals.get_child(-1).head().coordinates()
+        x0, = self.cells.get_child(0).base().coordinates()
+        x1, = self.cells.get_child(-1).head().coordinates()
         return x0, x1
     
     '''
@@ -4626,7 +5486,7 @@ class Mesh1D(Mesh):
         # 
         # Traverse the forest of flagged intervals
         # 
-        for interval in self.intervals.traverse(flag=flag, mode='breadth-first'):
+        for interval in self.cells.traverse(flag=flag, mode='breadth-first'):
             interval.mark(mesh_label)
             
     
@@ -4634,7 +5494,7 @@ class Mesh1D(Mesh):
         """
         Split flagged LEAF cells of mesh (and label the refined mesh).
         """
-        for interval in self.intervals.get_leaves(flag):
+        for interval in self.cells.get_leaves(flag):
             interval.split()
             for child in interval.get_children():
                 child.mark(flag)
@@ -4646,7 +5506,7 @@ class Mesh1D(Mesh):
         """
         Delete (or unmark) the children 
         """
-        for interval in self.intervals.get_leaves(flag=flag):
+        for interval in self.cells.get_leaves(flag=flag):
           pass  
     '''
     
@@ -4682,9 +5542,25 @@ class Mesh2D(Mesh):
         for i_he in range(n_hes):
             i_twin = self.dcel.half_edges['twin'][i_he]
             if i_twin!=-1:
-                half_edges[i_he].assign_twin(half_edges[i_twin], periodic=True)
+                #
+                # HalfEdge has twin
+                #
+                he_nodes = self.dcel.half_edges['connectivity'][i_he]
+                twin_nodes = self.dcel.half_edges['connectivity'][i_twin]
+                if not all(he_nodes == list(reversed(twin_nodes))):
+                    #
+                    # Heads and Bases don't align, periodic boundary
+                    # 
+                    assert self.is_periodic(), 'Mesh is not periodic.'\
+                    'All HalfEdges should align.'
+                    half_edges[i_he].set_periodic()
+                    half_edges[i_twin].set_periodic()
+                
+                half_edges[i_he].assign_twin(half_edges[i_twin])
+                half_edges[i_twin].assign_twin(half_edges[i_he])
+                
         #
-        # Add HalfEdges to forest.
+        # Store HalfEdges in Forest.
         #
         self.half_edges = Forest(half_edges)
                     
@@ -4710,9 +5586,18 @@ class Mesh2D(Mesh):
                 cells.append(Cell([half_edges[i] for i in i_hes]))
                 is_quadmesh = False                
         self._is_quadmesh = is_quadmesh
-        self.cells = cells    
-    
+        self.cells = Forest(cells)    
         
+        # =====================================================================
+        # Pair Periodic Vertices
+        # =====================================================================
+        for half_edge in self.half_edges.get_children():
+            # Pair periodic vertices
+            #
+            if half_edge.is_periodic():
+                half_edge.pair_periodic_vertices()
+                
+                
     def is_rectangular(self):
         """
         Check whether the Mesh is rectangular
@@ -4761,9 +5646,13 @@ class Mesh2D(Mesh):
             cell: smallest cell that contains x
                 
         """
-        for cell in self.cells.get_children(flag=flag):
-            if cell.contains_points(point):
-                return cell
+        for cell in self.cells.get_children():
+            if flag is None:
+                if cell.contains_points(point):
+                    return cell
+            else:
+                if cell.is_marked(flag) and cell.contains_points(point):
+                    return cell
             
 
     def get_boundary_segments(self, flag=None):
@@ -4782,6 +5671,7 @@ class Mesh2D(Mesh):
         #
         bnd_hes_sorted = [deque([he]) for he in bnd_hes]
         while True:
+            merger_activity = False
             for g1 in bnd_hes_sorted:
                 #
                 # Check if g1 can add a deque in bnd_hes_sorted
@@ -4801,6 +5691,7 @@ class Mesh2D(Mesh):
                     #
                     elif g1[0].base()==g2[-1].head():
                         g2 = bnd_hes_sorted.pop(bnd_hes_sorted.index(g2))
+                        g2.reverse()
                         g1.extendleft(g2)
                         merger_activity = True
             if not merger_activity or len(bnd_hes_sorted)==1:
@@ -4815,14 +5706,10 @@ class Mesh2D(Mesh):
         """
         Returns the bounding box of the mesh
         """
-        bnd_edges = []
-        for segment in self.get_boundary_segments():
-            bnd_edges.extend(segment)
-        xy = np.array([he.base().coordinates() for he in bnd_edges])
+        xy = convert_to_array(self.vertices, dim=2)
         x0, x1 = xy[:,0].min(), xy[:,0].max()
         y0, y1 = xy[:,1].min(), xy[:,1].max()
         return x0, x1, y0, y1
-        
     '''
     def get_boundary_edges(self, flag=None):
         """
@@ -4888,7 +5775,7 @@ class QuadMesh(Mesh2D):
         Mesh2D.__init__(self, dcel=dcel, box=box, resolution=resolution, 
                         periodic=periodic, x=x, connectivity=connectivity,
                         file_path=file_path, file_format=file_format)
-        self.cells = Forest(self.cells)
+        self.cells = Forest(self.cells.get_children())
          
         
     def locate_point(self, point, flag=None):
@@ -4913,7 +5800,7 @@ class QuadMesh(Mesh2D):
                     return cell
 
         
-    def is_balanced(self, flag=None):
+    def is_balanced(self, subforest_flag=None):
         """
         Check whether the mesh is balanced
         
@@ -4923,32 +5810,26 @@ class QuadMesh(Mesh2D):
                 a submesh. 
         
         """
-        for cell in self.cells.get_leaves(flag=flag):
+        for cell in self.cells.get_leaves(subforest_flag=subforest_flag):
             for half_edge in cell.get_half_edges():
-                nb = cell.get_neighbors(half_edge, flag=flag)
-                if nb is not None:
-                    for child in nb.get_children(flag=flag):
-                        if child.has_children(flag=flag):
-                            return False
+                nb = cell.get_neighbors(half_edge, flag=subforest_flag)
+                if nb is not None and nb.has_children(flag=subforest_flag):
+                    twin = half_edge.twin()
+                    for the_child in twin.get_children():
+                        if the_child.cell().has_children(flag=subforest_flag):
+                            return False 
         return True
 
         
-    def balance(self, flag=None):
+    def balance(self, subforest_flag=None):
         """
         Ensure that subcells of current cell conform to the 2:1 rule
         """
-        assert self.is_quadmesh(),\
-            'Balancing only supported for Meshes of QuadCells.'
-        
-        #
-        #  Ensure mesh is correctly flagged.   
-        # 
-        if flag is not None:
-            self.validify_flag(flag)
+        assert self.cells.is_forest_of_rooted_subtree(subforest_flag)
         #
         # Get all LEAF cells
         # 
-        leaves = set(self.cells.get_leaves(flag=flag))  # set: no duplicates
+        leaves = set(self.cells.get_leaves(subforest_flag=subforest_flag))  # set: no duplicates
         while len(leaves)>0:
             leaf = leaves.pop()
             #
@@ -4959,14 +5840,14 @@ class QuadMesh(Mesh2D):
                 #
                 # Look for neighbors in each direction
                 # 
-                nb = leaf.get_neighbors(half_edge, flag=flag)
-                if nb is not None and nb.has_children(flag=flag):
+                nb = leaf.get_neighbors(half_edge, flag=subforest_flag)
+                if nb is not None and nb.has_children(flag=subforest_flag):
                     #
                     # Check if neighbor has children (still fine)
                     # 
-                    twin = half_edge.get_twin()
+                    twin = half_edge.twin()
                     for the_child in twin.get_children():
-                        if the_child.cell().has_children(flag=flag):
+                        if the_child.cell().has_children(flag=subforest_flag):
                             #
                             # If the neighbor has grandchildren, then split LEAF
                             # 
@@ -4975,20 +5856,20 @@ class QuadMesh(Mesh2D):
                                 # LEAF already has children -> mark them
                                 # 
                                 for child in leaf.get_children():
-                                    child.mark(flag)
+                                    child.mark(subforest_flag)
                             else:
                                 #
                                 # LEAF needs new children.
                                 # 
-                                leaf.split(flag=flag)
+                                leaf.split(flag=subforest_flag)
                             #
                             # Add children to the leaf nodes to be considered
                             # 
                             for child in leaf.get_children():
-                                if flag is not None:
+                                if subforest_flag is None:
                                     child.mark('support')
                                 else:
-                                    child.mark((flag, 'support'))
+                                    child.mark((subforest_flag, 'support'))
                                 leaves.add(child)
                             
                             #
@@ -4996,8 +5877,8 @@ class QuadMesh(Mesh2D):
                             # to be considered for splitting.
                             #     
                             for half_edge in leaf.get_half_edges():
-                                if half_edge.has_parent(flag=flag):
-                                    leaves.add(half_edge.get_parent(flag=flag))
+                                if half_edge.has_parent(flag=subforest_flag):
+                                    leaves.add(half_edge.get_parent(flag=subforest_flag))
                              
                             #
                             # Current LEAF cell has been split, move on to next one
@@ -5011,29 +5892,45 @@ class QuadMesh(Mesh2D):
                     break
             
     
-    def remove_supports(self, flag=None):
+    def remove_supports(self, subforest_flag=None, coarsening_flag=None):
         """
-        Remove the supporting nodes. This is useful after coarsening  
+        Given a submesh (subforest_flag) and a coarsening_flag,   
         
-        TODO: 
+        Input: 
+        
+            subforest_flag: flag specifying the submesh to be considered
+            
+            coarsening_flag: flag specifying the cells to be removed 
+            during coarsening
+            
+        TODO: Unfinished. Loop over cells to be coarsened. Check if it's 
+        safe to coarsen neighbors.
         """    
         #
         # Get all flagged LEAF nodes
         # 
-        leaves = self.get_leaves(flag=flag)
+        leaves = self.get_leaves(subforest_flag=subforest_flag, 
+                                 coarsening_flag=coarsening_flag)
         while len(leaves) > 0:
             #
             # For each LEAF
             # 
             leaf = leaves.pop()
-            if leaf.is_marked((flag, 'support')):
+            #
+            # Check if leaf is a support leaf
+            # 
+            if subforest_flag is None:
+                is_support = leaf.is_marked('support')
+            else:
+                is_support = leaf.is_marked((subforest_flag, 'support')) 
+            if is_support:
                 #
                 # Check whether its safe to delete the support cell
                 # 
                 safe_to_coarsen = True
                 for half_edge in leaf.get_half_edges():
-                    nb = leaf.get_neighbor(half_edge, flag=flag)
-                    if nb is not None and nb.has_children(flag=flag):
+                    nb = leaf.get_neighbor(half_edge, flag=subforest_flag)
+                    if nb is not None and nb.has_children(flag=subforest_flag):
                         #
                         # Neighbor has (flagged) children, coarsening will lead
                         # to an unbalanced tree
@@ -5043,16 +5940,11 @@ class QuadMesh(Mesh2D):
                 
                 if safe_to_coarsen:
                     #
-                    # Remove support by unmarking siblings or 
-                    # deleting them if flag is not specified.
+                    # Remove support by marking self with coarsening flag
                     #
-                    parent = leaf.parent
-                    if flag is None:
-                        parent.delete_children()
-                    else:
-                        for child in parent.get_children(flag=flag):
-                            child.unmark(flag)
-                    leaves.append(parent)
+                    self.mark(coarsening_flag)
+                    leaves.append(leaf.get_parent())
+                    
     
 '''
 class TriCell(object):
