@@ -64,12 +64,14 @@ def parse_derivative_info(dstring):
 
 
 """
+l
 Finite Element Classes
 """
 
 class Element(object):
     """
     Parent Class: Finite Elements
+    p
     """
     def __init__(self, dim, element_type, cell_type):
         self._element_type = element_type
