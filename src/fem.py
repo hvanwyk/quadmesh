@@ -7,12 +7,14 @@ from _operator import index
 from itertools import count
 
 """
+l
 Finite Element Classes
 """
 
 class FiniteElement(object):
     """
     Parent Class: Finite Elements
+    p
     """
     def __init__(self, dim, element_type):   
         self.__element_type = element_type
