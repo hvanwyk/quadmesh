@@ -1,7 +1,7 @@
 from mesh import Mesh1D, Interval, Vertex
 import unittest
 import numpy as np
-
+from plot import Plot
 class TestMesh1D(unittest.TestCase):
     """
     Test Mesh1D
@@ -19,7 +19,7 @@ class TestMesh1D(unittest.TestCase):
         # Check that the interval endpoints are correct
         # 
         i = 0
-        for interval in mesh.intervals.get_leaves():
+        for interval in mesh.cells.get_leaves():
             a, = interval.base().coordinates()
             b, = interval.head().coordinates()
             self.assertAlmostEqual(a, x[i])
@@ -28,25 +28,25 @@ class TestMesh1D(unittest.TestCase):
         #
         # Traverse intervals in 2 different ways
         # 
-        leaves = mesh.intervals.get_leaves()
-        interval = mesh.intervals.get_child(0)
+        leaves = mesh.cells.get_leaves()
+        interval = mesh.cells.get_child(0)
         for leaf in leaves:
             self.assertEqual(leaf, interval)
             interval = interval.next()
         #
         # Refine first subinterval
         # 
-        mesh.intervals.get_child(0).mark(1)
-        mesh.intervals.refine(refinement_flag=1)
+        mesh.cells.get_child(0).mark(1)
+        mesh.cells.refine(refinement_flag=1)
         
         #
         # Make sure that the intervals are still connected properly
         # 
-        leaves = mesh.intervals.get_leaves(mode='depth-first')
-        interval = mesh.intervals.get_child(0).get_child(0)
+        leaves = mesh.cells.get_leaves(mode='depth-first')
+        interval = mesh.cells.get_child(0).get_child(0)
         for leaf in leaves:
             self.assertEqual(leaf, interval)
-            interval = interval.next()
+            interval = interval.get_neighbor(1)
             
         # 
         # Periodic mesh
@@ -54,13 +54,13 @@ class TestMesh1D(unittest.TestCase):
         mesh = Mesh1D(x=np.linspace(-1,1,5), periodic=True)
         
         # Last interval's next is the first interval
-        self.assertEqual(mesh.intervals.get_child(-1).next(), mesh.intervals.get_child(0))
+        self.assertEqual(mesh.cells.get_child(-1).get_neighbor(1), mesh.cells.get_child(0))
         
         # Get next interval until you return to the beginning of the loop
-        interval = mesh.intervals.get_child(0)
+        interval = mesh.cells.get_child(0)
         for i in range(5):
-            interval = interval.next()
-        self.assertEqual(interval, mesh.intervals.get_child(1))
+            interval = interval.get_neighbor(1)
+        self.assertEqual(interval, mesh.cells.get_child(1))
         
         
     def test_bounding_box(self):
@@ -103,17 +103,17 @@ class TestMesh1D(unittest.TestCase):
         x = np.linspace(0, 4, 3)
         mesh = Mesh1D(x=x)
 
-        mesh.intervals.refine()
+        mesh.cells.refine()
         
-        mesh.intervals.get_child(0).mark(1, recursive=True)
-        mesh.intervals.get_child(1).mark(1)
+        mesh.cells.get_child(0).mark(1, recursive=True)
+        mesh.cells.get_child(1).mark(1)
         
         # Consider only flagged submesh
         self.assertEqual(mesh.locate_point(3.8, flag=1), 
-                         mesh.intervals.get_child(-1))
+                         mesh.cells.get_child(-1))
         
         # Consider the entire mesh.
         self.assertEqual(mesh.locate_point(3.9), 
-                         mesh.intervals.get_child(1).get_child(1))
+                         mesh.cells.get_child(1).get_child(1))
         
     

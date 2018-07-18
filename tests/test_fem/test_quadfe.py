@@ -1,7 +1,7 @@
 import unittest
 from fem import QuadFE
 from fem import GaussRule
-from mesh import RQuadCell, RHalfEdge
+from mesh import Vertex, HalfEdge, QuadCell, convert_to_array
 import numpy as np
 
 class TestQuadFE(unittest.TestCase):
@@ -11,7 +11,46 @@ class TestQuadFE(unittest.TestCase):
     def test_reference_quadcell(self):
         """
         Test Constructor
-        """        
+        
+        TODO:
+        
+            - test 1D: 
+            - test all reference cells (?)
+        """    
+        # =====================================================================
+        # Reference Interval/Cell
+        # =====================================================================
+        #
+        #  1D   
+        # 
+        #
+        # Check if reference interval contain the correct vertices
+        # 
+        etypes = ['DQ0', 'DQ1', 'DQ2', 'DQ3', 'Q1', 'Q2', 'Q3']
+        dv = dict.fromkeys(etypes)
+        dv['DQ0'] = {0: [0.5], 1: {0: [0.25], 1: [0.75]}}
+        dv['DQ1'] = {0: [0, 1], 1: {0: [0,0.5], 1:[0.5, 1]}}
+        dv['DQ2'] = {0: [0, 1, 0.5], 1: {0: [0,0.5,0.25], 1:[0.5,1,0.75]}}
+        dv['DQ3'] = {0: [0, 1, 1/3, 2/3], 1: {0: [0,0.5,1/6,1/3], 1:[0.5,1,2/3, 5/6]}}
+        dv['Q1'] =  {0: [0, 1], 1: {0: [0,0.5], 1:[0.5,1]}}
+        dv['Q2'] =  {0: [0, 1, 0.5], 1: {0: [0,0.5, 0.25], 1:[0.5, 1, 0.75]}}
+        dv['Q3'] =  {0: [0, 1, 1/3, 2/3], 1: {0: [0,0.5,1/6,1/3], 1:[0.5,1,2/3,5/6]}}
+        for etype in etypes:
+            element = QuadFE(1, etype)
+            cell = element.reference_cell()
+            for level in range(2):
+                if level==0:
+                    v = convert_to_array(cell.get_dof_vertices(level))
+                    self.assertTrue(np.allclose(np.array(dv[etype][level]), v[:,0]))
+                elif level==1:
+                    for child in range(2):
+                        v = convert_to_array(cell.get_dof_vertices(level, child))
+                        self.assertTrue(np.allclose(np.array(dv[etype][level][child]), v[:,0]))
+        #
+        # Check if the vertices on the fine level are correctly linked with those on the coarse level
+        # 
+        # TODO:
+        
         #
         # Test Positions
         # 
@@ -23,7 +62,7 @@ class TestQuadFE(unittest.TestCase):
                 vertex = cell.get_dof_vertices(1, 0, 0)
                 self.assertEqual(vertex.get_pos(1,0), vertex.get_pos(0))
                 
-                # Level 1, child 2, vertex 2 = Level 0, vertex 0
+                # Level 1, child 2, vertex 2 = Level 0, vertex 1
                 vertex = cell.get_dof_vertices(1,2,2)
                 self.assertEqual(vertex.get_pos(1,2), vertex.get_pos(0))
                 
@@ -185,7 +224,7 @@ class TestQuadFE(unittest.TestCase):
     def test_dphi(self):
         """
         Define piecewise linear, quadratic, and cubic polynomials on the
-        reference triangle, compute their first partial derivatives and 
+        reference element, compute their first partial derivatives and 
         compare with that of the nodal interpolant. 
         """
         pass
@@ -249,4 +288,54 @@ class TestQuadFE(unittest.TestCase):
                 self.assertAlmostEqual(np.dot(weights,np.dot(phi,f_nodes)),\
                                  cell_integrals[etype][i],places=8,\
                                  msg='Incorrect integral.')
-    
+        #
+        # Non-rectangular quadcell
+        #
+        test_functions['Q1'] = (lambda x,y: (x+1) + (y-1), 
+                                lambda x,y: np.ones(x.shape), 
+                                lambda x,y: np.ones(y.shape))
+        
+        # Vertices
+        v0 = Vertex((0,0))
+        v1 = Vertex((0.5,0.5))
+        v2 = Vertex((0,2))
+        v3 = Vertex((-0.5, 0.5))
+        
+        # half_edges
+        h01 = HalfEdge(v0,v1)
+        h12 = HalfEdge(v1,v2)
+        h23 = HalfEdge(v2,v3)
+        h30 = HalfEdge(v3,v0)
+        
+        # quadcell
+        cell = QuadCell([h01, h12, h23, h30])
+        
+        for etype in ['Q1', 'Q2', 'Q3']:
+            element = QuadFE(2, etype)
+            n_dofs = element.n_dofs()
+            x_ref = element.reference_nodes()
+            x = cell.reference_map(x_ref)
+            #
+            # Sanity check
+            # 
+            I = np.eye(n_dofs)
+            self.assertTrue(np.allclose(element.shape(x, cell),I),\
+                            'Shape functions incorrect at reference nodes.')
+            y = cell.reference_map(np.random.rand(5,2))
+            self.assertTrue(all(cell.contains_points(y)),\
+                            'Cell should contain all mapped points')
+            f_nodes = test_functions[etype][0](x[:,0],x[:,1])
+            
+            for i in range(3):
+                phi = element.shape(y, cell=cell, derivatives=derivatives[i])
+                f = test_functions[etype][i]
+                #
+                # Interpolation
+                #
+                fvals = f(y[:,0],y[:,1])  
+                self.assertTrue(np.allclose(np.dot(phi,f_nodes),fvals),\
+                                'Shape function interpolation failed.')
+                
+        #
+        # 1D
+        # 

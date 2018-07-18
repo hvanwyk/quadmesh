@@ -2,6 +2,7 @@
 import numpy as np
 from collections import deque
 import numbers
+import time
 #from math import isclose
 """
 Created on Jun 29, 2016
@@ -128,8 +129,8 @@ def convert_to_array(x, dim=None):
                 x = x[:,np.newaxis]
                 
         elif len(x.shape)==2:
-            assert x.shape[1]==2,\
-            'Dimension of array should be 2'
+            assert x.shape[1]<=2,\
+            'Dimension of array should be at most 2'
         else:
             raise Exception('Only 1- or 2 dimensional arrays allowed.') 
     return x
@@ -844,6 +845,25 @@ class Tree(object):
         return node 
 
 
+    def contains(self, tree):
+        """
+        Determine whether self contains a given node 
+        """
+        if tree.get_depth() < self.get_depth():
+            return False
+        elif tree == self:
+            return True
+        else:
+            while tree.get_depth() > self.get_depth():
+                tree = tree.get_parent()
+                if self == tree:
+                    return True
+            #
+            # Reached the end 
+            # 
+            return False
+        
+        
 class Forest(object):
     """
     Collection of Trees
@@ -1022,6 +1042,11 @@ class Forest(object):
         
         Note: This takes roughly the same amount of work as make_rooted_subtree  
         """
+        if flag is None:
+            #
+            # Forest itself is always one of rooted subtrees
+            # 
+            return True
         #
         # Search through all nodes
         # 
@@ -1224,7 +1249,8 @@ class Forest(object):
             self.make_forest_of_rooted_subtrees(new_label)
             
     
-    def refine(self, subforest_flag=None, refinement_flag=None, new_label=None):
+    def refine(self, subforest_flag=None, refinement_flag=None, new_label=None, 
+               remove_refinement_flag=True):
         """
         Refine (sub)forest (delimited by 'subforest_flag'), by (possibly) 
         splitting (subforest)nodes with refinement_flag and marking their 
@@ -1284,6 +1310,11 @@ class Forest(object):
                     # New label given, mark child with new label
                     #
                     child.mark(new_label)
+            #
+            # Remove refinement flag
+            # 
+            if refinement_flag is not None and remove_refinement_flag:
+                leaf.unmark(refinement_flag)
         #
         # Label ancestors of newly labeled children
         # 
@@ -1333,7 +1364,7 @@ class Vertex(object):
         self.__coordinate = coordinates
         self._flags = set()
         self.__dim = dim
-        self.__periodic_pair = {}
+        self.__periodic_pair = set()
         self.__is_periodic = False
         
     
@@ -1411,63 +1442,107 @@ class Vertex(object):
         Determine whether a Vertex lies on a periodic boundary
         """
         return self.__is_periodic
-        
+    
       
-    def set_periodic_pair(self, half_edge):
+    def set_periodic(self, periodic=True):
         """
-        Pair a vertex with its periodic counterpart
+        Label vertex periodic
+        """  
+        self.__is_periodic = periodic
+      
+      
+    def set_periodic_pair(self, cell_vertex_pair):
         """
-        assert half_edge.is_periodic(), 'HalfEdge is periodic'
+        Pair a periodic vertex with its periodic counterpart. The periodic 
+        pair can be accessed by specifying the neighboring interval (in 1D) 
+        or cell (in 2D).
+        
+        Inputs:
+        
+            half_edge: HalfEdge/Interval 
+             
+             In 1D: half_edge represents the Interval on which the vertex pair resides
+             
+             In 2D: half_edge represents the HalfEdge on which the vertex itself resides 
+        
+            vertex: Vertex associated with 
+        
+        See also: get_periodic_pair
+        """
+        assert self.is_periodic(), 'Vertex should be periodic.'
         if self.dim()==1:
             #
-            # 1D: Determine periodic pair 
+            # 1D: There is only one pairing for the entire mesh
             # 
-            if self == half_edge.base():
-                p_interval = half_edge.previous() 
-                vertex = p_interval.head()
-            elif self == half_edge.head():
-                p_interval = half_edge.next()
-                vertex = p_interval.base()
+            interval, vertex = cell_vertex_pair            
+            assert isinstance(vertex, Vertex), \
+                'Input "vertex" should be of class "Vertex".'
+            assert isinstance(interval, Interval), \
+                'Input "interval" should be of class "Interval".'
+            assert vertex.is_periodic(), \
+                'Input "vertex" should be periodic.'
+            #
+            # 1D: Store periodic pair 
+            #             
+            self.__periodic_pair.add((interval, vertex))
+             
             
-            # Store information
-            self.__periodic_pair[half_edge] = vertex
-            self.__is_periodic = True
-            
-            # Pair other vertex with self
-            if vertex.get_periodic_pair(p_interval) is None:
-                vertex.set_periodic_pair(p_interval)
-                
         elif self.dim()==2:
             #
-            # 2D Determine periodic pair
+            # 2D
             # 
-            twin = half_edge.twin()
-            cell = twin.cell()
-            if self == half_edge.base():
-                vertex = twin.head()
-            elif self == half_edge.head():
-                vertex = twin.base()
-            else:
-                raise Exception('Vertex not contained in half_edge')
+            c_nb, v_nb = cell_vertex_pair
+            assert isinstance(v_nb, Vertex), \
+                'Input "cell_vertex_pair[1]" should be of class "Vertex".'
+            assert isinstance(c_nb, Cell), \
+                'Input "cell_vertex_pair[0]" should be of class "HalfEdge".'
+            assert v_nb.is_periodic(), \
+                'Input "cell_vertex_pair[1]" should be periodic.'
             
-            self.__periodic_pair[cell] = vertex
-            self.__is_periodic = True
-            
-            # Pair other vertex with self        
-            if vertex.get_periodic_pair(half_edge.cell()) is None:
-                vertex.set_periodic_pair(twin)
+            #
+            # Collect all possible c/v pairs in a set
+            # 
+            cell_vertex_pairs = v_nb.get_periodic_pair().union(set([cell_vertex_pair]))
+            assert len(cell_vertex_pairs)!=0, 'Set of pairs should be nonempty'
+            for c_nb, v_nb in cell_vertex_pairs:
+                #
+                # Check whether v_nb already in list
+                #
+                in_list = False 
+                for c, v in self.get_periodic_pair():
+                    if v==v_nb and c.contains(c_nb):
+                        #
+                        # Vertex already appears in list
+                        # 
+                        in_list = True
+                        break
+                if not in_list:
+                    #
+                    # Not in list, add it
+                    # 
+                    self.__periodic_pair.add((c_nb, v_nb))
         
+                
         
-    def get_periodic_pair(self, cell, debug=False):
+    def get_periodic_pair(self, cell=None):
         """
-        Returns the another vertex that is mapped onto self through periodicity
+        Returns the other vertex that is mapped onto self through periodicity
+        
+        Input:
+        
+            cell: Cell/HalfEdge in which paired vertex resides
         """
-        if debug:
-            print(self.__periodic_pair)
-        if cell in self.__periodic_pair:
-            return self.__periodic_pair[cell]
+        if cell is None:
+            #
+            # Return all cell, vertex pairs
+            # 
+            return self.__periodic_pair
         else:
-            return None
+            #
+            # Return all paired vertices within a given cell
+            # 
+            vertices = [v for c, v in self.__periodic_pair if c==cell]
+            return vertices
         
     
 class HalfEdge(Tree):
@@ -1519,6 +1594,8 @@ class HalfEdge(Tree):
             forest: Forest, clever list of trees containing self 
             
             flag: (set of) int/string/bool, used to mark half-edge
+            
+            periodic: bool, True if HalfEdge lies on a periodic boundary
         """
         #
         # Initialize Tree structure
@@ -1567,23 +1644,20 @@ class HalfEdge(Tree):
         self.__next = nxt
         
         #
+        # Mark periodic
+        # 
+        self.__is_periodic = periodic
+
+        #
         # Assign twin half-edge
         #
         if twin is not None: 
             assert isinstance(twin, HalfEdge), \
                 'Input "twin" should be a HalfEdge object.'
-            if not periodic:
-                assert self.head()==twin.base() and self.base()==twin.head(),\
-                    'Base and head vertices of "twin" should equal own head '\
-                    'and base vertices respectively.'
-        self.__twin = twin
-        self.__is_periodic = periodic
-        #
-        # Pair up periodic vertices
-        # 
-        if self.is_periodic():
-            self.pair_periodic_vertices()
-
+            self.assign_twin(twin)
+        else:
+            self.__twin = None
+        
        
     def is_periodic(self):
         """
@@ -1604,21 +1678,29 @@ class HalfEdge(Tree):
         Pair up HalfEdge vertices that are periodic
         """
         if self.is_periodic(): 
+            #
             # Pair up periodic vertices along half_edge
-            #print('pairing up periodic vertices')
-            #print('He:')
-            #print(self.base().coordinates(), self.head().coordinates())
-            #print('twin')
-            #twin = self.twin()
-            #print(twin.base().coordinates(), twin.head().coordinates())
-            self.base().set_periodic_pair(self)
-            self.head().set_periodic_pair(self)
-            
-            #print('checking...')
-            #nbr = self.twin().cell()
-            #print(self.base().coordinates(), self.base().get_periodic_pair(nbr).coordinates())
-            #print(self.head().coordinates(), self.head().get_periodic_pair(nbr).coordinates())
-            
+            #
+            cell = self.cell()
+            cell_nb = self.twin().cell()
+            assert cell_nb is not None,\
+                'Periodic HalfEdge: Neighboring cell should not be None.'
+            #
+            # Pair up adjacent vertices
+            # 
+            for v, v_nb in [(self.base(), self.twin().head()),
+                            (self.head(), self.twin().base())]:
+                # Label vertices 'periodic'
+                v.set_periodic()
+                v_nb.set_periodic()
+                
+                # Add own vertex-cell pair to own set of periodic pairs
+                v.set_periodic_pair((cell, v))
+                v_nb.set_periodic_pair((cell_nb, v_nb))
+                
+                # Add adjoining vertex-cell pair to set of periodic pairs
+                v.set_periodic_pair((cell_nb, v_nb))
+                v_nb.set_periodic_pair((cell, v))
             
     
     def base(self):
@@ -1741,20 +1823,22 @@ class HalfEdge(Tree):
         #
         # Check if twin has been split 
         #  
+        twin_split = False
         twin = self.twin()
-        if twin is not None and twin.has_children() and not self.is_periodic():
+        if twin is not None and twin.has_children():
+            t0, t1 = twin.get_children()
+            twin_split = True
+        else:
+            t0, t1 = None, None
+
+        #
+        # Determine whether to inherit midpoint vertex
+        # 
+        if twin_split and not self.is_periodic():
             #
             # Share twin's midpoint Vertex
             # 
-            t0, t1 = twin.get_children()
             vm = t0.head()
-            #
-            # Define own children and combine with twin children 
-            # 
-            c0 = HalfEdge(self.base(), vm, parent=self, twin=t1, position=0, periodic=self.is_periodic())
-            c1 = HalfEdge(vm, self.head(), parent=self, twin=t0, position=1, periodic=self.is_periodic())
-            t0.assign_twin(c1)
-            t1.assign_twin(c0)
         else:
             #
             # Compute new midpoint vertex
@@ -1762,12 +1846,19 @@ class HalfEdge(Tree):
             x = convert_to_array([self.base().coordinates(),\
                                   self.head().coordinates()]) 
             xm = 0.5*(x[0,:]+x[1,:]) 
-            vm = Vertex(tuple(xm))
-            #
-            # Define own children independently of neighbor
-            # 
-            c0 = HalfEdge(self.base(), vm, parent=self, position=0)
-            c1 = HalfEdge(vm, self.head(), parent=self, position=1)  
+            vm = Vertex(tuple(xm))                
+        #
+        # Define own children and combine with twin children 
+        # 
+        c0 = HalfEdge(self.base(), vm, parent=self, twin=t1, position=0, periodic=self.is_periodic())
+        c1 = HalfEdge(vm, self.head(), parent=self, twin=t0, position=1, periodic=self.is_periodic())
+        
+        #
+        # Assign new HalfEdges to twins if necessary
+        # 
+        if twin_split:
+            t0.assign_twin(c1)
+            t1.assign_twin(c0)
         #
         # Save the babies
         # 
@@ -1896,9 +1987,9 @@ class HalfEdge(Tree):
 
 
      
-    def reference_map(self, x, jacobian=True, hessian=False, mapsto='physical'):
+    def reference_map(self, x, jacobian=False, hessian=False, mapsto='physical'):
         """
-        Map points x from the reference interval to the physical domain or vice versa
+        Map points x from the reference interval to the physical HalfEdge or vice versa
         
         Inputs:
         
@@ -1914,9 +2005,9 @@ class HalfEdge(Tree):
         
             y: double, (n,) array of mapped points
             
-            jac: list of associated gradients
+            jac: array (2,), jacobian [x'(t), y'(t)]
             
-            hess: list of associated Hessians (always 0).
+            hess: array (2,2), Hessian (always 0).
         """
         if mapsto=='physical':
             #
@@ -1941,8 +2032,8 @@ class HalfEdge(Tree):
               
         #
         # Compute mapped points
-        # 
-        n = len(x)    
+        #     
+        n_points = x.shape[0]
         x0, y0 = self.base().coordinates()
         x1, y1 = self.head().coordinates()
         if mapsto == 'physical':
@@ -1967,17 +2058,17 @@ class HalfEdge(Tree):
                 #
                 # Derivative of mapping from refence to physical cell
                 # 
-                jac = [np.array([[x1-x0],[y1-y0]]) for dummy in range(n)]
+                jac = [np.array([[x1-x0],[y1-y0]])]*n_points
             elif mapsto == 'reference':
                 #
                 # Derivative of inverse map
                 # 
-                jac = [np.array([[1/(x1-x0), 1/(y1-y0)]]) for dummy in range(n)]
+                jac = np.array([[1/(x1-x0), 1/(y1-y0)]]) 
 
         # 
         # Compute the Hessian (linear mapping, so Hessian = 0)
         #
-        hess = [np.zeros((2,2)) for dummy in range(n)]
+        hess = np.zeros((2,2))
          
         #
         # Return output
@@ -1999,7 +2090,8 @@ class Interval(HalfEdge):
     Interval Class (1D equivalent of a Cell)
     """
     def __init__(self, vertex_left, vertex_right, n_children=2, \
-                 regular=True, parent=None, position=None, forest=None):
+                 regular=True, parent=None, position=None, forest=None, \
+                 periodic=False):
         """
         Constructor
         """
@@ -2008,9 +2100,10 @@ class Interval(HalfEdge):
         
         HalfEdge.__init__(self, vertex_left, vertex_right, \
                           n_children=n_children, regular=regular,\
-                          parent=parent, position=position, forest=forest)
-
-    
+                          parent=parent, position=position, forest=forest,\
+                          periodic=periodic)
+        
+        
     def get_vertices(self):
         """
         Return interval endpoints
@@ -2046,7 +2139,7 @@ class Interval(HalfEdge):
         HalfEdge.assign_next(self,nxt)
      
      
-    def get_neighbor(self, pivot, flag=None):
+    def get_neighbor(self, pivot, subforest_flag=None):
         """
         Returns the neighboring interval
         
@@ -2073,20 +2166,71 @@ class Interval(HalfEdge):
         # Move left or right
         # 
         if pivot == 0:
-            nb = self.previous()
-        elif pivot==1:
-            nb = self.next()          
-        #
-        # Account for flag
-        # 
-        if flag is not None:
-                if nb.is_marked(flag):
-                    return nb
+            #
+            # Left neighbor
+            # 
+            itv = self
+            prev = itv.previous()
+            #
+            # Go up the tree until thre is a "previous"
+            # 
+            while prev is None:
+                if itv.has_parent():
+                    #
+                    # Go up one level and check
+                    # 
+                    itv = itv.get_parent()
+                    prev = itv.previous()
                 else:
-                    return None
-        else:
-            return nb
-    
+                    #
+                    # No parent: check whether vertex is periodic 
+                    # 
+                    if itv.base().is_periodic():
+                        for pair in itv.base().get_periodic_pair():
+                            prev, dummy = pair 
+                    else:
+                        return None
+            #
+            # Go down tree (to the right) as far as you can 
+            #
+            nxt = prev 
+            while nxt.has_children(flag=subforest_flag):
+                nxt = nxt.get_child(nxt.n_children()-1)
+            return nxt
+             
+        elif pivot==1:
+            #
+            # Right neighbor
+            # 
+            itv = self
+            nxt = itv.next()
+            #
+            # Go up the tree until there is a "next"
+            # 
+            while nxt is None:
+                if itv.has_parent():
+                    #
+                    # Go up one level and check
+                    #
+                    itv = itv.get_parent()
+                    nxt = itv.next()
+                else:
+                    #
+                    # No parent: check whether vertex is periodic
+                    # 
+                    if itv.head().is_periodic():
+                        for nxt, dummy in itv.head().get_periodic_pair():
+                            pass
+                    else:
+                        return None
+            #
+            # Go down tree (to the left) as far as you can
+            # 
+            prev = nxt
+            while prev.has_children(flag=subforest_flag):
+                prev = prev.get_child(0)
+            return prev
+                 
     
     def split(self, n_children=None):
         """
@@ -2134,19 +2278,10 @@ class Interval(HalfEdge):
             #
             # Assign previous
             #
-            if i==0:
-                # Leftmost child assign own previous
-                child.assign_previous(self.previous())
-            else:
-                # Child in the middle
+            if i != 0:
+                # Middle children
                 child.assign_previous(self.get_child(i-1))
-            #
-            # Assign next
-            # 
-            if i==n-1:
-                # Rightmost child, assign own right
-                child.assign_next(self.next())
-        
+                    
     
     def locate_point(self, point, flag=None):
         """
@@ -2184,7 +2319,7 @@ class Interval(HalfEdge):
             return None        
     
         
-    def reference_map(self, x, jacobian=True, hessian=False, mapsto='physical'):
+    def reference_map(self, x, jacobian=False, hessian=False, mapsto='physical'):
         """
         Map points x from the reference to the physical domain or vice versa
         
@@ -2207,12 +2342,9 @@ class Interval(HalfEdge):
             hess: list of associated Hessians (always 0).
         """
         # 
-        # Assess input
+        # Convert input to array
         # 
-        if type(x) is list:
-            # Convert list to array
-            assert all(isinstance(xi, numbers.Real) for xi in x)
-            x = np.array(x)
+        x = convert_to_array(x,dim=1)
             
         #
         # Compute mapped points
@@ -2221,9 +2353,9 @@ class Interval(HalfEdge):
         x0, = self.get_vertex(0).coordinates()
         x1, = self.get_vertex(1).coordinates()
         if mapsto == 'physical':
-            y = list(x0 + (x1-x0)*x)
+            y = x0 + (x1-x0)*x
         elif mapsto == 'reference':
-            y = list((x-x0)/(x1-x0))
+            y = (x-x0)/(x1-x0)
         
         #
         # Compute the Jacobian
@@ -2497,7 +2629,7 @@ class Cell(Tree):
                     break
                 elif neighbor==self:
                     #
-                    # Full rotation
+                    # Full rotation or no neighbors
                     # 
                     return neighbors
                 else:
@@ -2506,7 +2638,9 @@ class Cell(Tree):
                     # 
                     neighbors.append(neighbor)
                     cell = neighbor
-            #        
+                    if pivot.is_periodic() and len(pivot.get_periodic_pair(cell))!=0:
+                        pivot = pivot.get_periodic_pair(cell)[0]
+            #    
             # Clockwise
             #
             neighbors_clockwise = []
@@ -2522,12 +2656,19 @@ class Cell(Tree):
                 # 
                 if neighbor is None:
                     break
+                elif neighbor==self:
+                    #
+                    # Full rotation or no neighbors
+                    # 
+                    return neighbors
                 else:
                     #
                     # Got a neighbor
                     # 
                     neighbors_clockwise.append(neighbor)
                     cell = neighbor
+                    if pivot.is_periodic() and len(pivot.get_periodic_pair(cell))!=0:
+                        pivot = pivot.get_periodic_pair(cell)[0]
             #
             # Combine clockwise and anticlockwise neighbors
             #
@@ -2538,7 +2679,7 @@ class Cell(Tree):
                 return neighbors
             
             
-    def contains_points(self, points):
+    def contains_points(self, points, tol=1e-10):
         """
         Determine whether the given cell contains a point
         
@@ -2566,7 +2707,7 @@ class Cell(Tree):
         
             # Determine which points lie outside cell
             pos_means_left = (y-y0)*(x1-x0)-( x-x0)*(y1-y0) 
-            in_cell[pos_means_left<0] = False
+            in_cell[pos_means_left<-tol] = False
         
         if len(in_cell)==1:
             return in_cell[0]
@@ -2698,6 +2839,14 @@ class QuadCell(Cell, Tree):
         if flag is not None:
             for child in self.get_children():
                 child.mark(flag)
+        #
+        # Pair up periodic vertices
+        #
+        for half_edge in self.get_half_edges():
+            for he_child in half_edge.get_children():
+                if he_child.is_periodic() and he_child.twin() is not None:
+                    he_child.pair_periodic_vertices()
+                
                 
     def locate_point(self, point, flag=None):
         """
@@ -2965,7 +3114,7 @@ class RVertex(Vertex):
 
     def get_pos(self, level, child=None, debug=False):
         """
-        Return the dof vertice's position at a given level for a given child
+        Return the dof vertex's position at a given level for a given child
         """
         if debug:
             print(self.__pos)
@@ -3480,7 +3629,7 @@ class RInterval(Interval):
           
         
     def assign_cell_dof_vertices(self):
-        dofs_per_cell = self.element.n_dofs('cell')
+        dofs_per_cell = self.element.n_dofs('edge')
         cell_dofs = []
         if dofs_per_cell !=0:
             #
@@ -3510,6 +3659,8 @@ class RInterval(Interval):
     def get_cell_dof_vertices(self, pos=None):
         """
         Returns the Dofs associated with the interior of the cell
+        
+        Note: This function is only used during construction
         """
         if pos is None:
             return self.__cell_dof_vertices
@@ -3554,11 +3705,13 @@ class RInterval(Interval):
             count = 0
             #
             # Add endpoints
-            # 
-            for vertex in self.get_vertices():
-                vertex.set_pos(count, level)
-                self.__dof_vertices[level].append(vertex)
-                count += 1
+            #
+            dpv = self.element.n_dofs('vertex')
+            if dpv != 0: 
+                for vertex in self.get_vertices():
+                    vertex.set_pos(count, level)
+                    self.__dof_vertices[level].append(vertex)
+                    count += 1
             #
             # Add cell dof vertices
             # 
@@ -3589,7 +3742,7 @@ class RInterval(Interval):
                     child_dof_vertices.append(vertex)
                 #
                 # Inspect each vertex in the child, to see 
-                # whether there are duplicated in the parent.
+                # whether it is duplicated in the parent.
                 # 
                 count = 0
                 for vertex in child_dof_vertices:
@@ -5100,6 +5253,7 @@ class DCEL(object):
         # Group and sort half-edges
         #
         bnd_hes_sorted = [deque([he]) for he in bnd_hes]
+        
         while True:
             for g1 in bnd_hes_sorted:
                 #
@@ -5113,17 +5267,19 @@ class DCEL(object):
                     if self.half_edges['connectivity'][g1[-1]][1]==\
                        self.half_edges['connectivity'][g2[0]][0]:
                         # Remove g2 from list
-                        g2 = bnd_hes_sorted.pop(bnd_hes_sorted.index(g2))
-                        g1.extend(g2)
-                        merger_activity = True 
+                        if len(bnd_hes_sorted) > 1:
+                            g2 = bnd_hes_sorted.pop(bnd_hes_sorted.index(g2))
+                            g1.extend(g2)
+                            merger_activity = True 
                     #
                     # Does g1's tail align with g2's head?
                     #
                     elif self.half_edges['connectivity'][g1[0]][0]==\
                          self.half_edges['connectivity'][g2[-1]][1]:
-                        g2 = bnd_hes_sorted.pop(bnd_hes_sorted.index(g2))
-                        g1.extendleft(g2)
-                        merger_activity = True
+                        if len(bnd_hes_sorted) > 1:
+                            g2 = bnd_hes_sorted.pop(bnd_hes_sorted.index(g2))
+                            g1.extendleft(g2)
+                            merger_activity = True
             if not merger_activity:
                 break    
         #
@@ -5226,7 +5382,10 @@ class DCEL(object):
         Inputs:
         
             Coordinates: set, containing 0 (x-direction) and/or 1 (y-direction). 
+        
+        TODO: Cannot make periodic (1,1) DCEL objects
         """
+        
         if self.dim()==1:
             #
             # In 1D, first half-edge becomes "next" of last half-edge
@@ -5263,7 +5422,7 @@ class DCEL(object):
                             #
                             # If x-values are near x_min, it's on the left
                             # 
-                            left_hes.append((he, y_base, y_head))
+                            left_hes.append((he, y_base, y_head))                
                 #
                 # Look for twin half-edges
                 # 
@@ -5425,18 +5584,34 @@ class Mesh1D(Mesh):
         for i in range(n_intervals):
             i_nxt = self.dcel.half_edges['next'][i]
             if i_nxt!=-1:
-                if self.dcel.is_periodic:
-                    if intervals[i].head() != intervals[i_nxt].base():
-                        intervals[i].set_periodic()
-                        intervals[i_nxt].set_periodic()
-                intervals[i].assign_next(intervals[i_nxt])
+                if intervals[i].head() != intervals[i_nxt].base():
+                    assert self.dcel.is_periodic, 'DCEL should be periodic'
+                    #
+                    # Intervals linked by periodicity
+                    # 
+                    itv_1, vtx_1 = intervals[i], intervals[i].head()
+                    itv_2, vtx_2 = intervals[i_nxt], intervals[i_nxt].base()
+                    
+                    # Mark intervals periodic
+                    itv_1.set_periodic()
+                    itv_2.set_periodic()
+                    
+                    # Mark vertices periodic
+                    vtx_1.set_periodic()
+                    vtx_2.set_periodic()
+                    
+                    # Associate vertices with one another
+                    vtx_1.set_periodic_pair((itv_2, vtx_2))
+                    vtx_2.set_periodic_pair((itv_1, vtx_1))
+                else:        
+                    intervals[i].assign_next(intervals[i_nxt])
                 
         #
         # Store intervals in Forest
         # 
         self.cells = Forest(intervals)
         self.__periodic_coordinates = self.dcel.periodic_coordinates
-
+        
     
     def is_periodic(self):
         """
@@ -5655,15 +5830,21 @@ class Mesh2D(Mesh):
                     return cell
             
 
-    def get_boundary_segments(self, flag=None):
+    def get_boundary_segments(self, subforest_flag=None, flag=None):
         """
         Returns a list of segments of boundary half edges
+        
+        Inputs: 
+        
+            subforest_flag: optional flag (int/str) specifying the submesh
+                within which boundary segments are
         """
         bnd_hes = []
         #
         # Locate half-edges on the boundary
         # 
-        for he in self.half_edges.get_leaves(flag=flag):
+        for he in self.half_edges.get_leaves(subforest_flag=subforest_flag,\
+                                             flag=flag):
             if he.twin() is None:
                 bnd_hes.append(he)
         #
@@ -5849,47 +6030,51 @@ class QuadMesh(Mesh2D):
                     for the_child in twin.get_children():
                         if the_child.cell().has_children(flag=subforest_flag):
                             #
-                            # If the neighbor has grandchildren, then split LEAF
+                            # Neighbor has grandchildren
                             # 
-                            if leaf.has_children():
+                            if not leaf.has_children(flag=subforest_flag):
                                 #
-                                # LEAF already has children -> mark them
+                                # LEAF does not have any flagged children
+                                #
+                                if leaf.has_children():
+                                    #
+                                    # LEAF has children (just not flagged)
+                                    #  
+                                    for child in leaf.get_children():
+                                        child.mark(subforest_flag)
+                                else:
+                                    #
+                                    # LEAF needs new children.
+                                    # 
+                                    leaf.split(flag=subforest_flag)
+                                #
+                                # Add children to the leaf nodes to be considered
                                 # 
                                 for child in leaf.get_children():
-                                    child.mark(subforest_flag)
-                            else:
+                                    leaves.add(child)
+                                
                                 #
-                                # LEAF needs new children.
-                                # 
-                                leaf.split(flag=subforest_flag)
-                            #
-                            # Add children to the leaf nodes to be considered
-                            # 
-                            for child in leaf.get_children():
-                                if subforest_flag is None:
-                                    child.mark('support')
-                                else:
-                                    child.mark((subforest_flag, 'support'))
-                                leaves.add(child)
-                            
-                            #
-                            # If LEAF is split, add all its neighbors to leaves
-                            # to be considered for splitting.
-                            #     
-                            for half_edge in leaf.get_half_edges():
-                                if half_edge.has_parent(flag=subforest_flag):
-                                    leaves.add(half_edge.get_parent(flag=subforest_flag))
-                             
+                                # If LEAF is split, add all its neighbors to leaves
+                                # to be considered for splitting.
+                                #     
+                                for half_edge in leaf.get_half_edges():
+                                    hep = half_edge.get_parent()
+                                    if hep is not None:
+                                        hep_twin = hep.twin()
+                                        if hep_twin is not None:
+                                            leaves.add(hep_twin.cell())                             
                             #
                             # Current LEAF cell has been split, move on to next one
                             #    
                             is_split = True
-                            break
+                            break                        
                 if is_split:
                     #
                     # LEAF already split, no need to check other directions
                     # 
                     break
+            
+            
             
     
     def remove_supports(self, subforest_flag=None, coarsening_flag=None):

@@ -5,14 +5,14 @@ Created on Feb 8, 2017
 '''
 
 import matplotlib.pyplot as plt
-from mesh import QuadMesh, QuadCell
+from mesh import QuadCell
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
 from mpl_toolkits.mplot3d import axes3d # @UnresolvedImport
 import numpy as np
-from fem import DofHandler, System, Function
-import time
+from fem import System, Function
+
 
 class Plot(object):
     """
@@ -28,7 +28,7 @@ class Plot(object):
         
     def mesh(self, mesh, ax=None, dofhandler=None, show_axis=False, color_marked=None,
              vertex_numbers=False, edge_numbers=False, cell_numbers=False, 
-             dofs=False, mesh_flag=None, nested=False):
+             dofs=False, mesh_flag=None):
         """
         Plot computational mesh
         
@@ -136,11 +136,11 @@ class Plot(object):
         # Plot immediately or save
         # 
         if self.__quickview:
-            if True:
+            if False:
                 plt.show()
             else:
                 plt.show(block=False)
-                plt.pause(2)
+                plt.pause(1)
                 plt.close()
         else:  
             return ax

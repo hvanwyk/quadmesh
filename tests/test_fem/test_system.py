@@ -1,20 +1,56 @@
 import unittest
 from fem import System, QuadFE, DofHandler, GaussRule
-from mesh import Mesh, DCEL
+from mesh import Mesh, DCEL, QuadMesh, Mesh2D
 import numpy as np
 import numpy.linalg as la
              
 class TestSystem(unittest.TestCase):
     """
     Test System class
+    
+    Purpose:
+    
+        - To help assemble system, matrices, residuals, jacobians
+        - To incorporate hanging nodes
+        - To assemble samples of systems
+        
+    Scope:
+    
+        - Dimensions: 1D and 2D
+        - Boundary conditions: Neumann, Dirichlet, Robin
+        - Should account for periodicity  
+        - Linear/Noninear Assembly
+        
+    Features:
+        - Assembly of multiple systems (sampling)
+        - Return multiple constituent system matrices
+        
+    Methods: 
+    
+        - assemble
+        - extract hanging nodes
+        - resolve hanging nodes
+        
+        
+    Tests: 
+    
+        Single Interval, QuadCell
+            - Integration (entries)
+            - Solution
+            - Boundary Conditions
+        
+        2 Intervals, 2x2 QuadMesh
+             - periodicity
     """
     
+
     def test_assemble(self):
         
         # =====================================================================
         # One Cell
         # =====================================================================
-        mesh = Mesh()
+        mesh = Mesh2D()
+        
         # ---------------------------------------------------------------------
         # Piecewise Linear
         # ---------------------------------------------------------------------
@@ -51,7 +87,7 @@ class TestSystem(unittest.TestCase):
         q = lambda x,y: x*(1-x)*y*(1-y)
         bilinear_forms = [(q,'u','v')]
         linear_forms = [(1,'v')]
-        A,_ = s.assemble(bilinear_forms, linear_forms) 
+        A,dummy = s.assemble(bilinear_forms, linear_forms) 
         v = np.array([1.,1.,1.,1.])
         self.assertAlmostEqual(np.dot(v,A.tocsr().dot(v))-1.0/36.0, 0,8,\
                                'Should integrate to 4/pi^2.')
@@ -235,8 +271,7 @@ class TestSystem(unittest.TestCase):
         #
         # Test by integration
         # 
-        mesh = Mesh(grid=DCEL(resolution=(2,2)))
-        mesh.refine()        
+        mesh = QuadMesh(resolution=(2,2))
         
         trial_functions = {'Q1': lambda x,y: (x-1),
                            'Q2': lambda x,y: x*y**2,
@@ -396,7 +431,7 @@ class TestSystem(unittest.TestCase):
                                'Q2': [-1.0,0.0,0.0],
                                'Q3': [-0.25,0.0,-1.0]} 
         derivatives = [(0,),(1,0),(1,1)]
-        mesh = Mesh()
+        mesh = QuadMesh()
         cell = mesh.root_node().cell() 
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)

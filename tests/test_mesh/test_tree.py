@@ -572,4 +572,16 @@ class TestTree(unittest.TestCase):
             node.split()
             node = node.get_child(a)
         self.assertEqual(node, node.get_root().find_node(address))
+        
+        
+    def test_contains(self):
+        root_node = Tree(n_children=4)
+        self.assertTrue(root_node.contains(root_node))
+        node = root_node
+        for dummy in range(4):
+            node.split()
+            node = node.get_child(0)
+        self.assertTrue(root_node.contains(node))
+        self.assertFalse(node.contains(root_node))
+            
             

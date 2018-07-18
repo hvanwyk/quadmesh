@@ -1,5 +1,5 @@
 import unittest
-from mesh import Mesh
+from mesh import Mesh, convert_to_array
 from mesh import Mesh1D
 from mesh import Mesh2D
 from mesh import QuadMesh
@@ -17,19 +17,21 @@ import matplotlib.pyplot as plt
 class TestFunction(unittest.TestCase):
     """
     Test Function class
+    
+    TODO:
+    
+    a. Define function on a submesh, refine it
     """
     def test_constructor_and_eval(self):
         """
         Test Constructor
-        """ 
+        """     
+        mesh = QuadMesh()
+        mesh.cells.record(0)
+        mesh.cells.refine(new_label=1)
+        mesh.cells.refine(new_label=2)
         
-    
-        mesh = Mesh()
-        mesh.record(0)
-        mesh.refine()
-        mesh.record(1)
-        mesh.refine()
-        mesh.record(2)
+        
         
         f = lambda x,y: np.sin(np.pi*x)*np.cos(2*np.pi*y) + np.cos(np.pi*y)
         
@@ -38,8 +40,8 @@ class TestFunction(unittest.TestCase):
         #
         # Mesh points at which to plot function
         #
-        vtcs = mesh.root_node().cell().get_vertices(pos='corners', \
-                                                    as_array=True) 
+        vtcs = mesh.cells.get_child(0).get_vertices() 
+        vtcs = convert_to_array(vtcs)
         x0, y0 = vtcs[0,:]
         x1, y1 = vtcs[2,:] 
         nx, ny = 30,30
@@ -84,6 +86,12 @@ class TestFunction(unittest.TestCase):
         for i in range(4):
             etype = discontinuous_etype[i]
             element = QuadFE(2,etype)
+            
+            dh = DofHandler(mesh, element)
+            dh.distribute_dofs()
+            dh.set_dof_vertices()
+            x = dh.get_dof_vertices()
+        
             fn_interp = fn.interpolant(mesh, element)
             
             ax = fig.add_subplot(3,4,5+i, projection='3d')
@@ -113,19 +121,19 @@ class TestFunction(unittest.TestCase):
         
             
         #plt.show()    
-        
-        
+        """
+        fig = plt.figure()
         plot = Plot()
         element = QuadFE(2,'DQ0')
         fn.interpolant(mesh, element)
         ax = fig.add_subplot(1,3,1)
-        ax = plot.mesh(ax, mesh, node_flag=0, color_marked=[0])
+        ax = plot.mesh(mesh, ax, mesh_flag=0, color_marked=[0])
         ax = fig.add_subplot(1,3,2)
-        ax = plot.mesh(ax, mesh, node_flag=1, color_marked=[1])
+        ax = plot.mesh(mesh, ax, mesh_flag=1, color_marked=[1])
         ax = fig.add_subplot(1,3,3)
-        ax = plot.mesh(ax, mesh, node_flag=2, color_marked=[2])
-        """
-               
+        ax = plot.mesh(mesh, ax, mesh_flag=2, color_marked=[2])
+        plt.show()
+        
         fig, ax = plt.subplots(2,4)
         
         count = 0
@@ -164,43 +172,50 @@ class TestFunction(unittest.TestCase):
         
         # Nodal continuous function
         
-        
         # Nodal discontinuous function
+    
+    
         
     def test_assign(self):
+        """
+        Test the assign method
+        """
         #
         # New nodal function
         #  
         # Define Mesh and elements
-        mesh = Mesh(grid=DCEL(resolution=(2,2)))
-        #mesh.refine()
+        mesh = QuadMesh(resolution=(2,2))
         element = QuadFE(2,'DQ0')
         
         # Initialize
         vf = np.empty(4,)
         dh = DofHandler(mesh, element)
         dh.distribute_dofs()
+        dofs = dh.get_global_dofs()
+        x_mpt = convert_to_array(dh.get_dof_vertices(dofs),2)
         f = Function(vf, 'nodal', mesh=mesh, element=element)
         
+        #
         # Assign new value to function (vector)
+        #
         f_det = np.arange(1,5)
         f.assign(f_det)
         
+        self.assertTrue(np.allclose(f.eval(x_mpt),f_det))
+        
+        #
         # Assign random sample to function
+        #
         f_rand = np.random.rand(4,10)
         f.assign(f_rand) 
         
-        # Get cell midpoints
-        cell_midpoints = []
-        for leaf in mesh.root_node().get_leaves():
-            cell = leaf.cell()
-            cell_midpoints.append(cell.get_vertices(pos='M'))
-        x_mpt = np.array(cell_midpoints)
         self.assertTrue(np.allclose(f.eval(x_mpt),f_rand),\
                         'Function value assignment incorrect.')
         
         
+        #
         # Now assign in specific position
+        #
         n_samples = f.n_samples()
         f.assign(np.arange(1,5), pos=0)
         
@@ -225,8 +240,8 @@ class TestFunction(unittest.TestCase):
         # Check that global dofs are returned
         # 
         # Define mesh
-        mesh = Mesh()
-        mesh.refine()
+        mesh = QuadMesh()
+        mesh.cells.refine()
         element = QuadFE(2,'Q1')
         
         # Initialize nodal function
@@ -242,14 +257,15 @@ class TestFunction(unittest.TestCase):
     
     
     def test_flag(self):
-        mesh = Mesh()
-        mesh.refine()
-        node = mesh.root_node()
-        for pos in ['SW','SE']:
-            node.children[pos].mark('1')
+        mesh = QuadMesh()
+        mesh.cells.refine()
+        node = mesh.cells.get_child(0)
+        node.mark('1')
+        for pos in [0,1]:
+            node.get_child(pos).mark('1')
         element = QuadFE(2,'Q1')
         fn = lambda x,y: x+y
-        f = Function(fn, 'nodal', mesh=mesh, element=element, flag='1')
+        f = Function(fn, 'nodal', mesh=mesh, element=element, subforest_flag='1')
         self.assertEqual(f.flag(),'1', 'Flag incorrect.')
     
     def test_input_dim(self):
@@ -264,8 +280,8 @@ class TestFunction(unittest.TestCase):
         
         # Nodal 
         #2D 
-        mesh = Mesh()
-        mesh.refine()
+        mesh = QuadMesh()
+        mesh.cells.refine()
         element = QuadFE(2,'Q1')
         vf = np.empty(9,)
         f = Function(vf, 'nodal', mesh=mesh, element=element)
@@ -275,8 +291,8 @@ class TestFunction(unittest.TestCase):
         # TODO: 1D
     
     def test_n_samples(self): 
-        mesh = Mesh()
-        mesh.refine()
+        mesh = QuadMesh()
+        mesh.cells.refine()
         element = QuadFE(2, 'Q1')
         # Assign 1d vector to function values -> sample size should be None
         vf = np.empty(9,)
@@ -303,8 +319,30 @@ class TestFunction(unittest.TestCase):
         pass
     
     def test_interpolate(self):
-        pass
-    
+        #
+        # Interpolate a coarse function on a fine mesh
+        # 
+        mesh = Mesh1D(resolution=(2,))
+        mesh.cells.record(0)
+        mesh.cells.get_child(0).mark()
+        mesh.cells.refine(refinement_flag=True, new_label=1)
+        element = QuadFE(1,'Q1')
+        dofhandler = DofHandler(mesh, element)
+        
+        fn = lambda x: x**2
+        f = Function(fn, 'nodal', dofhandler=dofhandler, subforest_flag=1)
+        x = np.linspace(0,1,5)
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        x = np.linspace(0,1,1000)
+        plt.plot(x,f.eval(x),'k--')
+        
+        element = QuadFE(1, 'DQ0')
+        fi = f.interpolant(mesh, element, subforest_flag=0)
+        plt.plot(x,fi.eval(x),'b--')
+        
+        plt.show()
+        
     def test_derivative(self):
         pass
     

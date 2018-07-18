@@ -93,7 +93,7 @@ class TestQuadCell(unittest.TestCase):
         child_0 = cell.get_child(0)
         child_1 = cell.get_child(1)
         self.assertEqual(child_0.get_half_edge(1).twin(), \
-                         child_1.get_half_edge(2))
+                         child_1.get_half_edge(3))
         
         # Make another cell, check that it is a neighbor, and then split it 
         h25 = HalfEdge(v2, v5)
@@ -106,13 +106,13 @@ class TestQuadCell(unittest.TestCase):
         # Check that they are neighbors
         self.assertEqual(cell_1.get_neighbors(h32),cell)
         
-        # Child_sw doesn't have a neighbor
-        self.assertIsNone(child_1.get_neighbors(child_1.get_half_edge(0)))
+        # Child_s doesn't have a neighbor
+        self.assertIsNone(child_1.get_neighbors(child_1.get_half_edge(1)))
         
         cell_1.split()
         
         # Now the child has a neighbor
-        self.assertEqual(child_1.get_neighbors(child_1.get_half_edge(0)),
+        self.assertEqual(child_1.get_neighbors(child_1.get_half_edge(1)),
                          cell_1.get_child(0))
         
     
@@ -148,7 +148,7 @@ class TestQuadCell(unittest.TestCase):
         rule_2d = GaussRule(order=4, shape='quadrilateral')
         r = rule_2d.nodes()
         wg = rule_2d.weights()
-        _, jac = cell.reference_map(list(r), jacobian=True)
+        dummy, jac = cell.reference_map(list(r), jacobian=True)
         area = 0
         for i in range(4):
             j = jac[i]
