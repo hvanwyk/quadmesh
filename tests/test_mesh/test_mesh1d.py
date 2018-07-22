@@ -116,4 +116,31 @@ class TestMesh1D(unittest.TestCase):
         self.assertEqual(mesh.locate_point(3.9), 
                          mesh.cells.get_child(1).get_child(1))
         
-    
+    def test_mark_boundary(self):
+        # New mesh
+        x = np.linspace(0,1,11)
+        mesh = Mesh1D(x=x)
+        
+        #
+        # Mark both sides
+        # 
+        f = lambda dummy: True
+        flag = '1'
+        mesh.mark_boundary(flag, f)
+        v0, v1 = mesh.get_boundary_vertices()
+        self.assertTrue(v0.is_marked(flag))
+        self.assertTrue(v1.is_marked(flag))
+        
+        # Unmark vertices
+        v0.unmark(flag)
+        v1.unmark(flag)
+        
+        #
+        # Mark only one side
+        # 
+        f = lambda x: np.abs(x-1)<1e-9
+        mesh.mark_boundary(flag, f)
+        self.assertTrue(v1.is_marked(flag))
+        self.assertFalse(v0.is_marked(flag))
+        
+        

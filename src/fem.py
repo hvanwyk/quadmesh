@@ -7,7 +7,60 @@ from mesh import RHalfEdge, RInterval, RQuadCell
 from mesh import convert_to_array
 from bisect import bisect_left
 from itertools import count
-from scipy.signal.tests.test_peak_finding import TestFindPeaks
+import test_half_edge
+
+def parse_derivative_info(self, dstring):
+        """
+        Input:
+        
+            string: string of the form *,*x,*y,*xx, *xy, *yx, *yy, where * 
+                stands for any letter.
+            
+        Output: 
+        
+            tuple, encoding derivative information  
+        """
+        s = list(dstring)
+        if len(s) == 1:
+            #
+            # No derivatives
+            # 
+            return (0,)
+        elif len(s) == 2:
+            #
+            # First order derivative
+            # 
+            if s[1] == 'x':
+                # wrt x
+                return (1,0)
+            elif s[1] == 'y':
+                # wrt y
+                return (1,1)
+            else:
+                raise Exception('Only two variables allowed.')
+        elif len(s) == 3:
+            #
+            # Second derivative
+            # 
+            if s[1]=='x' and s[2]=='x':
+                # f_xx
+                return (2,0,0)
+            elif s[1]=='x' and s[2]=='y':
+                # f_xy
+                return (2,0,1)
+            elif s[1]=='y' and s[2]=='x':
+                # f_yx
+                return (2,1,0)
+            elif s[1]=='y' and s[2]=='y':
+                # f_yy
+                return (2,1,1)
+            else:
+                raise Exception('Use uxx,uxy,uyx, or uyy or v*.')
+        else:
+            raise Exception('Higher order derivatives not supported.')
+    
+
+
 """
 Finite Element Classes
 """
@@ -1212,7 +1265,7 @@ class Function(object):
         
         Output:
         
-            f(x): (n_points, n_samples) array of outputs
+            f(x): (n_points, n_samples) numpy array of outputs
             
         """
         flag = self.__flag
@@ -2698,6 +2751,79 @@ class GaussRule(object):
         """
         return len(self.__weights)
         
+class Form(object):
+    """
+    Linear or Bilinear forms  
+    
+    Attributes:
+        
+        f:
+        
+        dfdx: 
+        
+        trial:
+        
+        test:
+        
+        dx:
+        
+        flag:
+        
+        sample:
+                
+    """
+    def __init__(self, f, trial, test, dmu='dx', flag=None, sample=None):
+        """
+        Constructor
+        
+        Inputs:
+        
+            f: (Function, str), specifying the   
+            
+            trial: str, derivative of the trial function 
+                'u', 'ux', 'uy', 'uxy', 'uyx', or 'uyy' 
+            
+            test: str, derivative of the test function 
+                'v', 'vx', 'vy', 'vxy', 'vyx', or 'vyy' 
+            
+            dmu: str, area of integration
+                'dx' - integrate over a cell
+                'ds' - integrate over an edge
+            
+            flag: str/int/tuple cell/edge marker
+            
+            sample: int list of samples to consider
+        """
+        if trial is not None:
+            self.trial = trial
+            
+        if test is not None:
+            self.test = test
+
+        self.dmu = dmu
+        self.flag = flag
+        if type(f) is tuple:
+            F, dFdx = f 
+            self.f = F
+            self.dfdx = dFdx
+        elif isinstance(f, Function):
+            self.f = f
+            self.dfdx = 'f'
+        
+
+    def derivatives(self):
+        """
+        Determine all derivatives that must be evaluated (f, trial, and test)
+        """
+        derivatives = set()
+        derivatives.add(parse_derivative_info(self.dfdx))
+        derivatives.add(parse_derivative_info(self.trial))
+        derivatives.add(parse_derivative_info(self.test))
+        
+        return derivatives
+    
+    
+    
     
 class System(object):
     """
@@ -2749,15 +2875,8 @@ class System(object):
         derivative_list = [(0,),(1,0),(1,1),(2,0,0),(2,0,1),(2,1,0),(2,1,1)]
         dof_list = [i for i in range(element.n_dofs())]
         self.__phi = dict.fromkeys(dof_list, dict.fromkeys(derivative_list, []))
-    
-    
-    def assemble_neumann(self, neumann_edges, neumann_flux):
-        """
-        Assemble the neumann conditions over a boundary segment
-        """
-        pass
-    
-    
+ 
+ 
     def assemble(self, problems, subforest_flag=None):
         """
         Assembles (bi)linear forms over computational mesh, incorporating
@@ -2768,7 +2887,7 @@ class System(object):
             problems: A list of dictionaries that define a finite element 
                 problem. Each problem contains the following fields:
                 
-                linear: list of tuples (f,'v*') defining the problem's
+                linear: list of tuples (f,'v*', dx, flag) defining the problem's
                     linear forms, where
                     
                     f: Function
@@ -2776,9 +2895,15 @@ class System(object):
                     v*: is a string of the form 'v', 'vx', or 'vy' that
                         represents the test function
                 
+                    dx: string, that represents the integration region
+                        'da' = integrate over cells/intervals
+                        'ds' = integrate over half-edges
+                        
+                    flag: specifying the cells/half-edges over which to integrate
+                    
                 
-                bilinear: list of 3 tuples (f,u*, v*) defining the problem's
-                    bilinear forms, where
+                bilinear: list of 3 tuples (f,u*, v*, dx, flag) defining the 
+                    problem's bilinear forms, where
                     
                     f: Function
                     
@@ -2788,6 +2913,12 @@ class System(object):
                     v*: is a string of the form 'v', 'vx', or 'vy' that
                         represents the test function
                 
+                    dx: string, that represents the integration region
+                        'da' = integrate over cells/intervals
+                        'ds' = integrate over half-edges
+            
+                    flag: specifying the cells/half-edges over which to integrate 
+                    
                 
                 bc: dictionary encoding boundary conditions, whose keys are
                 
@@ -2808,7 +2939,7 @@ class System(object):
                             -n*(A nabla(u)) = g(x) on Neumann edge
                             
                         marker: list of str or boolean functions specifying 
-                            Neumann edges.
+                            Neumann edges (or nodes in 1D).
                         
                         g: list of Functions, values of the fluxes on the 
                             Neumann edges
@@ -2830,8 +2961,26 @@ class System(object):
                 assemble the problem.
                                
                                
-        Outputs:
+        Output:
         
+            assembled_forms: list of dictionaries (one for each problem), each of 
+                which contains:
+                
+                'bf': dictionary summarizing assembled bilinear forms with fields
+                    
+                    'i': list of row entries 
+                    
+                    'j': list of column entries
+                    
+                    'val': list of matrix values 
+                    TODO: Add support for samples for assembled matrices
+                    
+                    'dir_dofs': set, consisting of all dofs corresponding to 
+                        Dirichlet vertices
+            
+                'lf': vector (or matrix), of assembled linear forms
+                    
+                
             A: double coo_matrix, system matrix determined by bilinear forms and 
                 boundary conditions.
                 
@@ -2844,6 +2993,7 @@ class System(object):
         """
         n_nodes = self.dofhandler.n_dofs(subforest_flag=subforest_flag)
         n_dofs = self.element.n_dofs() 
+        dim = self.mesh.dim()
             
         #
         # Parse "problems" input
@@ -2869,25 +3019,6 @@ class System(object):
                                     'lf': np.zeros(n_nodes,)})
         
         #
-        # Determine the derivatives needed
-        #
-        for problem in problems:
-            derivatives = set()
-            #
-            # Derivatives from linear forms
-            # 
-            if problem['linear'] is not None:
-                for l in problem['linear']:
-                    set.add(self.parse_derivative_info(l[1]))
-            #
-            # Derivatives from bilinear forms
-            # 
-            if problem['bilinear'] is not None:
-                for b in problem['bilinear']:
-                    set.add(self.parse_derivative_info(b[1]))
-                    set.add(self.parse_derivative_info(b[2]))
-        
-        #
         # Assemble forms over mesh cells
         #            
         for cell in self.mesh.cells.get_leaves(subforest_flag=subforest_flag):
@@ -2895,10 +3026,16 @@ class System(object):
             cell_dofs = self.dofhandler.get_global_dofs(cell)
             
             #
-            # Compute shape functions and quadrature nodes on cell
+            # Determine what derivatives to compute
             # 
-            phi, xg, wg = self.shape_eval([cell], derivatives)
+            derivatives = self.problem_derivatives(problems, cell)
+            regions = [region for region in derivatives.keys()]
             
+            #
+            # Compute shape functions and quadrature nodes on cell
+            #  
+            phi, xg, wg = self.shape_eval(regions, derivatives)
+                    
             for i_problem in range(n_problems):
                 problem = problems[i_problem]
                 
@@ -2940,8 +3077,7 @@ class System(object):
             
             #
             # Determine flags used to mark boundary edges
-            # 
-            for 
+            #
             boundary_segments = \
                 self.mesh.get_boundary_segments(subforest_flag=subforest_flag)
             
@@ -2950,21 +3086,8 @@ class System(object):
                     bnd_segs = self.mesh.get_boundary_segments(subforest_flag=subforest_flag, flag=nc['marker'])     
           
             
-            pass
-        if bilinear_forms is not None:
-            assert type(bilinear_forms) is list, \
-                'Bilinear form should be passed in list.'
-            if type(bilinear_forms[0]) is list:
-                #
-                # Multiple Bilinear Forms
-                # 
-                pass
-            bivals = []
         
-        if linear_forms is not None:
-            linvec = np.zeros((n_nodes,))
- 
-        if boundary_conditions is not None:
+            if boundary_conditions is not None:
             #
             # Unpack boundary data
             # 
@@ -3120,6 +3243,46 @@ class System(object):
             return tuple(out)
     
     
+    def problem_derivatives(self, problems, cell):
+        """
+        Determine what shape functions must be computed and over what region
+        
+        Inputs:
+        
+            problems: list of problems (described in 'assemble' method)
+            
+            cell: cell over which to assemble
+        """
+        info = {}
+        for problem in problems:
+            for form in problem:
+                if form.dmu == 'dx':
+                    # 
+                    # Integral over cell
+                    # 
+                    # Initialize cell key if necessary
+                    if not info.has_key(cell):
+                        info[cell] = set()
+                    
+                    # Update cell derivatives
+                    info[cell].update(form.derivatives())
+                elif form.dmu == 'ds':
+                    #
+                    # Integral over half-edge
+                    # 
+                    # Initialize 'edge' key if necessary
+                    for half_edge in cell.get_half_edges():
+                        if form.flag is None or half_edge.is_marked(form.flag):
+                            # Initialize ith key if necessary
+                            if not info.has_key(half_edge):
+                                info[test_half_edge = set()
+                            
+                            # Update edge derivatives 
+                            form[half_edge].update(form.derivatives())
+        return info
+                
+                                
+                                    
     def shape_eval(self, regions, derivatives):
         """
         Evaluate the element shape functions (and their derivatives) at the 
@@ -3143,9 +3306,7 @@ class System(object):
             
             wg: dictionary, of the form wg[region]
         """
-        xg = {}
-        wg = {}
-        phi = {}
+        xg, wg, phi = {}, {}, {}
         for entity in regions:
             #
             # Map quadrature rule to entity (cell/halfedge)
@@ -3542,55 +3703,6 @@ class System(object):
             raise Exception('Entity not supported.')
     '''    
         
-    def parse_derivative_info(self, dstring):
-        """
-        Input:
-        
-            string: string of the form *,*x,*y,*xx, *xy, *yx, *yy, where * 
-                stands for any letter.
-            
-        Output: 
-        
-            tuple, encoding derivative information  
-        """
-        s = list(dstring)
-        if len(s) == 1:
-            #
-            # No derivatives
-            # 
-            return (0,)
-        elif len(s) == 2:
-            #
-            # First order derivative
-            # 
-            if s[1] == 'x':
-                # wrt x
-                return (1,0)
-            elif s[1] == 'y':
-                # wrt y
-                return (1,1)
-            else:
-                raise Exception('Only two variables allowed.')
-        elif len(s) == 3:
-            #
-            # Second derivative
-            # 
-            if s[1]=='x' and s[2]=='x':
-                # f_xx
-                return (2,0,0)
-            elif s[1]=='x' and s[2]=='y':
-                # f_xy
-                return (2,0,1)
-            elif s[1]=='y' and s[2]=='x':
-                # f_yx
-                return (2,1,0)
-            elif s[1]=='y' and s[2]=='y':
-                # f_yy
-                return (2,1,1)
-            else:
-                raise Exception('Use uxx,uxy,uyx, or uyy or v*.')
-        else:
-            raise Exception('Higher order derivatives not supported.')
         
         
     def interpolate(self, marker_coarse, marker_fine, u_coarse=None):

@@ -5644,13 +5644,45 @@ class Mesh1D(Mesh):
                     return interval.locate_point(point, flag=flag)
     
     
+    def get_boundary_vertices(self):
+        """
+        Returns the mesh endpoint vertices
+        """
+        v0 = self.cells.get_child(0).base()
+        v1 = self.cells.get_child(-1).head()
+        return v0, v1
+    
+    
     def bounding_box(self):
         """
         Returns the interval endpoints
         """
-        x0, = self.cells.get_child(0).base().coordinates()
-        x1, = self.cells.get_child(-1).head().coordinates()
+        v0, v1 = self.get_boundary_vertices()
+        x0, = v0.coordinates()
+        x1, = v1.coordinates()
         return x0, x1
+    
+
+    def mark_boundary(self, flag, bnd_fun):
+        """
+        Marks left or right mesh endpoint with flag
+        
+        Inputs: 
+        
+            flag: str/int, vertex marker
+            
+            bnd_fun: bool function, used to locate boundary 
+        """
+        v0, v1 = self.get_boundary_vertices()
+        x0, = v0.coordinates()
+        x1, = v1.coordinates()
+        
+        if bnd_fun(x0):
+            v0.mark(flag)
+        
+        if bnd_fun(x1):
+            v1.mark(flag)
+        
     
     '''
     def record(self, mesh_label, flag=None):
@@ -5883,6 +5915,28 @@ class Mesh2D(Mesh):
         return [list(segment) for segment in bnd_hes_sorted]
     
     
+    def mark_boundary_edges(self, flag, bnd_fun, subforest_flag=None):
+        """
+        Flag specific boundary edges identified by bnd_fun 
+        
+        Inputs:
+        
+            flag: str/int, marker for half_edge
+            
+            bnd_fun: boolean function whose input is a half-edge
+        """
+        for segment in self.get_boundary_segments(subforest_flag):
+            #
+            # Iterate over boundary segments
+            #
+            for he in segment:
+                #
+                # Iterate over half-edges within each segment
+                # 
+                if bnd_fun(he):
+                    he.mark(flag)
+    
+    
     def bounding_box(self):
         """
         Returns the bounding box of the mesh
@@ -5925,18 +5979,43 @@ class Mesh2D(Mesh):
             bnd_hes.extend(he.get_leaves(flag=flag))
     '''                        
 
-    def get_boundary_vertices(self, flag=None):
+    def get_boundary_vertices(self, flag=None, subforest_flag=None):
         """
         Returns the Vertices on the boundary
         """
         vertices = []
-        for segment in self.get_boundary_segments(flag=flag):
+        for segment in self.get_boundary_segments(subforest_flag=subforest_flag, 
+                                                  flag=flag):
             for he in segment:
                 vertices.append(he.base())
         return vertices
     
     
-
+    def mark_boundary_vertices(self, flag, bnd_fun, subforest_flag=None):
+        """
+        Mark boundary vertices specified by bnd_fun with flag
+        
+        Inputs:
+        
+            flag: str/int, vertex marker
+            
+            bnd_fun: boolean bivariate function, used to specify boundary
+                vertices
+            
+            *subforest_flag: optional flag used to specify submesh
+        """
+        for v in self.get_boundary_vertices(subforest_flag=subforest_flag):
+            #
+            # Iterate over all boundary vertices 
+            #
+            x0, x1 = v.coordinates()
+            if bnd_fun(x0,x1):
+                #
+                # Mark identified vertices 
+                # 
+                v.mark(flag)
+        
+        
 class QuadMesh(Mesh2D):
     """
     Two dimensional mesh with quadrilateral cells.

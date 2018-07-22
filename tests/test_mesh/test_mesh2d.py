@@ -138,3 +138,37 @@ class TestMesh2D(unittest.TestCase):
                     self.assertIsNone(he_current.twin())
                     self.assertIsNone(he_next.twin())
                     he_current = he_next
+                    
+    
+    def test_mark_boundary(self):
+        """
+        Test boundary vertex and -half-edge marker
+        """
+        mesh = Mesh2D(resolution=(2,2))
+        flag = '1'
+        tol = 1e-9
+        # Bottom half-edges
+        f = lambda he: np.alltrue([np.abs(he.base().coordinates()[0])< tol, \
+                                   np.abs(he.head().coordinates()[0])<tol])
+        
+        mesh.mark_boundary_edges(flag, f)
+        
+        for segment in mesh.get_boundary_segments():
+            for he in segment:
+                if f(he):
+                    self.assertTrue(he.is_marked(flag))
+                else:
+                    self.assertFalse(he.is_marked(flag))
+                    
+        # Top vertices
+        f = lambda x,y: np.abs(y-1)<tol
+        flag = '2'
+        mesh.mark_boundary_vertices(flag, f)
+        for v in mesh.get_boundary_vertices():
+            if f(*v.coordinates()):
+                self.assertTrue(v.is_marked(flag))
+            else:
+                self.assertFalse(v.is_marked(flag))
+                
+        
+        
