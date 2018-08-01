@@ -196,9 +196,13 @@ class Tree(object):
             self._node_depth = 0
             self._node_address = []
             
-            # Ensure that the number of ROOT children is specified
-            assert n_children is not None, \
-                'ROOT node: Specify number of children.'
+            if self.is_regular():
+                # Ensure that the number of ROOT children is specified
+                assert n_children is not None, \
+                    'ROOT node: Specify number of children.'
+            else:
+                # Not a regular tree: number of children 0 initially
+                n_children = 0
             
             if forest is not None:
                 #
@@ -251,8 +255,7 @@ class Tree(object):
                 else:
                     n_children = self.get_parent().n_children()
             else:
-                assert n_children is not None, \
-                    'Not a regular tree: Must specify number of children.'
+                n_children = 0
             
             #
             # Assign space for children
@@ -642,11 +645,25 @@ class Tree(object):
     
     def remove(self):
         """
-        Remove node from parent's list of children
+        Remove node (self) from parent's list of children
         """
         assert self.get_node_type() != 'ROOT', 'Cannot delete ROOT node.'
         self.get_parent()._children[self._node_position] = None    
     
+
+    def add_child(self):
+        """
+        Add a child to current node (only works if node is not regular).
+        """
+        assert not self.is_regular(),\
+            'Regular tree: add children by method "split".'
+         
+        child = Tree(parent=self, regular=False, position=self.n_children())
+        self._children.append(child)
+        self._n_children += 1
+            
+            
+            
 
     def delete_children(self, position=None):
         """
@@ -670,7 +687,7 @@ class Tree(object):
             self._node_type = 'LEAF'           
 
         
-    def split(self, n_grandchildren=None):
+    def split(self, n_children=None):
         """
         Split node into subnodes
         """
@@ -685,21 +702,18 @@ class Tree(object):
                 self._children[i] = Tree(parent=self, position=i)
         else:
             #
-            # Not a regular tree: Must specify number of grandchildren
-            # 
-            assert type(n_grandchildren) is list, \
-                'Input "n_grandchildren" must be a list.'
-            assert len(n_grandchildren) == self.n_children(), \
-                'Input "n_grandchildren" not the right length.'
+            # Not a regular tree: Must specify number of children
+            #
+            assert self.n_children() == 0, \
+                'Cannot split irregular tree with children. ' + \
+                'Use "add_child" method.' 
             
-            for i in range(self.n_children()):
+            for i in range(n_children):
                 #
                 # Instantiate Children
                 # 
-                self._children[i] = Tree(regular=self.is_regular(),\
-                                         n_children = n_grandchildren[i],\
-                                         parent=self, position=i)
-                      
+                self.add_child()
+                
             
     def traverse(self, queue=None, flag=None, mode='depth-first'):
         """
@@ -743,7 +757,7 @@ class Tree(object):
                 yield node         
                  
                 
-    def get_leaves(self, flag=None, rs_flag=None, mode='breadth-first'):
+    def get_leaves(self, flag=None, subtree_flag=None, mode='breadth-first'):
         """
         Return all marked LEAF nodes (nodes with no children) of current subtree
         
@@ -752,7 +766,7 @@ class Tree(object):
             *flag: If flag is specified, return all leaf nodes within rooted 
                 subtree marked with flag (or an empty list if there are none).
                 
-            *rs_flag: Label specifying the rooted subtree (rs) within which
+            *subtree_flag: Label specifying the rooted subtree (rs) within which
                 to search for (flagged) leaves. 
                   
 
@@ -769,8 +783,8 @@ class Tree(object):
         # Get all leaves of the subtree
         # 
         leaves = []
-        for node in self.traverse(flag=rs_flag, mode=mode):
-            if not node.has_children(flag=rs_flag):
+        for node in self.traverse(flag=subtree_flag, mode=mode):
+            if not node.has_children(flag=subtree_flag):
                 leaves.append(node)
         #
         # Return marked leaves
@@ -1208,40 +1222,52 @@ class Forest(object):
             if coarsening_flag is not None:
                 #
                 # Only coarsen flagged nodes
-                # 
-                if not leaf.is_marked(coarsening_flag):
+                #
+                if leaf.has_parent(coarsening_flag):
+                    parent = leaf.get_parent()
+                     
+                    if clean_up:
+                        #
+                        # Remove coarsening flag
+                        # 
+                        parent.unmark(coarsening_flag)
+                else:
                     if new_label is not None:
                         #
                         # Nodes not flagged for coarsening should be part of new mesh
-                        # 
+                        #
+                        for child in parent.get_children(): 
+                            child.mark(new_label)
+                    continue
+            else:
+                #
+                # Indiscriminate coarsening
+                # 
+                if leaf.has_parent():
+                    parent = leaf.get_parent()  
+                else:
+                    if new_label is not None:
                         leaf.mark(new_label)
                     continue
-                else:
-                    if clean_up:
-                        #
-                        # Remove the coarsening flag
-                        # 
-                        leaf.unmark(coarsening_flag)  
             #
-            # Coarsen leaf
+            # Coarsen
             # 
-            if leaf.has_parent():
-                if subforest_flag is None and new_label is None:
-                    #
-                    # Delete self and siblings
-                    # 
-                    leaf.get_parent().delete_children()
-                elif new_label is None:
-                    #
-                    # Remove 'subforest_label' from self and siblings
-                    # 
-                    for child in leaf.get_parent().get_children():
-                        child.unmark(subforest_flag)
-                else:
-                    #
-                    # Mark parents with new_label
-                    # 
-                    leaf.get_parent().mark(new_label)
+            if subforest_flag is None and new_label is None:
+                #
+                # Delete self and siblings
+                # 
+                parent.delete_children()
+            elif new_label is None:
+                #
+                # Remove 'subforest_label' from leaf and siblings
+                # 
+                for child in parent.get_children():
+                    child.unmark(subforest_flag)
+            else:
+                #
+                # Mark parents with new_label
+                # 
+                parent.mark(new_label)
         #
         # Apply new label to coarsened submesh if necessary
         # 
@@ -1250,7 +1276,7 @@ class Forest(object):
             
     
     def refine(self, subforest_flag=None, refinement_flag=None, new_label=None, 
-               remove_refinement_flag=True):
+               clean_up=True):
         """
         Refine (sub)forest (delimited by 'subforest_flag'), by (possibly) 
         splitting (subforest)nodes with refinement_flag and marking their 
@@ -1313,7 +1339,7 @@ class Forest(object):
             #
             # Remove refinement flag
             # 
-            if refinement_flag is not None and remove_refinement_flag:
+            if refinement_flag is not None and clean_up:
                 leaf.unmark(refinement_flag)
         #
         # Label ancestors of newly labeled children

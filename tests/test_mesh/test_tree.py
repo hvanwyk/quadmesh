@@ -535,10 +535,10 @@ class TestTree(unittest.TestCase):
         child0.mark(1)
         node.make_rooted_subtree(1)
         
-        self.assertEqual(node.get_leaves(rs_flag=1), [child0])
+        self.assertEqual(node.get_leaves(subtree_flag=1), [child0])
         
         child0.remove()
-        self.assertEqual(node.get_leaves(rs_flag=1), \
+        self.assertEqual(node.get_leaves(subtree_flag=1), \
                          [node], 'node should be only marked leaf')
         
         #
@@ -552,7 +552,7 @@ class TestTree(unittest.TestCase):
         node.get_child(1).mark(1, recursive=True)
         node.get_child(3).mark(1)
         node.make_rooted_subtree(1)
-        leaves = node.get_leaves(rs_flag=1)
+        leaves = node.get_leaves(subtree_flag=1)
         self.assertEqual(len(leaves), 5, 
                          'This tree has 5 flagged LEAF nodes.')
         self.assertEqual(leaves[0], node.get_child(3), 

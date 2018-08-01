@@ -145,7 +145,7 @@ class TestForest(unittest.TestCase):
         node.get_child(0).get_child(0).mark('1')
         node.get_child(1).mark('1')
         node.make_rooted_subtree('1')
-        leaves = node.get_leaves(rs_flag='1')
+        leaves = node.get_leaves(subtree_flag='1')
         self.assertEqual(len(leaves),2, \
                          'There should only be 2 flagged leaves')
         
@@ -199,7 +199,7 @@ class TestForest(unittest.TestCase):
         sw_child = node.get_child(0)
         sw_child.split()
         sw_child.mark(1)
-        self.assertEqual(node.get_leaves(rs_flag=1), \
+        self.assertEqual(node.get_leaves(subtree_flag=1), \
                          [sw_child], 'SW child should be only marked leaf')
         
         sw_child.remove()

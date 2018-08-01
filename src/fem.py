@@ -7,9 +7,8 @@ from mesh import RHalfEdge, RInterval, RQuadCell
 from mesh import convert_to_array
 from bisect import bisect_left
 from itertools import count
-import test_half_edge
 
-def parse_derivative_info(self, dstring):
+def parse_derivative_info(dstring):
         """
         Input:
         
@@ -1055,9 +1054,9 @@ class Function(object):
                 self.dofhandler.get_global_dofs(subforest_flag=subforest_flag)
             
         if fn_type == 'explicit':
-            # ---------------------------
+            # 
             # Explicit function
-            # ---------------------------
+            # 
             dim = f.__code__.co_argcount
             if mesh is not None:
                 assert dim == mesh.dim(), \
@@ -1070,9 +1069,9 @@ class Function(object):
             fn = f
             
         elif fn_type == 'nodal':
-            # ---------------------------
+            # 
             # Nodal (finite element) function
-            # ---------------------------
+            # 
             assert self.dofhandler is not None, \
             'If function_type is "nodal", dofhandlercell '\
             '(or mesh and element required).' 
@@ -1115,9 +1114,9 @@ class Function(object):
             
                 
         elif fn_type == 'constant':
-            # ---------------------------
+            # 
             # Constant function
-            # ---------------------------
+            # 
             dim = None
             # Determine number of samples
             if type(f) is np.ndarray:
@@ -1128,6 +1127,9 @@ class Function(object):
             elif isinstance(f, numbers.Real):
                 n_samples = None
                 fn = f
+            elif type(f) is list:
+                n_samples = len(f)
+                fn = np.array(f)
                  
         else:
             raise Exception('Variable function_type should be: '+\
@@ -1242,7 +1244,7 @@ class Function(object):
         return self.__f
     
     
-    def eval(self, x, cell=None, derivative=(0,), samples='all'):
+    def eval(self, x, cell=None, phi=None, derivative=(0,), samples='all'):
         """
         Evaluate function at an array of points x
         
@@ -1254,6 +1256,8 @@ class Function(object):
             cell: Cell, on which f is evaluated. If included, all points in x
                 should be contained in it. 
                 TODO: cell may be an ancestor of the cell on whose dofs the function is defined!!
+            
+            phi: shape functions (if function is nodal). 
                 
             derivative: int, tuple, (order,i,j) where order specifies the order
                 of the derivative, and i,j specify the variable wrt which we 
@@ -1265,7 +1269,9 @@ class Function(object):
         
         Output:
         
-            f(x): (n_points, n_samples) numpy array of outputs
+            f(x): If function is deterministic (i.e. n_samples is None), then 
+                f(x) is an (n_points, ) numpy array. Otherwise, f(x) is an 
+                (n_points, n_samples) numpy array of outputs
             
         """
         flag = self.__flag
@@ -1301,7 +1307,7 @@ class Function(object):
         if samples is not 'all':
             if type(samples) is int:
                 sample_size = 1
-                samples = [samples]
+                samples = np.array([samples])
             else:
                 assert type(samples) is np.ndarray, \
                 'vector specifying samples should be an array'
@@ -1329,7 +1335,7 @@ class Function(object):
                 'Use samples="all" for explicit functions.'
             
             if dim == 1:
-                f_vec = self.__f(x)
+                f_vec = self.__f(x[:,0])
             elif dim == 2:
                 f_vec = self.__f(x[:,0], x[:,1])
             else:
@@ -1352,14 +1358,14 @@ class Function(object):
             # 
             if cell is None:
                 #
-                # Node not specified
+                # Cell not specified
                 # 
                 cell_list = self.dofhandler.mesh.cells.get_leaves(subforest_flag=flag)
             else:
                 #
                 # Cell given
                 # 
-                assert all(cell.contains_point(x)), \
+                assert all(cell.contains_points(x)), \
                 'Cell specified, but not all points contained in cell.'
                 cell_list = [cell]
             #
@@ -1400,10 +1406,10 @@ class Function(object):
                 f_vec = self.fn()*np.ones((x.shape[0]))
             elif samples == 'all':
                 one = np.ones((x.shape[0], n_samples))
-                f_vec = np.dot(one, self.fn())
+                f_vec = one*self.fn()
             else:
                 one = np.ones((x.shape[0], sample_size))
-                f_vec = np.dot(one, self.fn()[samples])
+                f_vec = one*self.fn()[samples]
                             
         else:
             raise Exception('Function type must be "explicit", "nodal", '+\
@@ -1530,7 +1536,8 @@ class Function(object):
         'constant' : 'explicit' | 'nodal(f)'   | 'constant'
         
         
-        TODO: 
+        TODO: This is messy, get rid of it
+         
         In the case of 'nodal(f/g)', we determine the finite element space 
         as follows:
             - If element(f) = (D)Qi and element(g) = (D)Qj, 
@@ -2313,7 +2320,8 @@ class DofHandler(object):
                             self.__dof_vertices[dof][cell] = x[i,:] 
                         
     
-    def get_dof_vertices(self, dofs=None, cells=None, subforest_flag=None):
+    def get_dof_vertices(self, dofs=None, cells=None, subforest_flag=None, \
+                         as_array=True):
         """
         Returns a list of vertices corresponding to a given list of dofs
         
@@ -2359,7 +2367,17 @@ class DofHandler(object):
         if is_singleton:
             return vertices[0]
         else:
-            return vertices
+            if as_array:
+                #
+                # Return vertices as an (n_dof, dim) array
+                # 
+                return convert_to_array(vertices, self.element.dim())
+            else:
+                #  
+                # Return vertices as an n_dof list of (1,dim) arrays
+                #
+                return vertices
+        
         
     
     def n_dofs(self, all_dofs=False, subforest_flag=None):
@@ -2750,16 +2768,179 @@ class GaussRule(object):
         Return the size of the rule
         """
         return len(self.__weights)
+    
+    
+class Kernel(object):
+    """
+    Kernel (combination of Functions) to be used in Forms
+    """
+    def __init__(self, f, dfdx=None, F=None, samples='all'):
+        """
+        Constructor
         
+        Inputs:
+        
+            f: single Function, or list of Functions
+            
+            dfdx: list of strings, derivatives of function to be evaluated
+                In 1D: 'f', 'fx', 'fxx'
+                In 2D: 'f', 'fx', 'fy', 'fxy', 'fyx', 'fxx', 'fyy'
+                The number of strings in dfdx should equal the number of 
+                functions in f. If no derivatives are to be computed, use
+                dfdx = None. 
+        
+            *samples: 'all', or numpy integer array specifying what samples to
+                take. 
+            
+            *F: function, lambda function describing how the f's are modified 
+                to form the kernel
+        """
+        
+        # 
+        # Store input function(s)
+        #
+        if type(f) is not list:
+            assert isinstance(f, Function), \
+                'Input "f" should be a (tuple of) Function(s).'
+            f = [f]
+        self.f = f
+        n_functions = len(f)
+        
+        #
+        # Store derivatives
+        #     
+        if dfdx is None:
+            #
+            # No derivative specified -> simple function evaluation
+            #
+            dfdx = [parse_derivative_info('f')]*n_functions 
+        elif type(dfdx) is str:
+            #
+            # Only one derivative specified -> apply to all functions
+            #
+            dfdx = [parse_derivative_info(dfdx)]*n_functions
+        elif type(dfdx) is list:
+            #
+            # Derivatives passed in list -> check for compatibility
+            #
+            assert len(dfdx)==n_functions, \
+                'Number of derivatives in "dfdx" should equal n_functions'
+            dfdx = [parse_derivative_info(der) for der in dfdx]
+        self.dfdx = dfdx
+        
+        #
+        # Store meta function F
+        # 
+        # Check that F takes the right number of inputs
+        if F is not None:
+            assert F.__code__.co_argcount==n_functions
+        else:
+            # Store metafunction F
+            assert n_functions == 1, \
+                'If input "F" not specified, only one function allowed.'
+            F = lambda f: f
+        self.F = F
+        
+        #
+        # Check that samples are compatible with functions
+        #
+        n_samples = None
+        if samples=='all':
+            #
+            # Compute all samples
+            # 
+            for f in self.f:
+                #
+                # Check that all function have the same number of samples
+                # 
+                if f.n_samples() is not None:
+                    if n_samples is None:
+                        #
+                        # Initialize number of samples 
+                        # 
+                        n_samples = f.n_samples()
+                    elif f.n_samples()>1:
+                        #
+                        # function has more than one sample
+                        # 
+                        assert f.n_samples()==n_samples,\
+                            'Kernel function sample sizes incompatible.'
+        elif type(samples) is np.ndarray:
+            #
+            # Subsample: Check that every sampled function contains subsample 
+            #
+            n_samples = len(samples)
+            n_max = samples.max()
+            for f in self.f:
+                if f.n_samples() is not None:
+                    #
+                    # Maximum sample index may not exceed sample size
+                    # 
+                    assert n_max >= f.n_samples(), \
+                        'Maximum sample index exceeds sample size.'
+        #
+        # Store samples
+        # 
+        self.samples = samples
+        self.n_samples = n_samples
+                        
+    
+    def eval(self, x, cell=None, phi=None):
+        """
+        Evaluate the kernel at the points stored in x 
+        
+        Inputs:
+        
+            x: (n_points, dim) array of points at which to evaluate the kernel
+            
+            cell: Cell/Interval within which the points x reside
+            
+            phi: dictionary, encoding the shape functions necessary to evaluate
+                the shape function if the constituent functions are nodal. 
+                
+                form of phi: phi[regions][derivatives]
+        """
+        x = convert_to_array(x)
+        #
+        # Determine dimensions of output array
+        #
+        n_points = x.shape[0]
+        n_samples = self.n_samples
+        
+        #
+        # Evaluate constituent functions 
+        # 
+        f_vals = []
+        for f, dfdx in zip(self.f, self.dfdx): 
+            fv = f.eval(x, cell=cell, derivative=dfdx, samples=self.samples)
+            if n_samples is not None:
+                if f.n_samples() is None:
+                    #
+                    # Deterministic function
+                    # 
+                    fv = (np.ones((n_samples,n_points))*fv).T
+            f_vals.append(fv)
+        #
+        # Combine functions using metafunction F 
+        # 
+        return self.F(*f_vals)
+
+
+    def derivatives(self):
+        """
+        Returns a set of all derivatives necessary for evaluating the kernel 
+        """
+        return set(self.dfdx)
+        
+    
+    
 class Form(object):
     """
-    Linear or Bilinear forms  
+    Constant, Linear, or Bilinear forms (integrals)
     
     Attributes:
         
-        f:
-        
-        dfdx: 
+        kernel: Kernel 
         
         trial:
         
@@ -2769,16 +2950,15 @@ class Form(object):
         
         flag:
         
-        sample:
                 
     """
-    def __init__(self, f, trial, test, dmu='dx', flag=None, sample=None):
+    def __init__(self, kernel, trial, test, dmu='dx', flag=None, samples=None):
         """
         Constructor
         
         Inputs:
         
-            f: (Function, str), specifying the   
+            kernel: Kernel, specifying the form's kernel  
             
             trial: str, derivative of the trial function 
                 'u', 'ux', 'uy', 'uxy', 'uyx', or 'uyy' 
@@ -2792,37 +2972,144 @@ class Form(object):
             
             flag: str/int/tuple cell/edge marker
             
-            sample: int list of samples to consider
         """
-        if trial is not None:
-            self.trial = trial
-            
-        if test is not None:
-            self.test = test
-
+        self.trial = trial
+        self.test = test
         self.dmu = dmu
         self.flag = flag
-        if type(f) is tuple:
-            F, dFdx = f 
-            self.f = F
-            self.dfdx = dFdx
-        elif isinstance(f, Function):
-            self.f = f
-            self.dfdx = 'f'
-        
+        self.kernel = kernel
+        self.samples = samples
+
 
     def derivatives(self):
         """
         Determine all derivatives that must be evaluated (f, trial, and test)
         """
         derivatives = set()
-        derivatives.add(parse_derivative_info(self.dfdx))
+        derivatives.update(self.kernel.derivatives())
         derivatives.add(parse_derivative_info(self.trial))
         derivatives.add(parse_derivative_info(self.test))
         
         return derivatives
     
     
+    def eval(self, entity, xg, wg, phi=None):
+        """
+        Evaluates the local kernel, test, (and trial) functions of a (bi)linear
+        form on a given entity.
+        
+        Inputs:
+            
+            entity: Cell/Interval/HalfEdge over which to integrate
+            
+            phi: shape functions evaluated at the Gauss quadrature points
+            
+            xg: array of Gaussian quadature points on entity
+            
+            wg: corresponding quadrature weights
+        
+        Outputs:
+        
+            Constant-, linear-, or bilinear forms
+                            
+        """
+        #
+        # kernel
+        # 
+        f = self.f
+        assert isinstance(f, Function), \
+            'Kernel should be a Function'
+        #
+        # Compute kernel, weight by quadrature weights    
+        #
+        kernel = f.eval(xg, samples=self.samples)
+        wKer = (wg*kernel.T).T
+          
+        n_gauss = len(wg)
+        n_samples = kernel.n_samples
+        if self.test is not None:
+            assert phi is not None, \
+                'Evaluating (bi)linear form. Require shape functions'
+            #
+            # Need test function               
+            # 
+            drv = self.parse_derivative_info(self.test)
+            test = phi[entity][drv] 
+            n_dofs = test.shape[1]
+            if self.trial is not None:
+                #
+                # Need trial function
+                # 
+                drv = self.parse_derivative_info(self.trial)
+                trial = phi[entity][drv]
+                
+                #
+                #  Bilinear form               
+                #
+                if n_samples is None:
+                    #
+                    # Deterministic Kernel
+                    # 
+                    f_loc = np.dot(test.T, np.dot(np.diag(wg*kernel),trial))
+                else:
+                    #
+                    # Sampled kernel
+                    # 
+                    
+                    f_loc = np.dot(test.T, np.reshape(np.kron(trial, wKer),(n_gauss,-1), order='F'))
+                    f_loc.reshape((n_dofs**2,n_samples), order='F')
+            else:
+                #
+                # Linear Form
+                #
+                f_loc = np.dot(test.T, wKer)                 
+        else:
+            #
+            # Simple integral
+            # 
+            f_loc = np.sum(wKer, axis=0)           
+        return f_loc
+
+        
+    def bilinear_loc(self,weight,kernel,trial,test):
+        """
+        Compute the local bilinear form over an element
+        """
+        if len(kernel.shape)==1:
+            #
+            # Deterministic kernel
+            # 
+            B_loc = np.dot(test.T, np.dot(np.diag(weight*kernel),trial))
+        else:
+            #
+            # Sampled kernel
+            # 
+            B_loc = []
+            n_sample = kernel.shape[1]
+            for i in range(n_sample):
+                B_loc.append(np.dot(test.T, np.dot(np.diag(weight*kernel[:,i]),trial)))
+        return B_loc
+    
+    
+    def linear_loc(self,weight,kernel,test):
+        """
+        Compute the local linear form over an element
+        """
+        if len(kernel.shape)==1:
+            #
+            # Deterministic kernel
+            # 
+            L_loc = np.dot(test.T, weight*kernel)
+        else:
+            #
+            # Sampled kernel
+            # 
+            L_loc = []
+            n_sample = kernel.shape[1]
+            for i in range(n_sample):
+                L_loc.append(np.dot(test.T, weight*kernel[:,i]))
+        return L_loc        
+        
     
     
 class System(object):
@@ -2998,7 +3285,7 @@ class System(object):
         #
         # Parse "problems" input
         # 
-        if type(problems) is dict:
+        if isinstance(problems, Form):
             #
             # Single problem
             # 
@@ -3014,9 +3301,10 @@ class System(object):
         #
         assembled_forms = []
         for dummy in range(n_problems):
-            assembled_forms.append({'bf': {'i': [], 'j': [], 'val': [], 
+            assembled_forms.append({'bf': {'rows': [], 'cols': [], 'vals': [], 
                                            'dir_dofs': set()}, 
-                                    'lf': np.zeros(n_nodes,)})
+                                    'lf': np.zeros(n_nodes,),
+                                    'cf': 0})
         
         #
         # Assemble forms over mesh cells
@@ -3038,12 +3326,29 @@ class System(object):
                     
             for i_problem in range(n_problems):
                 problem = problems[i_problem]
+                for form in problem:
+                    if form.trial is not None:
+                        #
+                        # Bilinear form
+                        # 
+                        pass
+                    elif form.test is not None:
+                        #
+                        # Linear form
+                        #
+                        pass
+                    else:
+                        #
+                        # Integral
+                        # 
+                        pass
                 
                 #
                 # Evaluate local linear and bilinear forms over cell
                 # 
                 bf_loc = np.zeros((n_dofs, n_dofs))
                 lf_loc = np.zeros(n_dofs,)
+                
                 
                 for bf in problem['bilinear']:
                     bf_loc += self.form_eval(bf, cell, phi, xg, wg)
@@ -3060,7 +3365,7 @@ class System(object):
                     # Update assembled linear form (vector)
                     #
                     if len(problem['lf'])>0:
-                        assembled_forms[i_problem]['lf'][cell_dofs[i]] += lf_loc[i]
+                        assembled_forms[problem]['lf'][cell_dofs[i]] += lf_loc[i]
                     #
                     # Update assembled bilinear form (matrix)
                     # 
@@ -3086,26 +3391,26 @@ class System(object):
                     bnd_segs = self.mesh.get_boundary_segments(subforest_flag=subforest_flag, flag=nc['marker'])     
           
             
-        
+            '''
             if boundary_conditions is not None:
-            #
-            # Unpack boundary data
-            # 
-            if 'dirichlet' in boundary_conditions:
-                bc_dirichlet = boundary_conditions['dirichlet']
-            else:
-                bc_dirichlet = None
-            
-            if 'neumann' in boundary_conditions:
-                bc_neumann = boundary_conditions['neumann']
-            else:
-                bc_neumann = None
+                #
+                # Unpack boundary data
+                # 
+                if 'dirichlet' in boundary_conditions:
+                    bc_dirichlet = boundary_conditions['dirichlet']
+                else:
+                    bc_dirichlet = None
                 
-            if 'robin' in boundary_conditions:
-                bc_robin = boundary_conditions['robin']
-            else:
-                bc_robin = None
-    
+                if 'neumann' in boundary_conditions:
+                    bc_neumann = boundary_conditions['neumann']
+                else:
+                    bc_neumann = None
+                    
+                if 'robin' in boundary_conditions:
+                    bc_robin = boundary_conditions['robin']
+                else:
+                    bc_robin = None
+            
         rows = []
         cols = []
         dir_dofs_encountered = set()
@@ -3211,6 +3516,7 @@ class System(object):
                     
                     for dof in list_dir_dofs_loc:
                         dir_dofs_encountered.add(dof)            
+        
             #
             # Local to global mapping
             #
@@ -3241,7 +3547,7 @@ class System(object):
             return out[0]
         elif len(out) == 2:
             return tuple(out)
-    
+        '''
     
     def problem_derivatives(self, problems, cell):
         """
@@ -3275,7 +3581,7 @@ class System(object):
                         if form.flag is None or half_edge.is_marked(form.flag):
                             # Initialize ith key if necessary
                             if not info.has_key(half_edge):
-                                info[test_half_edge = set()
+                                info[half_edge] = set()
                             
                             # Update edge derivatives 
                             form[half_edge].update(form.derivatives())
@@ -3523,18 +3829,6 @@ class System(object):
         return cell.reference_map(x_ref)
          
     
-    def bilinear_loc(self,weight,kernel,trial,test):
-        """
-        Compute the local bilinear form over an element
-        """
-        return np.dot(test.T, np.dot(np.diag(weight*kernel),trial))
-    
-    
-    def linear_loc(self,weight,kernel,test):
-        """
-        Compute the local linear form over an element
-        """
-        return np.dot(test.T, weight*kernel)
     
   
         
@@ -3632,7 +3926,7 @@ class System(object):
         
         Inputs:
         
-            form: (bi)linear form as tuple (f,'trial_type','test_type'), where
+            form: Form, (bi)linear form as tuple (f,'trial_type','test_type'), where
                 
                 f: Function
                 
@@ -3656,7 +3950,7 @@ class System(object):
         #
         # kernel
         # 
-        f = form[0]
+        f = form.f
         assert isinstance(f, Function), \
             'Kernel should be a Function'
         kernel = f.eval(xg)
