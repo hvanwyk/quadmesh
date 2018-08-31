@@ -118,9 +118,45 @@ class TestFunction(unittest.TestCase):
             ax.set_title(etype)
         
         plt.tight_layout(pad=1, w_pad=2, h_pad=2)
-        
             
-        #plt.show()    
+        #
+        # Function defined on meshes of various resolution, evaluated on 
+        # the same cell.
+        # 
+        mesh = Mesh1D(resolution=(1,))
+        mesh.cells.record(1)
+        mesh.cells.refine(subforest_flag=1, new_label=2)
+        
+        element = QuadFE(1,'Q1')
+        dofhandler = DofHandler(mesh, element)
+        
+        # Function on mesh coarser than cell
+        f1 = Function(lambda x:x**2, 'nodal', \
+                      dofhandler=dofhandler, \
+                      subforest_flag=1)
+        
+        # Function on mesh containing cell
+        f2 = Function(lambda x:x**2, 'nodal',\
+                      dofhandler=dofhandler,\
+                      subforest_flag=2)
+        
+        mesh.cells.refine(subforest_flag=2, new_label=3)
+        
+        # Function on mesh finer than cell
+        f3 = Function(lambda x:x**2, 'nodal',\
+                      dofhandler=dofhandler,\
+                      subforest_flag=3)
+        
+        # Evaluate on [0,0.5] at x=1/3 
+        cell = mesh.cells.get_child(0).get_child(0)
+        x = [(1/3,)]
+        
+        # Check answers
+        self.assertEqual(f1.eval(x=x, cell=cell), np.array([1/3]))
+        self.assertEqual(f2.eval(x=x, cell=cell), np.array([1/6]))
+        self.assertTrue(np.allclose(f3.eval(x=x, cell=cell), np.array([1/8])))
+        
+        
         """
         fig = plt.figure()
         plot = Plot()
@@ -175,6 +211,45 @@ class TestFunction(unittest.TestCase):
         # Nodal discontinuous function
     
     
+    def test_nodal_on_mesh(self):
+        """
+        Test whether a function is correctly identified as a nodal and 
+        compatible with given (sub)mesh
+        """
+        # Define mesh
+        mesh = QuadMesh(resolution=(1,1))
+        element = QuadFE(2,'Q1')
+        dofhandler = DofHandler(mesh, element)
+        
+        # Nodal Function compatible with mesh
+        f1 = Function(lambda x,y: x*y, 'nodal', dofhandler=dofhandler) 
+        self.assertTrue(f1.mesh_compatible(mesh))
+        
+        # Explicit function: incompatible with mesh
+        f2 = Function(lambda x,y: x*y, 'explicit')
+        self.assertFalse(f2.mesh_compatible(mesh))
+        
+        # Hierarchical mesh
+        mesh.cells.record(flag=1)
+        mesh.cells.refine(new_label=2)
+        dofhandler.distribute_dofs()
+        
+        # Function defined over coarse mesh
+        f3 = Function(lambda x,y:x*y, 'nodal', dofhandler=dofhandler, \
+                      subforest_flag=1)
+        # Function compatible with coarse mesh, but not with fine one
+        self.assertTrue(f3.mesh_compatible(mesh, subforest_flag=1))
+        self.assertFalse(f3.mesh_compatible(mesh, subforest_flag=2))
+        
+        # Interpolate function on finer mesh now compatible
+        element_2 = QuadFE(2,'Q2')
+        f4 = f3.interpolant(mesh, element_2, subforest_flag=2)
+        self.assertTrue(f4.mesh_compatible(mesh, subforest_flag=2))
+        
+        # Define another mesh -> incompatible
+        mesh2 = QuadMesh(resolution=(1,1))
+        self.assertFalse(f1.mesh_compatible(mesh2))
+        
         
     def test_assign(self):
         """
@@ -256,6 +331,16 @@ class TestFunction(unittest.TestCase):
         self.assertRaises(Exception, f.global_dofs, f)
     
     
+    def test_dictionary(self):
+        mesh = QuadMesh(resolution=(1,1))
+        element_1 = QuadFE(2,'Q1')
+        element_2 = QuadFE(2,'Q2')
+        dofhandler = {}
+        dofhandler['Q1'] = DofHandler(mesh, element_1)
+        dofhandler['Q2'] = DofHandler(mesh, element_2)
+        
+        
+    
     def test_flag(self):
         mesh = QuadMesh()
         mesh.cells.refine()
@@ -267,6 +352,7 @@ class TestFunction(unittest.TestCase):
         fn = lambda x,y: x+y
         f = Function(fn, 'nodal', mesh=mesh, element=element, subforest_flag='1')
         self.assertEqual(f.flag(),'1', 'Flag incorrect.')
+    
     
     def test_input_dim(self):
         # Explicit
@@ -310,14 +396,6 @@ class TestFunction(unittest.TestCase):
                          'Number of samples should be 10.')
         
         
-    def test_fn_type(self):
-        # Simple
-        pass
-    
-    def test_fn(self):
-        # Simple
-        pass
-    
     def test_interpolate(self):
         #
         # Interpolate a coarse function on a fine mesh
@@ -341,7 +419,6 @@ class TestFunction(unittest.TestCase):
         fi = f.interpolant(mesh, element, subforest_flag=0)
         plt.plot(x,fi.eval(x),'b--')
         
-        plt.show()
         
     def test_derivative(self):
         pass

@@ -768,6 +768,9 @@ class Tree(object):
                 
             *subtree_flag: Label specifying the rooted subtree (rs) within which
                 to search for (flagged) leaves. 
+                
+            *mode: Method by which to traverse the tree ('breadth-first' or
+                'depth-first').
                   
 
         Outputs:
@@ -784,7 +787,13 @@ class Tree(object):
         # 
         leaves = []
         for node in self.traverse(flag=subtree_flag, mode=mode):
+            #
+            # Iterate over all sub-nodes within subtree
+            # 
             if not node.has_children(flag=subtree_flag):
+                #
+                # Nodes without marked children are the subtree leaves
+                # 
                 leaves.append(node)
         #
         # Return marked leaves
@@ -1943,11 +1952,14 @@ class HalfEdge(Tree):
             # Discard points where t not in [0,1]
             # 
             in_half_edge[np.abs(t-0.5)>0.5] = False
+        
+        return in_half_edge
+        """
         if n_points==1:
             return in_half_edge[0]
         else:
             return in_half_edge
-    
+        """
         
     
     def intersects_line_segment(self, line):
@@ -2173,7 +2185,7 @@ class Interval(HalfEdge):
         
             pivot: int, 0 (=left) or 1 (=right)
             
-            flag (optional): marker to specify
+            subforest_flag (optional): marker to specify submesh
 
         Note that neighbors in 1D can live on different levels. 
         """
@@ -2735,11 +2747,13 @@ class Cell(Tree):
             pos_means_left = (y-y0)*(x1-x0)-( x-x0)*(y1-y0) 
             in_cell[pos_means_left<-tol] = False
         
+        """
         if len(in_cell)==1:
             return in_cell[0]
         else:
             return in_cell
-            
+        """
+        return in_cell
 
     
     def intersects_line_segment(self, line):
