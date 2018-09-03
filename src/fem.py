@@ -4491,12 +4491,16 @@ class System(object):
             problem_index: int, index identifying the problem to which 
                 Dirichlet conditions are to be applied
             
-            boundary_flag: str/int/tuple, boundary marker
+            dirichlet_dofs: int, degrees of freedom associated with dirichlet
+                boundary.
             
-            boundary_function: Function, 
+           dirichlet_vals: double, function value specified on the Dirichlet
+               boundary.
             
             
         Outputs:
+        
+            
         
         """
         
@@ -4530,9 +4534,19 @@ class System(object):
                 A.data[i_row] = [1]
             else:
                 for i_dir in range(len(dirichlet_dofs)):
+                    #
+                    # Iterate over Dirichlet dofs
+                    # 
                     if dirichlet_dofs[i_dir] in row:
+                        #
+                        # Column contains a Dirichlet dof
+                        # 
                         i_col = row.index(dirichlet_dofs[i_dir])
+                        
+                        # Adjust right hand side
                         b[i_row] -= A.rows[i_row][i_col]*dirichlet_vals[i_dir]
+                        
+                        # Zero out entry in system matrix
                         del row[i_col]
                         del A.data[i_row][i_col]
             i_row += 1
