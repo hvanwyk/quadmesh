@@ -1,5 +1,8 @@
 Current Wishlist:
 
+0. Questions: 
+	Basis functions for bilinear forms - should they have separate names?
+
 1. GMRFs: 
 	
 	We want to implement the simulation and conditioning of GMRF's on a 

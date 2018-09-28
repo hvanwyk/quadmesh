@@ -1,44 +1,58 @@
-from mesh import QuadMesh, Vertex, HalfEdge, QuadCell, Mesh1D, Interval, Tree
-from fem import DofHandler, QuadFE, GaussRule, Function
-from mesh import convert_to_array
+from mesh import QuadMesh
+from fem import DofHandler, System, QuadFE
+from fem import Kernel, Form, Basis, Function
 from plot import Plot
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
+import scipy.sparse as sp
 import numpy as np
 
-
-mtags = Tree(regular=False)
-mesh = Mesh1D(resolution=(1,))
-
-flag = tuple(mtags.get_node_address())
-mesh.cells.record(flag)
-
-mtags.add_child()
-new_flag = tuple(mtags.get_child(0).get_node_address())
-mesh.cells.refine(subforest_flag=flag, \
-                  new_label=new_flag)
-
-for leaf in mesh.cells.get_leaves(subforest_flag=flag):
-    leaf.info()
-    
-    
-print('=='*20)
-
-for leaf in mesh.cells.get_leaves(subforest_flag=new_flag):
-    leaf.info()
-
-
-element = QuadFE(1, 'Q2')
+mesh = QuadMesh(resolution=(2,2))
+cell = mesh.cells.get_child(0)
+cell.mark(1)
+mesh.cells.refine(refinement_flag=1)
+element = QuadFE(2, 'Q1')
 dofhandler = DofHandler(mesh, element)
 dofhandler.distribute_dofs()
-dofhandler.set_dof_vertices()
 
-dofs = dofhandler.get_global_dofs(subforest_flag=flag)
-print(dofs)
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1)
+plot = Plot(quickview=False)
+plot.mesh(mesh, ax=ax, dofhandler=dofhandler, dofs=True)
+plt.show()
 
-dofs = dofhandler.get_global_dofs(subforest_flag=new_flag)
-print(dofs)
 
-dv = dofhandler.get_dof_vertices(dofs)
-print(dv)
+hanging_nodes = dofhandler.get_hanging_nodes()
+#print(hanging_nodes.keys())
 
+#
+# Set up system
+# 
+ux = Basis(element, 'ux')
+uy = Basis(element, 'uy')
+u  = Basis(element, 'u')
+
+one = Kernel(Function(1,'constant'))
+problem = [Form(one, ux, ux), Form(one, u)]
+
+system = System(problem, mesh)
+system.assemble()
+rows = system.af[0]['bilinear']['rows']
+cols = system.af[0]['bilinear']['cols']
+dofs = system.af[0]['bilinear']['row_dofs']
+vals = system.af[0]['bilinear']['vals']
+
+A = sp.coo_matrix((vals,(rows,cols)))
+
+
+x = np.arange(4)
+y = np.array([1,3,6,2])
+ii = np.array([0,1,1,1,0,3,2,2])
+print(y[ii])
+z = np.array([3,2])
+dirichlet = np.zeros(4, dtype=np.bool)
+for zi in z:
+    dirichlet[y==zi] = True
+print(x[dirichlet])
+print(x[~dirichlet])
+print(y)
+print(dirichlet)

@@ -1299,6 +1299,8 @@ class Forest(object):
                 are being refined. 
                 
             new_label: flag, new label to be applied to refined submesh
+            
+            clean_up: bool, remove the "refinement_flag" once the cell is split.
         """        
         #
         # Ensure that the subforest is rooted
@@ -5682,15 +5684,47 @@ class Mesh1D(Mesh):
                     else: return interval.locate_point(point, flag=flag)
                 else:
                     return interval.locate_point(point, flag=flag)
-    
+                
     
     def get_boundary_vertices(self):
         """
         Returns the mesh endpoint vertices
         """
-        v0 = self.cells.get_child(0).base()
-        v1 = self.cells.get_child(-1).head()
-        return v0, v1
+        if self.is_periodic():
+            return None
+        else:
+            v0 = self.cells.get_child(0).base()
+            v1 = self.cells.get_child(-1).head()
+            return v0, v1
+    
+    
+    def get_boundary_cells(self, subforest_flag=None):
+        """
+        Returns the mesh endpoint cells 
+        """
+        if self.is_periodic():
+            #
+            # Periodic Mesh: No cells on the boundary
+            # 
+            return None
+        else:
+            for cell in self.cells.get_leaves(subforest_flag=subforest_flag):
+                #
+                # Iterate over cells
+                # 
+                if cell.get_neighbor(0, subforest_flag=subforest_flag) is None:
+                    #
+                    # Cannot find a left neighbor: found left boundary cell
+                    # 
+                    cell_left = cell
+                    print('found left cell', cell.info())
+                if cell.get_neighbor(1, subforest_flag=subforest_flag) is None:
+                    #
+                    # Cannot find a right neighbor: found right boundary cell
+                    # 
+                    cell_right = cell
+                    print('found right cell')
+            return cell_left, cell_right
     
     
     def bounding_box(self):
@@ -5909,7 +5943,9 @@ class Mesh2D(Mesh):
         Inputs: 
         
             subforest_flag: optional flag (int/str) specifying the submesh
-                within which boundary segments are
+                within which boundary segments are sought
+                
+            flag: optional flag (int/str) specifying boundary segments.
         """
         bnd_hes = []
         #

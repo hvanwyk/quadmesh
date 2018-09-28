@@ -1150,7 +1150,7 @@ class Function(object):
  
     def assign(self, v, pos=None):
         """
-        Assign function values to the function in the specified position
+        Assign function values to the function in the specified sample position
         
         Inputs: 
         
@@ -2293,7 +2293,7 @@ class DofHandler(object):
         
             *cell: Cell, whose dofs we seek. 
             
-            *entity: get_verticesVertex/HalfEdge within cell, whose dofs we seek
+            *entity: Vertex/HalfEdge within cell, whose dofs we seek
             
             *subforest_flag: flag, specifying submesh.
             
@@ -3993,7 +3993,6 @@ class System(object):
                 boundary conditions.
         
         
-        TODO: Include option to assemble multiple problems
         TODO: Include option to assemble multiple realizations (sampled data)  
         """                 
         #
@@ -4276,7 +4275,7 @@ class System(object):
             
         Linear Form:
         
-            row_dofs: (n_row_dos,) order array of mesh dofs corresponding
+            row_dofs: (n_row_dofs,) order array of mesh dofs corresponding
                 to row dofs
             
             vals: (n_row_dofs, n_samples) array of vector values for each dof.  
@@ -4386,19 +4385,18 @@ class System(object):
         and for each system realization.
         
         Inputs: 
+
+            form_type: str ('bilinear','linear','constant')
         
             i_problem: int, problem index
             
             i_sample: int, sample index 
             
-            form_type: str ('bilinear','linear','constant')
             
         Outputs:
         
             forms: tuple or single output depending on form_type and 
                 content of assembled forms
-                
-        TODO: do we really need this?
         """
         # 
         # Check inputs
@@ -4406,9 +4404,10 @@ class System(object):
         assert i_problem < len(self.problems), \
         'Problem index exceeds number of problems assembled.'
         
-        n_samples = self.n_samples(i_problem)
-        assert i_sample < n_samples, \
-        'Sample index exceeds number of samples for problem.'
+        n_samples = self.n_samples(i_problem, form_type)
+        if n_samples is not None:
+            assert i_sample < n_samples, \
+            'Sample index exceeds number of samples for problem.'
         
         assert form_type in ['constant', 'linear', 'bilinear'],\
         'Input "form_type" should be "constant", "linear", or "bilinear".'
@@ -4425,7 +4424,7 @@ class System(object):
             # Deterministic Form
             #
             assert i_sample is None or i_sample==0,\
-            'Sample index specified for deterministic form'
+            'Input "i_sample" should be "0" or "None" for deterministic form'
         else:
             #
             # Sampled Form       
@@ -4476,81 +4475,85 @@ class System(object):
                 
     
 
-    def apply_dirichlet_bc(self, i_problem, dirichlet_dofs, \
-                           dirichlet_vals, compress=False):
-        """
-        Modify an assembled bilinear form to account for Dirichlet boundary 
-        conditions. This can be achieved in two ways:
-        
-            1. Remove Dirichlet rows, move Dirichlet columns to linear form 
+    
             
-            2. 
+        
+    def get_boundary_dofs(self, etype, bnd_marker):
+        """
+        Determine the Dofs associated with the boundary vertices marked by
+        the bnd_marker flag.
+        
+        Inputs: 
+        
+            etype: str, element type used to identify dofhandler
+            
+            bnd_marker: flag, used to identify boundary segment.
+            
+            i_problem: int, problem index
+            
+        TODO: Test
+        TODO: Make this more general and move it to DofHandler class
+        """    
+        # Check that dofhandler     
+        assert etype in self.dofhandlers, \
+        'Element type not recognized. Use different value for input "etype".'
+        
+        dofhandler = self.dofhandlers[etype]
+        subforest_flag = self.subforest_flag
+        mesh = dofhandler.mesh
+        dim = mesh.dim()
+        
+        dofs = []
+        if dim == 1:
+            # =================================================================
+            # 1D Mesh
+            # =================================================================
+            #
+            # Obtain cells and vertices on the boundary
+            # 
+            cell_left, cell_right = mesh.get_boundary_cells(subforest_flag)        
+            v_left, v_right = mesh.get_boundary_vertices()
+            
+            #
+            # Get associated dofs and store in list
+            # 
+            dofs.extend(dofhandler.get_global_dofs(cell=cell_left, entity=v_left))
+            dofs.extend(dofhandler.get_global_dofs(cell=cell_right, entity=v_right))
+
+        elif dim == 2:
+            # =================================================================
+            # 2D Mesh
+            # =================================================================
+            #
+            # Extract boundary segments
+            # 
+            bnd_segments = mesh.get_boundary_segments(subforest_flag, bnd_marker)
+            for segment in bnd_segments:
+                for edge in segment:
+                    #
+                    # Compute dofs associated with boundary edge
+                    # 
+                    edge_dofs = dofhandler.get_global_dofs(cell=edge.cell(), \
+                                                           entity=edge)
+                    dofs.extend(edge_dofs)
+        return dofs
+     
+     
+    def solve(self, i_problem, i_sample=0):
+        """
+        Returns the solution (in vector form) of a problem
         
         Inputs:
         
-            problem_index: int, index identifying the problem to which 
-                Dirichlet conditions are to be applied
-            
-            dirichlet_dofs: int, degrees of freedom associated with dirichlet
-                boundary.
-            
-           dirichlet_vals: double, function value specified on the Dirichlet
-               boundary.
-            
-            
-        Outputs:
+            i_problem: int, problem index
         
+        Outputs: 
+        
+            u: double, (n_dofs,) vector representing the values of the
+                solution at the node dofs.
             
-        
-        """
-        
-        # Extract System Matrix
-        bilinear_form = self.af[i_problem]['bilinear']
-        rows = bilinear_form['rows'] 
-        cols = bilinear_form['cols']
-        vals = bilinear_form['vals']
-        
-        A = sparse.coo_matrix((vals,(rows,cols)))
-        A = A.tolil()
-        
-        # Extract right hand side
-        linear_form = self.af[i_problem]['linear']
-        b = linear_form['vals']
-        
-        row_dofs = bilinear_form['row_dofs']
-        col_dofs = bilinear_form['col_dofs']
-        assert(np.allclose(col_dofs, row_dofs))
-            
-        i_row = 0   
-        for row in A.rows:
-            if row_dofs[i_row] in dirichlet_dofs:
-                #
-                # Dirichlet row
-                # 
-                i_dir = dirichlet_dofs.index(row_dofs[i_row])
-                dir_val = dirichlet_vals[i_dir]
-                b[i_row] = dir_val
-                A.rows[i_row] = [i_row]
-                A.data[i_row] = [1]
-            else:
-                for i_dir in range(len(dirichlet_dofs)):
-                    #
-                    # Iterate over Dirichlet dofs
-                    # 
-                    if dirichlet_dofs[i_dir] in row:
-                        #
-                        # Column contains a Dirichlet dof
-                        # 
-                        i_col = row.index(dirichlet_dofs[i_dir])
-                        
-                        # Adjust right hand side
-                        b[i_row] -= A.rows[i_row][i_col]*dirichlet_vals[i_dir]
-                        
-                        # Zero out entry in system matrix
-                        del row[i_col]
-                        del A.data[i_row][i_col]
-            i_row += 1
-            
+        """ 
+          
         
     def n_samples(self, i_problem, form_type):
         """
@@ -4809,13 +4812,254 @@ class System(object):
         return phi        
             
     
+    def extract_dirichlet_nodes(self, bnd_marker, i_problem=0,\
+                                dirichlet_function=0, compressed=False):
+        """
+        Modify an assembled bilinear/linear pair to account for Dirichlet 
+        boundary conditions. The system matrix is modified "in place", 
+        i.e. 
     
+            a11 a12 a13 a14   u1     b1
+            a21 a22 a23 a24   u2  =  b2 
+            a31 a32 a33 a34   u3     b3
+            a41 a42 a43 a44   u4     b4
+            
+        Suppose Dirichlet conditions u2=g2 and u4=g4 are prescribed. 
+        If compressed=False, the system is converted to
+        
+            a11  0  a13  0   u1     b1 - a12*g2 - a14*g4
+             0   1   0   0   u2  =  g2   
+            a31  0  a33  0   u3     b3 - a32*g2 - a34*g4
+             0   0   0   1   u4     g4 
+        
+        If compressed=True, the system is converted to
+        
+            a11 a13  u1  = b1 - a12*g2 - a14*g4
+            a31 a33  u3    b3 - a32*g2 - a34*g3
+        
+        The solution [u1,u3]^T of this system is then enlarged with the 
+        dirichlet boundary values g2 and g4 by invoking 'resolve_dirichlet_nodes' 
+        
+    
+        Inputs:
+        
+            bnd_marker: str/int flag to identify boundary
+            
+            i_problem: int, problem index (default = 0)
+            
+            dirichlet_function: Function, defining the Dirichlet boundary 
+                conditions.
+            
+            compressed: bool, delete rows and columns corresponding to
+                dirichlet boundary conditions. The solution of the linear
+                system can be reconstructed using "resolve_dirichlet_nodes"
+            
+            
+        Notes:
+        
+        To maintain the dimensions of the matrix, the trial and test function 
+        spaces must be the same, i.e. it must be a Galerkin approximation. 
+        
+        Specifying the Dirichlet conditions this way is necessary if there
+        are hanging nodes (uncompressed), since a Dirichlet node may be a
+        supporting node for one of the hanging nodes.  
+                
+                
+        Inputs:
+        
+            bnd_marker: flag, used to mark the Dirichlet boundary
+        
+            i_problem: int, index identifying the problem to which 
+                Dirichlet conditions are to be applied
+            
+            compressed: bool, specifying the way in which boundary conditions
+                are incorporated. 
+                
+            dirichlet_fn: Function, specifying the function values on the  
+                Dirichlet boundary. 
+        
+            
+        Outputs:
+        
+            None 
+            
+            
+        Modifications:
+        
+            + self.af[i_problem][dirichlet]:
+             
+             [{mask: np.ndarray, vals: np.ndarray, compressed: bool},...]
+            self.af[i_problem][hanging_nodes] = mask
+        """
+        # =====================================================================
+        # Extract dofs + values
+        # =====================================================================
+        problem = self.af[i_problem]
+        
+        # Extract System Matrix
+        bilinear_form = problem['bilinear']
+        rows = bilinear_form['rows'] 
+        cols = bilinear_form['cols']
+        vals = bilinear_form['vals']
+        
+        # Determine the dofs associated with the above rows and cols
+        row_dofs = bilinear_form['row_dofs']
+        col_dofs = bilinear_form['col_dofs']
+        
+        #
+        # Check that approximation is of Galerkin type 
+        # 
+        trial_etype = problem['trial_etype']
+        test_etype = problem['test_etype']
+        
+        assert trial_etype==test_etype, \
+        'Trial function space must be the same as test function space.'
+        
+        assert np.allclose(row_dofs, col_dofs), \
+        'Column dofs should equal row dofs.'
+        
+        #
+        # Get Dofs Associated with Dirichlet boundary
+        # 
+        dirichlet_dofs = self.get_boundary_dofs(trial_etype, bnd_marker)
+        
+        #
+        # Evaluate dirichlet function at vertices associated with dirichlet dofs
+        # 
+        dofhandler = self.dofhandlers[trial_etype]
+        dirichlet_vertices = dofhandler.get_dof_vertices(dirichlet_dofs)
+        if dirichlet_function==0:
+            #
+            # Homogeneous boundary conditions
+            # 
+            dirichlet_vals = np.zeros(len(dirichlet_dofs))
+        else:
+            #
+            # Nonhomogeneous Dirichlet boundary conditions 
+            #
+            x_dir = convert_to_array(dirichlet_vertices)
+            dirichlet_vals = dirichlet_function(x_dir)
+        
+        
+        #
+        # Mark Dirichlet Dofs
+        #
+        n_rows = len(row_dofs)
+        dirichlet_mask = np.zeros(n_rows, dtype=np.bool)
+        for test_dof in dirichlet_dofs:
+            dirichlet_mask[row_dofs==test_dof] = True
+        
+        # =====================================================================
+        # Modify matrix-vector pair
+        # =====================================================================
+        # Convert to sparse matrix (add up values)
+        A = sparse.coo_matrix((vals,(rows,cols)))
+        A = A.tocsc()
+        
+        # Extract right hand side
+        linear_form = problem['linear']
+        b = linear_form['vals']
+        
+        
+        # Adjust the right hand side
+        g = np.zeros(n_rows)
+        g[dirichlet_mask] = dirichlet_vals
+        b -= np.dot(A, g)
+        
+        A = A[~dirichlet_mask,:][:,~dirichlet_mask]
+        b = b[~dirichlet_mask]
+        
+        if not compressed:
+            A[dirichlet_mask,:][:,dirichlet_mask] = 1
+            A[:,:][:,~dirichlet_mask] = 0 
+            pass
+        
+        
+        
+        """
+        
+        for row, i_row in zip(A.rows, range(n_rows)):
+            if row_dofs[i_row] in dirichlet_test_dofs:
+                #
+                # Dirichlet row: Mark for deletion
+                # 
+                dirichlet_rows[i_row] = True
+            
+            for col, i_col in zip(row, range(n_rows)): 
+                #
+                # Iterate over columns
+                # 
+                if col_dofs[col] in dirichlet_trial_dofs:
+                    #
+                    # Column contains a Dirichlet dof
+                    # 
+                    dirichlet_cols[col] = True
+                    
+                    # Adjust right hand side
+                    i_trial = dirichlet_trial_dofs.index(col_dofs[col])
+                    b[i_row] -= A.rows[i_row][i_col]*dirichlet_vals[i_trial]
+                    
+                    # Zero out entry in system matrix
+                    del row[i_col]
+                    del A.data[i_row][i_col]
+        
+        # =====================================================================
+        # Modify Matrix
+        # =====================================================================
+        if compressed: 
+            #
+            # Delete all rows corresponding to Dirichlet test functions
+            # and all columns corresponding to Dirichlet trial functions
+            # 
+            A = A.tocsc()
+            
+        else:
+            #
+            #  Add rows of the identity to A 
+            # 
+            n_dirichlet_rows = sum(dirichlet_rows)
+            n_dirichlet_cols = sum(dirichlet_cols)
+            if test_etype != trial_etype:
+                #
+                # More rows than
+                # 
+                print('Not supported yet')
+            elif n_dirichlet_rows < n_dirichlet_cols:
+                print('Not supported')
+            else:
+                #
+                # Simplest case: Replace Dirichlet Rows those of Identity Matrix
+                # 
+                A = A.csc()
+                A[dirichlet_rows,:][:,dirichlet_cols] = 1
+                b[dirichlet_rows] = dirichlet_vals
+                pass
+            pass
+        
+        self.af[i_problem]['dirichlet_rows'] = dirichlet_rows
+        self.af[i_problem]['dirichlet_cols'] = dirichlet_cols
+        self.af[i_problem]['dirichlet_vals'] = dirichlet_vals
+        """
+
+    
+    def resolve_dirichlet_nodes(self):
+        """
+        Enlarge the solution vector to include Dirichlet nodes
+        """
+        pass
+        
     
     def extract_hanging_nodes(self,A, b, compress=False):
         """
         Incorporate hanging nodes into linear system.
     
         Inputs:
+        
+        i_problem: int, 
+        
+        i_sample: int, 
+        
+        
     
         A: double, (n,n) sparse matrix in coo format
         
