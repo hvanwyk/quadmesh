@@ -140,35 +140,40 @@ class TestMesh2D(unittest.TestCase):
                     he_current = he_next
                     
     
-    def test_mark_boundary(self):
+    def test_mark_region(self):
         """
-        Test boundary vertex and -half-edge marker
+        Test region marker
         """
         mesh = Mesh2D(resolution=(2,2))
         flag = '1'
         tol = 1e-9
-        # Bottom half-edges
-        f = lambda he: np.alltrue([np.abs(he.base().coordinates()[0])< tol, \
-                                   np.abs(he.head().coordinates()[0])<tol])
         
-        mesh.mark_boundary_edges(flag, f)
+        # Left boundary
+        f = lambda x,dummy: np.abs(x)<tol
         
+        # Mark half-edges
+        mesh.mark_region(flag, f, entity='half_edge', on_boundary=True)
+        
+        # Check:
         for segment in mesh.get_boundary_segments():
             for he in segment:
-                if f(he):
-                    self.assertTrue(he.is_marked(flag))
-                else:
-                    self.assertFalse(he.is_marked(flag))
-                    
-        # Top vertices
-        f = lambda x,y: np.abs(y-1)<tol
-        flag = '2'
-        mesh.mark_boundary_vertices(flag, f)
-        for v in mesh.get_boundary_vertices():
-            if f(*v.coordinates()):
-                self.assertTrue(v.is_marked(flag))
-            else:
-                self.assertFalse(v.is_marked(flag))
+                marked = True
+                for v in he.get_vertices():
+                    x, y = v.coordinates()
+                    if not f(x,y):
+                        marked = False
+                        break
+                self.assertEqual(he.is_marked(flag), marked)
                 
+        # Top vertices
+        flag = '2'
+        g = lambda dummy,y: np.abs(y-1)<tol
         
+        # Mark vertices
+        mesh.mark_region(flag, g, entity='vertex', on_boundary=True)
+        
+        for v in mesh.get_boundary_vertices():
+            x,y = v.coordinates()
+            if g(x,y):
+                self.assertTrue(v.is_marked(flag))
         

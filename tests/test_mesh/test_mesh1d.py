@@ -126,7 +126,7 @@ class TestMesh1D(unittest.TestCase):
         # 
         f = lambda dummy: True
         flag = '1'
-        mesh.mark_boundary(flag, f)
+        mesh.mark_region(flag, f, entity='vertex', on_boundary=True)
         v0, v1 = mesh.get_boundary_vertices()
         self.assertTrue(v0.is_marked(flag))
         self.assertTrue(v1.is_marked(flag))
@@ -139,7 +139,7 @@ class TestMesh1D(unittest.TestCase):
         # Mark only one side
         # 
         f = lambda x: np.abs(x-1)<1e-9
-        mesh.mark_boundary(flag, f)
+        mesh.mark_region(flag, f, entity='vertex', on_boundary=True)
         self.assertTrue(v1.is_marked(flag))
         self.assertFalse(v0.is_marked(flag))
         

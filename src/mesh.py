@@ -1754,6 +1754,13 @@ class HalfEdge(Tree):
         return self.__head
     
     
+    def get_vertices(self):
+        """
+        Returns all half-edge vertices
+        """
+        return [self.__base, self.__head]
+    
+    
     def cell(self):
         """
         Returns the cell containing half-edge
@@ -5717,13 +5724,12 @@ class Mesh1D(Mesh):
                     # Cannot find a left neighbor: found left boundary cell
                     # 
                     cell_left = cell
-                    print('found left cell', cell.info())
                 if cell.get_neighbor(1, subforest_flag=subforest_flag) is None:
                     #
                     # Cannot find a right neighbor: found right boundary cell
                     # 
                     cell_right = cell
-                    print('found right cell')
+                    
             return cell_left, cell_right
     
     
@@ -5737,60 +5743,131 @@ class Mesh1D(Mesh):
         return x0, x1
     
 
-    def mark_boundary(self, flag, bnd_fun):
+    def mark_region(self, flag, f, entity='vertex', strict_containment=True, 
+                    on_boundary=False, subforest_flag=None):
         """
-        Marks left or right mesh endpoint with flag
+        Flags all entities of specified type within specified 1D region in mesh
         
-        Inputs: 
+        Inputs:
         
-            flag: str/int, vertex marker
+            flag: str/int/tuple, marker
             
-            bnd_fun: bool function, used to locate boundary 
-        """
-        v0, v1 = self.get_boundary_vertices()
-        x0, = v0.coordinates()
-        x1, = v1.coordinates()
-        
-        if bnd_fun(x0):
-            v0.mark(flag)
-        
-        if bnd_fun(x1):
-            v1.mark(flag)
-        
-    
-    '''
-    def record(self, mesh_label, flag=None):
-        """
-        Mark (flagged) intervals in the current mesh (and their parents) with
-        mesh_label.  
-        """
-        # 
-        # Traverse the forest of flagged intervals
-        # 
-        for interval in self.cells.traverse(flag=flag, mode='breadth-first'):
-            interval.mark(mesh_label)
+            f: boolean function whose input is a number x and whose
+                output is True if the point is contained in the region to be 
+                marked, False otherwise.
+                
+            entity: str, entity to be marked ('cell', 'vertex') 
+                
+            strict_containment: bool, if True, an entity is marked only
+                if all its vertices are contained in the region. If False,
+                one vertex suffices 
+                
+            on_boundary: bool, if True, consider only entities on the boundary
             
-    
-    def refine(self, flag, mesh_label=None):
+            subforest_flag: str/int/tuple, mesh marker.
         """
-        Split flagged LEAF cells of mesh (and label the refined mesh).
-        """
-        for interval in self.cells.get_leaves(flag):
-            interval.split()
-            for child in interval.get_children():
-                child.mark(flag)
-        if mesh_label is not None:
-            self.record(mesh_label, flag=flag)
-    
-    
-    def coarsen(self, flag, mesh_label=None):
-        """
-        Delete (or unmark) the children 
-        """
-        for interval in self.cells.get_leaves(flag=flag):
-          pass  
-    '''
-    
+        if on_boundary:
+            #
+            # Entity adjacent to boundary
+            # 
+            if entity=='vertex':
+                #
+                # Vertices
+                #
+                for v in self.get_boundary_vertices():
+                    x, = v.coordinates()
+                    if f(x):
+                        #
+                        # Vertex in region -> mark it
+                        # 
+                        v.mark(flag)
+            elif entity=='cell':
+                #
+                # Intervals
+                # 
+                for cell in self.get_boundary_cells(subforest_flag=subforest_flag):
+                    #
+                    # Iterate over boundary cells
+                    # 
+                    if strict_containment:
+                        #
+                        # Only mark interval if all vertices are in region
+                        #  
+                        mark = True
+                        for v in cell.get_vertices():
+                            x, = v.coordinates()
+                            if not f(x):
+                                #
+                                # One vertex outide region -> don't mark interval
+                                # 
+                                mark = False
+                                break
+                    else:
+                        #
+                        # Mark interval if any vertex is in region
+                        # 
+                        mark = False
+                        for v in cell.get_vertices():
+                            x, = v.coordinates()
+                            if f(x):
+                                #
+                                # One vertex in region -> mark interval
+                                # 
+                                mark = True
+                                break
+                    if mark:
+                        #
+                        # Mark interval if necessary
+                        # 
+                        cell.mark(flag)
+                        
+        else:
+            #
+            # Region not adjacent to boundary 
+            # 
+            for cell in self.cells.get_leaves(subforest_flag=subforest_flag):
+                if entity=='vertex':
+                    #
+                    # Mark vertices
+                    # 
+                    for v in cell.get_vertices():
+                        x, = v.coordinates()
+                        if f(x):
+                            #
+                            # Vertex is in region -> mark it
+                            # 
+                            v.mark(flag)
+                elif entity=='cell':
+                    #
+                    # Mark intervals
+                    # 
+                    if strict_containment:
+                        mark = True
+                        for v in cell.get_vertices():
+                            x, = v.coordinates()
+                            if not f(x):
+                                #
+                                # One cell vertex outside region -> don't mark
+                                # 
+                                mark = False
+                                break
+                    else:
+                        mark = False
+                        for v in cell.get_vertices():
+                            x, = v.coordinates()
+                            if f(x):
+                                #
+                                # One vertex in region -> mark interval
+                                # 
+                                mark = True
+                                break
+                    
+                    if mark:
+                        #
+                        # Mark interval if necessary
+                        # 
+                        cell.mark(flag)
+                        
     
 class Mesh2D(Mesh):
     """
@@ -5991,26 +6068,217 @@ class Mesh2D(Mesh):
         return [list(segment) for segment in bnd_hes_sorted]
     
     
-    def mark_boundary_edges(self, flag, bnd_fun, subforest_flag=None):
+    def get_boundary_vertices(self, flag=None, subforest_flag=None):
         """
-        Flag specific boundary edges identified by bnd_fun 
+        Returns the Vertices on the boundary
+        """
+        vertices = []
+        for segment in self.get_boundary_segments(subforest_flag=subforest_flag, 
+                                                  flag=flag):
+            for he in segment:
+                vertices.append(he.base())
+        return vertices
+    
+    
+    def mark_region(self, flag, f, entity='vertex', strict_containment=True, 
+                    on_boundary=False, subforest_flag=None):
+        """
+        This method marks all entities within a 2D region.
         
         Inputs:
         
-            flag: str/int, marker for half_edge
+            flag: str, int, tuple marker
             
-            bnd_fun: boolean function whose input is a half-edge
+            f: boolean function whose inputs are an x and a y vector and whose
+                output is True if the point is contained in the region to be 
+                marked, False otherwise.
+                
+            entity: str, entity to be marked ('cell', 'half_edge', 'vertex') 
+                
+            strict_containment: bool, if True, an entity is marked only
+                if all its vertices are contained in the region. If False,
+                one vertex suffices 
+                
+            on_boundary: bool, if True, consider only entities on the boundary
+            
+            subforest_flag: str/int/tuple, mesh marker.
         """
-        for segment in self.get_boundary_segments(subforest_flag):
+        if on_boundary:
             #
-            # Iterate over boundary segments
-            #
-            for he in segment:
+            # Iterate only over boundary segments
+            # 
+            for segment in self.get_boundary_segments(subforest_flag):
                 #
-                # Iterate over half-edges within each segment
+                # Iterate over boundary segments
                 # 
-                if bnd_fun(he):
-                    he.mark(flag)
+                for he in segment:
+                    #
+                    # Iterate over half_edges within each segment
+                    # 
+                    if entity=='vertex':
+                        #
+                        # Mark vertices
+                        # 
+                        for v in he.get_vertices():
+                            #
+                            # Iterate over half-edge vertices
+                            # 
+                            x,y = v.coordinates()
+                            if f(x,y):
+                                #
+                                # Mark 
+                                # 
+                                v.mark(flag)
+                    elif entity=='half_edge':
+                        #
+                        # Mark Half-Edges
+                        # 
+                        if strict_containment:
+                            #
+                            # All vertices must be within region
+                            # 
+                            mark = True
+                            for v in he.get_vertices():
+                                x,y = v.coordinates()
+                                if not f(x,y):
+                                    #
+                                    # One vertex not in region, don't mark edge
+                                    # 
+                                    mark = False
+                                    break
+                        else:
+                            #
+                            # Only one vertex need be in the region
+                            # 
+                            mark = False
+                            for v in he.get_vertices():
+                                x,y = v.coordinates()
+                                if f(x,y):
+                                    #
+                                    # One vertex in region is enough
+                                    # 
+                                    mark = True
+                                    break
+                        if mark:
+                            #
+                            # Mark half_edge
+                            # 
+                            he.mark(flag)
+                            
+                    elif entity=='cell':
+                        #
+                        # Mark Cells
+                        # 
+                        cell = he.cell()
+                        if strict_containment:
+                            mark = True
+                            for v in cell.get_vertices():
+                                x,y = v.coordinates()
+                                if not f(x,y):
+                                    #
+                                    # One vertex not in region -> don't mark
+                                    # 
+                                    mark = False
+                                    break
+                        else:
+                            mark = False
+                            for v in cell.get_vertices():
+                                x,y = v.coordinates()
+                                if f(x,y):
+                                    #
+                                    # One vertex in region -> mark
+                                    #  
+                                    mark = True
+                                    break
+                        if mark:
+                            #
+                            #  Mark cell       
+                            # 
+                            cell.mark(flag)                            
+                    else:
+                        raise Exception('Entity %s not supported'%(entity))
+        else:
+            #
+            # Region may lie within interior of the domain
+            #     
+            for cell in self.cells.get_leaves(subforest_flag=subforest_flag):
+                #
+                # Iterate over mesh cells
+                # 
+                if entity=='vertex':
+                    #
+                    # Mark vertices 
+                    # 
+                    for v in cell.get_vertices():
+                        x,y = v.coordinates()
+                        if f(x,y):
+                            #
+                            # Mark vertex
+                            #  
+                            v.mark(flag)
+                elif entity=='half_edge':
+                    #
+                    # Mark half-edges 
+                    #
+                    for he in cell.get_half_edges():
+                        if strict_containment:
+                            mark = True
+                            for v in he.get_vertices():
+                                x,y = v.coordinates()
+                                if not f(x,y):
+                                    #
+                                    # Single vertex outside region disqualifies half_edge
+                                    #
+                                    mark = False
+                                    break
+                        else:
+                            mark = False
+                            for v in he.get_vertices():
+                                x,y = v.coordinates()
+                                if f(x,y):
+                                    #
+                                    # Single vertex in region -> mark half_edge
+                                    # 
+                                    mark = True
+                                    break
+                        
+                        if mark:
+                            #
+                            # Mark half_edge
+                            # 
+                            he.mark(flag)
+                                
+                elif entity=='cell':
+                    #
+                    # Mark cells
+                    # 
+                    if strict_containment:
+                        #
+                        # All vertices must be in region
+                        # 
+                        mark = True
+                        for v in cell.get_vertices():
+                            x,y = v.coordinates()
+                            if not f(x,y):
+                                mark = False
+                                break 
+                    else:
+                        #
+                        # Only one vertex need be in region
+                        # 
+                        mark = False
+                        for v in cell.get_vertices():
+                            x,y = v.coordinates()
+                            if f(x,y):
+                                mark = True
+                                break
+                    
+                    if mark:
+                        #
+                        # Mark cell
+                        #
+                        cell.mark(flag)
+                            
     
     
     def bounding_box(self):
@@ -6021,6 +6289,8 @@ class Mesh2D(Mesh):
         x0, x1 = xy[:,0].min(), xy[:,0].max()
         y0, y1 = xy[:,1].min(), xy[:,1].max()
         return x0, x1, y0, y1
+    
+    
     '''
     def get_boundary_edges(self, flag=None):
         """
@@ -6054,43 +6324,7 @@ class Mesh2D(Mesh):
         for he in bnd_hes_sorted:
             bnd_hes.extend(he.get_leaves(flag=flag))
     '''                        
-
-    def get_boundary_vertices(self, flag=None, subforest_flag=None):
-        """
-        Returns the Vertices on the boundary
-        """
-        vertices = []
-        for segment in self.get_boundary_segments(subforest_flag=subforest_flag, 
-                                                  flag=flag):
-            for he in segment:
-                vertices.append(he.base())
-        return vertices
     
-    
-    def mark_boundary_vertices(self, flag, bnd_fun, subforest_flag=None):
-        """
-        Mark boundary vertices specified by bnd_fun with flag
-        
-        Inputs:
-        
-            flag: str/int, vertex marker
-            
-            bnd_fun: boolean bivariate function, used to specify boundary
-                vertices
-            
-            *subforest_flag: optional flag used to specify submesh
-        """
-        for v in self.get_boundary_vertices(subforest_flag=subforest_flag):
-            #
-            # Iterate over all boundary vertices 
-            #
-            x0, x1 = v.coordinates()
-            if bnd_fun(x0,x1):
-                #
-                # Mark identified vertices 
-                # 
-                v.mark(flag)
-        
         
 class QuadMesh(Mesh2D):
     """
