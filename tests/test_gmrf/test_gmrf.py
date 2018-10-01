@@ -8,7 +8,7 @@ import unittest
 
 from gmrf import Gmrf
 from mesh import Mesh, DCEL
-from fem import QuadFE, DofHandler, System, Function
+from fem import QuadFE, DofHandler, Assembler, Function
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
@@ -447,7 +447,7 @@ class TestGmrf(unittest.TestCase):
         #kappa = lambda x,y: np.log(2+5*x**2 + 2*y**3);
         kappa = 3
         alpha =3
-        system = System(mesh,element)
+        system = Assembler(mesh,element)
         X = Gmrf.from_matern_pde(alpha, kappa, mesh, element)
         """
         Xsmpl = X.sample(n_samples=1)

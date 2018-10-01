@@ -1,11 +1,12 @@
 import numpy as np
 from scipy import sparse, linalg
+import scipy.sparse.linalg as spla
 import numbers
 from mesh import Vertex, HalfEdge, Mesh2D
 from mesh import Cell, QuadCell, Interval
 from mesh import RHalfEdge, RInterval, RQuadCell
 from mesh import convert_to_array
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from itertools import count
 
 
@@ -3617,7 +3618,7 @@ class Form(object):
         return L_loc        
         
     
-class System(object):
+class Assembler(object):
     """
     Representation of sums of bilinear/linear forms as matrices/vectors  
     """
@@ -3734,8 +3735,6 @@ class System(object):
         af = []
         for problem in self.problems:
             af_problem = {}
-            test_etype = None
-            trial_etype = None
             for form in problem:
                 if form.type=='constant':
                     #
@@ -3749,55 +3748,65 @@ class System(object):
                     # 
                     if 'linear' not in af_problem:
                         af_problem['linear'] = {'row_dofs': [], 
-                                                'vals': []}
+                                                'vals': [],
+                                                'test_etype': None}
                         
-                    if test_etype is None:
+                    if af_problem['linear']['test_etype'] is None:
                         #
                         # Test element type not yet specified
                         # 
-                        test_etype = form.test.element.element_type() 
+                        af_problem['linear']['test_etype'] = \
+                            form.test.element.element_type() 
                     else:
                         #
                         # Check for test element consistency
                         # 
-                        assert test_etype==form.test.element.element_type(), \
-                        'All linear forms in problem should have the same'+\
-                        'test function space.'
+                        assert af_problem['linear']['test_etype']\
+                            ==form.test.element.element_type(), \
+                            'All linear forms in problem should have the '+\
+                            'same test function space.'
                 elif form.type=='bilinear':
                     #
                     #  Bilinear form     
                     # 
                     if 'bilinear' not in af_problem:
-                        af_problem['bilinear'] = {'row_dofs': [], 
-                                                  'col_dofs': [], 
-                                                  'vals': []}
-                    if test_etype is None:
                         #
-                        # Test element type not yet specifies
+                        # Initialize bilinear assembled form
+                        #
+                        af_problem['bilinear'] = \
+                            {'row_dofs': [], 'col_dofs': [], 'vals': [],\
+                             'test_etype': None, 'trial_etype': None}
+                            
+                    if af_problem['bilinear']['test_etype'] is None:
+                        #
+                        # Test element type not yet specified
                         # 
-                        test_etype = form.test.element.element_type()
+                        af_problem['bilinear']['test_etype'] = \
+                            form.test.element.element_type()
                     else:
                         #
                         # Check for test element consistency
                         # 
-                        assert test_etype==form.test.element.element_type(),\
-                        'All forms in problem should have the same'+\
-                        'test function space.'
+                        assert af_problem['bilinear']['test_etype']\
+                            ==form.test.element.element_type(),\
+                            'All bilinear forms in problem should have '+\
+                            'the same test function space.'
                         
-                    if trial_etype is None:
+                    if af_problem['bilinear']['trial_etype'] is None:
                         #
                         # Trial element type not yet specified
                         # 
-                        trial_etype = form.trial.element.element_type()
+                        af_problem['bilinear']['trial_etype'] = \
+                            form.trial.element.element_type()
                     else:
                         #
                         # Check for trial element consistency
                         # 
-                        assert trial_etype==form.trial.element.element_type(),\
-                        'All forms in problem should have the same'+\
-                        'trial function space.'
-            af_problem['test_etype'] = test_etype
-            af_problem['trial_etype'] = trial_etype            
+                        assert af_problem['bilinear']['trial_etype']\
+                            ==form.trial.element.element_type(),\
+                            'All bilinear forms in problem should have '+\
+                            'the same trial function space.'
+                        
             af.append(af_problem)
         self.af = af 
         
@@ -3993,7 +4002,6 @@ class System(object):
                 boundary conditions.
         
         
-        TODO: Include option to assemble multiple realizations (sampled data)  
         """                 
         #
         # Assemble forms over mesh cells
@@ -4537,23 +4545,7 @@ class System(object):
                                                            entity=edge)
                     dofs.extend(edge_dofs)
         return dofs
-     
-     
-    def solve(self, i_problem, i_sample=0):
-        """
-        Returns the solution (in vector form) of a problem
-        
-        Inputs:
-        
-            i_problem: int, problem index
-        
-        Outputs: 
-        
-            u: double, (n_dofs,) vector representing the values of the
-                solution at the node dofs.
-            
-        """ 
-          
+
         
     def n_samples(self, i_problem, form_type):
         """
@@ -4812,386 +4804,7 @@ class System(object):
         return phi        
             
     
-    def extract_dirichlet_nodes(self, bnd_marker, i_problem=0,\
-                                dirichlet_function=0, compressed=False):
-        """
-        Modify an assembled bilinear/linear pair to account for Dirichlet 
-        boundary conditions. The system matrix is modified "in place", 
-        i.e. 
-    
-            a11 a12 a13 a14   u1     b1
-            a21 a22 a23 a24   u2  =  b2 
-            a31 a32 a33 a34   u3     b3
-            a41 a42 a43 a44   u4     b4
-            
-        Suppose Dirichlet conditions u2=g2 and u4=g4 are prescribed. 
-        If compressed=False, the system is converted to
         
-            a11  0  a13  0   u1     b1 - a12*g2 - a14*g4
-             0   1   0   0   u2  =  g2   
-            a31  0  a33  0   u3     b3 - a32*g2 - a34*g4
-             0   0   0   1   u4     g4 
-        
-        If compressed=True, the system is converted to
-        
-            a11 a13  u1  = b1 - a12*g2 - a14*g4
-            a31 a33  u3    b3 - a32*g2 - a34*g3
-        
-        The solution [u1,u3]^T of this system is then enlarged with the 
-        dirichlet boundary values g2 and g4 by invoking 'resolve_dirichlet_nodes' 
-        
-    
-        Inputs:
-        
-            bnd_marker: str/int flag to identify boundary
-            
-            i_problem: int, problem index (default = 0)
-            
-            dirichlet_function: Function, defining the Dirichlet boundary 
-                conditions.
-            
-            compressed: bool, delete rows and columns corresponding to
-                dirichlet boundary conditions. The solution of the linear
-                system can be reconstructed using "resolve_dirichlet_nodes"
-            
-            
-        Notes:
-        
-        To maintain the dimensions of the matrix, the trial and test function 
-        spaces must be the same, i.e. it must be a Galerkin approximation. 
-        
-        Specifying the Dirichlet conditions this way is necessary if there
-        are hanging nodes (uncompressed), since a Dirichlet node may be a
-        supporting node for one of the hanging nodes.  
-                
-                
-        Inputs:
-        
-            bnd_marker: flag, used to mark the Dirichlet boundary
-        
-            i_problem: int, index identifying the problem to which 
-                Dirichlet conditions are to be applied
-            
-            compressed: bool, specifying the way in which boundary conditions
-                are incorporated. 
-                
-            dirichlet_fn: Function, specifying the function values on the  
-                Dirichlet boundary. 
-        
-            
-        Outputs:
-        
-            None 
-            
-            
-        Modifications:
-        
-            + self.af[i_problem][dirichlet]:
-             
-             [{mask: np.ndarray, vals: np.ndarray, compressed: bool},...]
-            self.af[i_problem][hanging_nodes] = mask
-        """
-        # =====================================================================
-        # Extract dofs + values
-        # =====================================================================
-        problem = self.af[i_problem]
-        
-        # Extract System Matrix
-        bilinear_form = problem['bilinear']
-        rows = bilinear_form['rows'] 
-        cols = bilinear_form['cols']
-        vals = bilinear_form['vals']
-        
-        # Determine the dofs associated with the above rows and cols
-        row_dofs = bilinear_form['row_dofs']
-        col_dofs = bilinear_form['col_dofs']
-        
-        #
-        # Check that approximation is of Galerkin type 
-        # 
-        trial_etype = problem['trial_etype']
-        test_etype = problem['test_etype']
-        
-        assert trial_etype==test_etype, \
-        'Trial function space must be the same as test function space.'
-        
-        assert np.allclose(row_dofs, col_dofs), \
-        'Column dofs should equal row dofs.'
-        
-        #
-        # Get Dofs Associated with Dirichlet boundary
-        # 
-        dirichlet_dofs = self.get_boundary_dofs(trial_etype, bnd_marker)
-        
-        #
-        # Evaluate dirichlet function at vertices associated with dirichlet dofs
-        # 
-        dofhandler = self.dofhandlers[trial_etype]
-        dirichlet_vertices = dofhandler.get_dof_vertices(dirichlet_dofs)
-        if dirichlet_function==0:
-            #
-            # Homogeneous boundary conditions
-            # 
-            dirichlet_vals = np.zeros(len(dirichlet_dofs))
-        else:
-            #
-            # Nonhomogeneous Dirichlet boundary conditions 
-            #
-            x_dir = convert_to_array(dirichlet_vertices)
-            dirichlet_vals = dirichlet_function(x_dir)
-        
-        
-        #
-        # Mark Dirichlet Dofs
-        #
-        n_rows = len(row_dofs)
-        dirichlet_mask = np.zeros(n_rows, dtype=np.bool)
-        for test_dof in dirichlet_dofs:
-            dirichlet_mask[row_dofs==test_dof] = True
-        
-        # =====================================================================
-        # Modify matrix-vector pair
-        # =====================================================================
-        # Convert to sparse matrix (add up values)
-        A = sparse.coo_matrix((vals,(rows,cols)))
-        A = A.tocsc()
-        
-        # Extract right hand side
-        linear_form = problem['linear']
-        b = linear_form['vals']
-        
-        
-        # Adjust the right hand side
-        g = np.zeros(n_rows)
-        g[dirichlet_mask] = dirichlet_vals
-        b -= np.dot(A, g)
-        
-        A = A[~dirichlet_mask,:][:,~dirichlet_mask]
-        b = b[~dirichlet_mask]
-        
-        if not compressed:
-            A[dirichlet_mask,:][:,dirichlet_mask] = 1
-            A[:,:][:,~dirichlet_mask] = 0 
-            pass
-        
-        
-        
-        """
-        
-        for row, i_row in zip(A.rows, range(n_rows)):
-            if row_dofs[i_row] in dirichlet_test_dofs:
-                #
-                # Dirichlet row: Mark for deletion
-                # 
-                dirichlet_rows[i_row] = True
-            
-            for col, i_col in zip(row, range(n_rows)): 
-                #
-                # Iterate over columns
-                # 
-                if col_dofs[col] in dirichlet_trial_dofs:
-                    #
-                    # Column contains a Dirichlet dof
-                    # 
-                    dirichlet_cols[col] = True
-                    
-                    # Adjust right hand side
-                    i_trial = dirichlet_trial_dofs.index(col_dofs[col])
-                    b[i_row] -= A.rows[i_row][i_col]*dirichlet_vals[i_trial]
-                    
-                    # Zero out entry in system matrix
-                    del row[i_col]
-                    del A.data[i_row][i_col]
-        
-        # =====================================================================
-        # Modify Matrix
-        # =====================================================================
-        if compressed: 
-            #
-            # Delete all rows corresponding to Dirichlet test functions
-            # and all columns corresponding to Dirichlet trial functions
-            # 
-            A = A.tocsc()
-            
-        else:
-            #
-            #  Add rows of the identity to A 
-            # 
-            n_dirichlet_rows = sum(dirichlet_rows)
-            n_dirichlet_cols = sum(dirichlet_cols)
-            if test_etype != trial_etype:
-                #
-                # More rows than
-                # 
-                print('Not supported yet')
-            elif n_dirichlet_rows < n_dirichlet_cols:
-                print('Not supported')
-            else:
-                #
-                # Simplest case: Replace Dirichlet Rows those of Identity Matrix
-                # 
-                A = A.csc()
-                A[dirichlet_rows,:][:,dirichlet_cols] = 1
-                b[dirichlet_rows] = dirichlet_vals
-                pass
-            pass
-        
-        self.af[i_problem]['dirichlet_rows'] = dirichlet_rows
-        self.af[i_problem]['dirichlet_cols'] = dirichlet_cols
-        self.af[i_problem]['dirichlet_vals'] = dirichlet_vals
-        """
-
-    
-    def resolve_dirichlet_nodes(self):
-        """
-        Enlarge the solution vector to include Dirichlet nodes
-        """
-        pass
-        
-    
-    def extract_hanging_nodes(self,A, b, compress=False):
-        """
-        Incorporate hanging nodes into linear system.
-    
-        Inputs:
-        
-        i_problem: int, 
-        
-        i_sample: int, 
-        
-        
-    
-        A: double, (n,n) sparse matrix in coo format
-        
-        b: double, (n,1) vector of right hand sides
-        
-        hanging_nodes: dict, {i_hn:[is_1,...,is_k], [cs_1,...,cs_k]}
-            i_hn: hanging node index
-            is_j: index of jth supporting node
-            cs_j: coefficient of jth supporting basis function, i.e.
-            
-            phi_{i_hn} = cs_1*phi_{is_1} + ... + cs_k*phi_{is_k}     
-            
-        compress: bool [False], flag for how the nodes should be accounted for
-            True - remove the hanging nodes from the system (the solution 
-                can then be reconstructed using "resolve_hanging_nodes").
-            False - keep the size of the system, incorporating hanging nodes
-                implicitly.
-        """
-        # Convert A to a lil matrix
-        A = A.tolil() 
-        
-        hanging_nodes = self.dofhandler.get_hanging_nodes()
-        n_rows = A.shape[0]
-        for i in range(n_rows):
-            #
-            # Iterate over all rows
-            #
-            if i in hanging_nodes.keys():
-                #
-                # Row corresponds to hanging node
-                #
-                if not compress:
-                    new_indices = [is_j for is_j in hanging_nodes[i][0]] 
-                    new_indices.append(i)
-                    A.rows[i] = new_indices           
-         
-                    new_values = [-cs_j for cs_j in hanging_nodes[i][1]] 
-                    new_values.append(1)
-                    A.data[i] = new_values
-                    
-                    b[i] = 0
-                
-            else:
-                row = A.rows[i]
-                data = A.data[i]
-                for hn in hanging_nodes.keys():
-                    #
-                    # For each row, determine what hanging nodes are supported
-                    #
-                    if hn in row:    
-                        #
-                        # If hanging node appears in row, modify
-                        #
-                        j_hn = row.index(hn)
-                        for js,vs in zip(*hanging_nodes[hn]):
-                            #
-                            # Loop over supporting indices and coefficients
-                            # 
-                            if js in row:
-                                #
-                                # Index exists: modify entry
-                                #
-                                j_js = row.index(js)
-                                data[j_js] += vs*data[j_hn]
-                            else:
-                                #
-                                # Insert new entry
-                                # 
-                                jj = bisect_left(row,js)
-                                vi = vs*data[j_hn]
-                                row.insert(jj,js)
-                                data.insert(jj,vi)
-                                j_hn = row.index(hn)  # find hn again
-                        #
-                        # Zero out column that contains the hanging node
-                        #
-                        row.pop(j_hn)
-                        data.pop(j_hn)
-                        if compress:
-                            #
-                            # Renumber entries to hanging node's right.
-                            # 
-                            for j in range(j_hn,len(row)):
-                                row[j] -= 1
-        if compress:
-            #
-            # Delete rows corresponding to hanging nodes
-            #
-            hn_list = [hn for hn in hanging_nodes.keys()]
-            n_hn = len(hn_list)    
-            A.rows = np.delete(A.rows,hn_list,0)
-            A.data = np.delete(A.data,hn_list,0)
-            b = np.delete(b,hn_list,0)
-            A._shape = (A._shape[0]-n_hn, A._shape[1]-n_hn)
-        
-        return A.tocoo(),b
-            
-     
-    def resolve_hanging_nodes(self,u):
-        """
-        Enlarge the solution vector u to include hannging nodes  
-        
-        Inputs:
-        
-           u: double, (n,) numpy vector of nodal values, without hanging nodes.
-            
-           hanging_nodes: dict, {i_hn:[is_1,...,is_k], [cs_1,...,cs_k]}
-                i_hn: hanging node index
-                is_j: index of jth supporting node
-                cs_j: coefficient of jth supporting basis function, i.e.
-                
-                phi_{i_hn} = cs_1*phi_{is_1} + ... + cs_k*phi_{is_k} 
-    
-                
-        Outputs:
-            
-            uu: double, (n+k,) numpy vector of nodal values which includes 
-                hanging nodes.
-        """
-        hanging_nodes = self.__hanging_nodes
-        hang = [hn for hn in hanging_nodes.keys()]
-        n = len(u)
-        not_hang = [i for i in range(n) if i not in hang]
-        k = len(hang)
-        uu = np.zeros((n+k,))
-        uu.flat[not_hang] = u
-        for i in range(k):
-            i_s, c_s = hanging_nodes[hang[i]]
-            uu[hang[i]] = np.dot(uu[i_s],np.array(c_s))
-        return uu   
-    
-    
         
             
     
@@ -5321,3 +4934,817 @@ class System(object):
             return R
         else:
             return R.dot(u_fine)
+        
+        
+        
+class LinearSystem(object):
+    """
+    Linear system object consisting of a single coefficient matrix and right 
+    hand side vector, together with the associated dof information.
+    
+    Attributes:
+    
+        __A
+        
+        assembler
+        
+        __b
+        
+        __compressed
+        
+        __dirichlet
+        
+        __dofs
+        
+        __etype
+        
+        __hanging_nodes: dict, {i_hn:[is_1,...,is_k], [cs_1,...,cs_k]}
+            i_hn: hanging node index
+            is_j: index of jth supporting node
+            cs_j: coefficient of jth supporting basis function, i.e.
+            
+            phi_{i_hn} = cs_1*phi_{is_1} + ... + cs_k*phi_{is_k}
+                 
+        __i_problem
+        
+    
+        
+        
+    Methods:
+    
+        dofs: returns system dofs
+        
+        A: returns system matrix 
+        
+        b: returns right hand side vector 
+        
+        has_hanging_nodes: reveals presence of hanging nodes 
+        
+        is_compressed: indicates whether dirichlet- and hanging
+            node dofs are to be removed from system.
+        
+        extract_dirichlet_nodes: incorporates dirichlet conditions
+        
+        extract_hanging_nodes: incorporates hanging nodes into system 
+        
+        resolve_dirichlet_nodes: assigns dirichlet values to 
+            compressed solution 
+        
+        resolve_hanging_nodes: applies hanging node interpolations to
+            compressed solution
+        
+        restrict: 
+        
+        interpolate
+     
+    """
+    def __init__(self, assembler, i_problem=0, i_sample=(0,0), 
+                 compressed=False):
+        """
+        Constructor
+        
+        
+        Inputs:
+        
+            assembler: Assembler, 
+            
+            i_problem: int (default 0), problem index
+            
+            i_sample: int, tuple (i_bilinear_sample, i_linear_sample), 
+                specifying the index of the assembled bilinear and 
+                linear forms to be used to construct the system.
+                
+            compressed: bool (default=False), indicating whether unknowns
+                which can be determined by Dirichlet boundary conditions
+                or hanging node interpolation relations, should be removed
+                from the linear system Ax=b.
+                
+        """
+        self.assembler = assembler
+        self.__i_problem = i_problem
+        self.__compressed = compressed 
+        
+        #
+        # Extract forms
+        # 
+        problem = assembler.af[i_problem]
+        bilinear_form = problem['bilinear']
+        linear_form = problem['linear']
+        
+        #
+        # Determine element type  
+        # 
+        etype = bilinear_form['trial_etype'] 
+
+        #
+        # Check that the element type is consistent 
+        #  
+        assert etype==bilinear_form['test_etype'], \
+        'Trial and test spaces must have the same element type.'
+        
+        assert etype==linear_form['test_etype'],\
+        'Test and trial spaces must have same element type.'
+
+        self.__etype = etype
+        
+        #
+        # Determine system dofs   
+        # 
+        dofs = bilinear_form['row_dofs']
+        
+        #
+        # Check that dofs are consistent (should be if element type is)
+        # 
+        assert np.allclose(dofs, bilinear_form['col_dofs']), \
+        'Test and trial dofs should be the same.'
+        
+        assert np.allclose(dofs, linear_form['row_dofs']), \
+        'Test and trial dofs should be the same.'
+        
+        self.__dofs = dofs
+        
+        
+        #
+        # Form system matrix
+        # 
+        rows = bilinear_form['rows'] 
+        cols = bilinear_form['cols']
+        vals = bilinear_form['vals']
+        
+        #
+        # Check sample index
+        # 
+        i_bilinear_sample = i_sample[0]
+        if len(vals.shape)>1 and vals.shape[1]>1:
+            #
+            # Multiple bilinear forms, extract sample
+            #  
+            assert i_bilinear_sample < vals.shape[1],\
+            'Sample index exceeds sample size.'
+            
+            vals = bilinear_form['vals'][i_bilinear_sample]
+        #
+        # Store as sparse matrix 
+        # 
+        self.__A = sparse.coo_matrix((vals,(rows,cols)))
+    
+        #
+        # Form right hand side
+        #
+        linear_form = problem['linear']
+        vals = linear_form['vals']
+        i_linear_sample = i_sample[1]
+        if len(vals.shape)>1 and vals.shape[1]>1:
+            #
+            #  Multiple linear forms, extract sample
+            # 
+            assert i_linear_sample < vals.shape[1],\
+            'Sample index %d exceeds sample size %d.'\
+            %(i_linear_sample, vals.shape[1])
+            
+            vals = linear_form['vals'][i_linear_sample]
+
+        self.__b = vals
+        
+        #
+        # Initialize solution vector
+        #  
+        n_dofs = len(dofs)
+        self.__u = np.zeros(n_dofs)      
+        
+        #
+        # List of Dirichlet conditions 
+        #                     
+        self.dirichlet = []
+        
+        #
+        # List of Hanging nodes
+        # 
+        subforest_flag = assembler.subforest_flag
+        dofhandler = assembler.dofhandlers[etype]
+        self.hanging_nodes = \
+            dofhandler.get_hanging_nodes(subforest_flag=subforest_flag) 
+        self.dofhandler = dofhandler
+        
+        if self.has_hanging_nodes():
+            #
+            # System has hanging nodes
+            # 
+            # Add masking matrix used to extract hanging node dofs
+            n_dofs = len(dofs)
+            mask = np.zeros(n_dofs, dtype=np.bool)
+            for hn in self.hanging_nodes.keys():
+                mask[dofs==hn] = 1
+            self.hanging_nodes_mask = mask
+            
+            #
+            # Extract hanging nodes, since these are known
+            #
+            self.extract_hanging_nodes()
+            
+            
+    def dofs(self):
+        """
+        Return system dofs
+        """
+        return self.__dofs
+
+    
+    def etype(self):
+        """
+        Return system element type
+        """
+        return self.__etype
+
+
+    def A(self):
+        """
+        Return system matrix 
+        """
+        return self.__A 
+    
+    
+    def b(self):
+        """
+        Return right hand side
+        """
+        return self.__b
+        
+        
+    def is_compressed(self):
+        """
+        Returns true if hanging nodes and Dirichlet boundary conditions are to
+        be eliminated from system.
+        """
+        return self.__compressed   
+     
+     
+    def has_hanging_nodes(self):
+        """
+        Returns true if the system has hanging nodes.
+        """
+        return self.hanging_nodes != {}
+       
+        
+    def extract_dirichlet_nodes(self, bnd_marker, dirichlet_function=0):
+        """
+        Modify an assembled bilinear/linear pair to account for Dirichlet 
+        boundary conditions. The system matrix is modified "in place", 
+        i.e. 
+    
+            a11 a12 a13 a14   u1     b1
+            a21 a22 a23 a24   u2  =  b2 
+            a31 a32 a33 a34   u3     b3
+            a41 a42 a43 a44   u4     b4
+            
+        Suppose Dirichlet conditions u2=g2 and u4=g4 are prescribed. 
+        If compressed=False, the system is converted to
+        
+            a11  0  a13  0   u1     b1 - a12*g2 - a14*g4
+             0   1   0   0   u2  =  g2   
+            a31  0  a33  0   u3     b3 - a32*g2 - a34*g4
+             0   0   0   1   u4     g4 
+        
+        If compressed=True, the system is converted to
+        
+            a11 a13  u1  = b1 - a12*g2 - a14*g4
+            a31 a33  u3    b3 - a32*g2 - a34*g3
+        
+        The solution [u1,u3]^T of this system is then enlarged with the 
+        dirichlet boundary values g2 and g4 by invoking 'resolve_dirichlet_nodes' 
+        
+    
+        Inputs:
+        
+            bnd_marker: str/int flag to identify boundary
+            
+            i_problem: int, problem index (default = 0)
+            
+            dirichlet_function: Function, defining the Dirichlet boundary 
+                conditions.
+            
+            compressed: bool, delete rows and columns corresponding to
+                dirichlet boundary conditions. The solution of the linear
+                system can be reconstructed using "resolve_dirichlet_nodes"
+            
+            
+        Notes:
+        
+        To maintain the dimensions of the matrix, the trial and test function 
+        spaces must be the same, i.e. it must be a Galerkin approximation. 
+        
+        Specifying the Dirichlet conditions this way is necessary if there
+        are hanging nodes (uncompressed), since a Dirichlet node may be a
+        supporting node for one of the hanging nodes.  
+                
+                
+        Inputs:
+        
+            bnd_marker: flag, used to mark the Dirichlet boundary
+                        
+            dirichlet_fn: Function, specifying the function values on the  
+                Dirichlet boundary. 
+        
+            
+        Outputs:
+        
+            None 
+            
+            
+        Modified Attributes:
+        
+            __A: modify Dirichlet rows and colums (shrink)
+            
+            __b: modify right hand side (shrink)
+            
+            dirichlet: add dictionary,  {mask: np.ndarray, vals: np.ndarray}
+        """
+        #
+        # Get Dofs Associated with Dirichlet boundary
+        # TODO: Move this to dofhandler
+        etype = self.etype()
+        dirichlet_dofs = self.assembler.get_boundary_dofs(etype, bnd_marker)
+        
+        #
+        # Evaluate dirichlet function at vertices associated with dirichlet dofs
+        # 
+        dofhandler = self.assembler.dofhandlers[etype]
+        dirichlet_vertices = dofhandler.get_dof_vertices(dirichlet_dofs)
+        if dirichlet_function==0:
+            #
+            # Homogeneous boundary conditions
+            # 
+            dirichlet_vals = np.zeros(len(dirichlet_dofs))
+        else:
+            #
+            # Nonhomogeneous Dirichlet boundary conditions 
+            #
+            x_dir = convert_to_array(dirichlet_vertices)
+            dirichlet_vals = dirichlet_function(x_dir)
+        
+        #
+        # Mark Dirichlet Dofs
+        #
+        dofs = self.dofs()
+        n_dofs = len(dofs)
+        dirichlet_mask = np.zeros(n_dofs, dtype=np.bool)
+        for dirichlet_dof in dirichlet_dofs:
+            dirichlet_mask[dofs==dirichlet_dof] = True
+        
+        # =====================================================================
+        # Modify matrix-vector pair
+        # =====================================================================
+        A = self.A()
+        b = self.b()
+        if not self.is_compressed():
+            #
+            # Not compressed: No need to keep track of indices
+            # 
+            # Convert to list of lists format
+            A = A.tolil()
+            
+            for i_row in range(n_dofs):
+                #
+                # Iterate over rows
+                # 
+                if dofs[i_row] in dirichlet_dofs:
+                    #
+                    # Dirichlet row
+                    #  
+                    
+                    # Turn row into [0,...,0,1,0,...,0]
+                    A.rows[i_row] = [i_row]
+                    A.data[i_row] = [1] 
+                    
+                    # Assign Dirichlet value to b[i]
+                    i_dirichlet = dirichlet_dofs.index(dofs[i_row])
+                    b[i_row] = dirichlet_vals[i_dirichlet]
+                else:
+                    #
+                    # Check for Dirichlet columns 
+                    # 
+                    n_cols = len(A.rows[i_row])  # number of elements in row
+                    for j_col, col in zip(range(n_cols), A.rows[i_row]):
+                        #
+                        # Iterate over columns
+                        # 
+                        if dofs[col] in dirichlet_dofs:
+                            #
+                            # Dirichlet column: move it to the right
+                            # 
+                            j_dirichlet = dirichlet_dofs.index(dofs[col])
+                            b[j_col] -= A.data[i_row][j_col]*dirichlet_vals[j_dirichlet]
+                            
+        else:
+            #
+            # Compressed format
+            #
+            i_free = self.free_indices()
+            
+                    
+            #
+            # Convert A to sparse column format
+            # 
+            A = A.tocsc()
+            
+            n_rows, n_cols = A.shape
+            assert n_rows==n_cols, \
+            'Number of columns and rows should be equal.'
+            
+            print(self.hanging_nodes_mask)
+            
+            assert n_rows == np.sum(i_free), \
+            'Dimensions of matrix not compatible with cumulative mask.'+\
+            '# rows: %d, # free indices: %d'%(n_rows, np.sum(i_free))
+            
+            assert n_rows == len(b), \
+            'Matrix dimensions not compatible with right hand side.'
+            
+            #
+            # Adjust the right hand side
+            #
+            reduced_dirichlet_mask = dirichlet_mask[i_free]
+            g = np.zeros(n_rows)
+            g[reduced_dirichlet_mask] = dirichlet_vals
+            b -= A.dot(g)
+            
+            
+            A = A[~reduced_dirichlet_mask,:][:,~reduced_dirichlet_mask]
+            b = b[~reduced_dirichlet_mask]
+            
+            # Convert back to coo format
+            A = A.tocoo()
+        
+        
+        #
+        # Store Dirichlet information
+        # 
+        self.dirichlet.append({'mask': dirichlet_mask, 'vals': dirichlet_vals})
+        self.__A = A
+        self.__b = b
+        
+        """
+        
+        for row, i_row in zip(A.rows, range(n_rows)):
+            if row_dofs[i_row] in dirichlet_test_dofs:
+                #
+                # Dirichlet row: Mark for deletion
+                # 
+                dirichlet_rows[i_row] = True
+            
+            for col, i_col in zip(row, range(n_rows)): 
+                #
+                # Iterate over columns
+                # 
+                if col_dofs[col] in dirichlet_trial_dofs:
+                    #
+                    # Column contains a Dirichlet dof
+                    # 
+                    dirichlet_cols[col] = True
+                    
+                    # Adjust right hand side
+                    i_trial = dirichlet_trial_dofs.index(col_dofs[col])
+                    b[i_row] -= A.rows[i_row][i_col]*dirichlet_vals[i_trial]
+                    
+                    # Zero out entry in system matrix
+                    del row[i_col]
+                    del A.data[i_row][i_col]
+        
+        # =====================================================================
+        # Modify Matrix
+        # =====================================================================
+        if compressed: 
+            #
+            # Delete all rows corresponding to Dirichlet test functions
+            # and all columns corresponding to Dirichlet trial functions
+            # 
+            A = A.tocsc()
+            
+        else:
+            #
+            #  Add rows of the identity to A 
+            # 
+            n_dirichlet_rows = sum(dirichlet_rows)
+            n_dirichlet_cols = sum(dirichlet_cols)
+            if test_etype != trial_etype:
+                #
+                # More rows than
+                # 
+                print('Not supported yet')
+            elif n_dirichlet_rows < n_dirichlet_cols:
+                print('Not supported')
+            else:
+                #
+                # Simplest case: Replace Dirichlet Rows those of Identity Matrix
+                # 
+                A = A.csc()
+                A[dirichlet_rows,:][:,dirichlet_cols] = 1
+                b[dirichlet_rows] = dirichlet_vals
+                pass
+            pass
+        """
+
+    
+    def resolve_dirichlet_nodes(self):
+        """
+        Enlarge the solution vector to include Dirichlet nodes
+        """
+        
+        for dirichlet in self.dirichlet:
+            #
+            # Iterate over Dirichlet boundaries and assign Dirichlet values
+            # 
+            self.__u[dirichlet['mask']] = dirichlet['vals']
+    
+    
+    def extract_hanging_nodes(self):
+        """
+        Incorporate hanging nodes into linear system, by 
+        
+        1. Replacing equations in rows corresponding to hanging nodes with 
+            interpolation formulae.
+            
+        2. Zeroing out hanging node columns, compensating by adding entries            
+            in supporting node columns, which may require changing the sparsity
+            structure of the matrix.  
+        
+        When compressing, the rows and columns corresponding to hanging nodes
+        are removed. This is recorded in self.hanging_nodes_mask
+        
+        
+        NOTE:
+        
+            - For simplicity of implementation, we assume that the system has 
+                not already been compressed. This requires hanging nodes to 
+                be extracted BEFORE extracting dirichlet nodes.
+        
+        """
+        # Convert A to a lil matrix
+        A = self.A().tolil() 
+        b = self.b()
+        
+        dofs = self.dofs()
+        n_rows = A.shape[0]  
+        
+        #
+        # Check assumption, that the number of dofs equals the system size!
+        # 
+        assert n_rows == len(dofs), \
+        'Number of dofs should equal system size.'
+        
+        #
+        # Vector for converting dofs to matrix indices
+        #
+        dof2idx = np.zeros(np.max(dofs)+1, dtype=np.int)
+        dof2idx[dofs] = np.arange(n_rows)
+        
+        hanging_nodes = self.hanging_nodes
+        for i in range(n_rows):
+            #
+            # Iterate over all rows
+            #
+            if dofs[i] in hanging_nodes.keys():
+                #
+                # Row corresponds to hanging node
+                #
+                print('hanging_node - row %d, dof %d'%(i,dofs[i]))
+                if not self.is_compressed():
+                    #
+                    # Replace equation in hanging node row with interpolation
+                    # formula. 
+                    # 
+                    new_indices = [dof2idx[s_dof] for s_dof \
+                                   in hanging_nodes[dofs[i]][0]] 
+                    new_indices.append(i)
+                    A.rows[i] = new_indices           
+         
+                    new_values = [-cs_j for cs_j in hanging_nodes[dofs[i]][1]] 
+                    new_values.append(1)
+                    A.data[i] = new_values
+                    
+                    b[i] = 0
+                
+            else:
+                row = A.rows[i]
+                data = A.data[i]
+                print('row %d'%(i))
+                print(row)
+                print(data)
+                for hn in hanging_nodes.keys():
+                    #
+                    # For each row, determine what hanging nodes are supported
+                    #
+                    if dof2idx[hn] in row:    
+                        #
+                        # If hanging node appears in row, modify
+                        #
+                        j_hn = row.index(dof2idx[hn])
+                        print('hanging node %d in col %d'%(hn, j_hn))
+                        for js,vs in zip(*hanging_nodes[hn]):
+                            #
+                            # Loop over supporting indices and coefficients
+                            # 
+                            print('supporting dof %d, index %d'%(js, dof2idx[js]))
+                            if dof2idx[js] in row:
+                                print('supporting dof already in row. change value')
+                                #
+                                # Index exists: modify entry
+                                #
+                                j_js = row.index(dof2idx[js])
+                                data[j_js] += vs*data[j_hn]
+                            else:
+                                #
+                                # Insert new entry
+                                # 
+                                jj = bisect_left(row, dof2idx[js])
+                                vi = vs*data[j_hn]
+                                row.insert(jj,js)
+                                data.insert(jj,vi)
+                                j_hn = row.index(hn)  # find hn again
+                        #
+                        # Zero out column that contains the hanging node
+                        #
+                        print('row before popping out hanging node')
+                        print(row)
+                        row.pop(j_hn)
+                        data.pop(j_hn)
+                        print('afterwards')
+                        print(row)
+                if self.is_compressed():
+                    #
+                    # Renumber entries to right of hanging nodes.
+                    # 
+                    for hn in hanging_nodes.keys():
+                        j_hn = bisect_left(row, dof2idx[hn])
+                        for j in range(j_hn,len(row)):
+                            row[j] -= 1
+                print('modified row')
+                print(row)
+                print(data)
+        if self.is_compressed():
+            #
+            # Delete rows corresponding to hanging nodes
+            #
+            hn_list = [dof2idx[hn] for hn in hanging_nodes.keys()]
+            n_hn = len(hn_list)    
+            A.rows = np.delete(A.rows,hn_list,0)
+            A.data = np.delete(A.data,hn_list,0)
+            b = np.delete(b,hn_list,0)
+            A._shape = (A._shape[0]-n_hn, A._shape[1]-n_hn)
+        
+        for row in A.rows:
+            print(row)
+        #
+        # Store modified system 
+        # 
+        print(A.todense())
+        self.__A = A.tocoo()
+        self.__b = b
+            
+     
+    def resolve_hanging_nodes(self):
+        """
+        Enlarge the solution vector u to include hannging nodes  
+        
+        Inputs:
+        
+           u: double, (n,) numpy vector of nodal values, without hanging nodes.
+            
+           hanging_nodes: dict, {i_hn:[is_1,...,is_k], [cs_1,...,cs_k]}
+                i_hn: hanging node index
+                is_j: index of jth supporting node
+                cs_j: coefficient of jth supporting basis function, i.e.
+                
+                phi_{i_hn} = cs_1*phi_{is_1} + ... + cs_k*phi_{is_k} 
+    
+                
+        Outputs:
+            
+            uu: double, (n+k,) numpy vector of nodal values which includes 
+                hanging nodes.
+        """
+        dofs = self.dofs()
+        n_dofs = len(dofs)
+        
+        #
+        # Vector for converting dofs to matrix indices
+        #
+        dof2idx = np.zeros(np.max(dofs)+1, dtype=np.int)
+        dof2idx[dofs] = np.arange(n_dofs)
+        
+        for hn, supp in self.hanging_nodes.items():
+            #
+            # Iterate over hanging nodes and support dofs
+            # 
+            supp_dofs, supp_vals = supp
+            
+            self.__u[dof2idx[hn]] = \
+                np.dot(self.__u[dof2idx[supp_dofs]], supp_vals)
+            
+        """
+        hanging_nodes = self.hanging_nodes
+        hang = [hn for hn in hanging_nodes.keys()]
+        n = len(u)
+        not_hang = [i for i in range(n) if i not in hang]
+        k = len(hang)
+        uu = np.zeros((n+k,))
+        uu.flat[not_hang] = u
+        for i in range(k):
+            i_s, c_s = hanging_nodes[hang[i]]
+            uu[hang[i]] = np.dot(uu[i_s],np.array(c_s))
+        return uu   
+        """
+   
+    def solve(self, return_function=False):
+        """
+        Returns the solution (in vector form) of a problem
+        
+        Inputs:
+        
+            return_solution_function: bool, if true, return solution as nodal
+                function expanded in terms of finite element basis. 
+                
+                
+        Outputs: 
+        
+            u: double, (n_dofs,) vector representing the values of the
+                solution at the node dofs.
+                
+                or 
+                
+                Function, representing the finite element solution
+            
+        """ 
+        A = self.A()
+        b = self.b()
+        n_dofs = len(self.dofs())
+        self.__u = np.zeros(n_dofs)
+        
+        if self.is_compressed():
+            #
+            # Solve reduced system  
+            # 
+            i_free = self.free_indices()
+            self.__u[i_free] = sparse.linalg.spsolve(A,b)
+        
+            #
+            # Resolve Dirichlet conditions
+            # 
+            self.resolve_dirichlet_nodes()
+            
+            #
+            # Resolve hanging nodes
+            # 
+            self.resolve_hanging_nodes()
+        else:
+            #
+            # Not compressed
+            #
+            self.__u = sparse.linalg.spsolve(A,b)
+                 
+        if not return_function:
+            #
+            # Return solution vector
+            # 
+            return self.__u
+        else: 
+            #
+            # Return solution as nodal function
+            # 
+            u = Function(self.__u, 'nodal', mesh=self.assembler.mesh, \
+                         dofhandler=self.dofhandler, \
+                         subforest_flag=self.assembler.subforest_flag)
+        return u
+        
+    
+    
+    def free_indices(self):
+        """
+        Returns boolean vector with 1s at all entries that are neither hanging
+        nodes, nor previously encountered Dirichlet nodes  
+        """ 
+        n_dofs = len(self.dofs())
+        if self.is_compressed():
+            #
+            # Collect all boolean masks applied so far
+            # 
+            unchanged_entries = np.ones(n_dofs, dtype=np.bool)
+            if self.has_hanging_nodes():
+                #
+                # Mask from hanging nodes 
+                # 
+                unchanged_entries *= ~self.hanging_nodes_mask
+            if len(self.dirichlet)!=0:
+                #
+                # Masks from previous dirichlet conditions
+                # 
+                for dirichlet in self.dirichlet:
+                    unchanged_entries *= ~dirichlet['mask']
+        else:
+            #
+            # No nodes have been removed, return a vector of ones
+            # 
+            unchanged_entries = np.ones(n_dofs, dtype=np.bool)
+            
+        return unchanged_entries
+        

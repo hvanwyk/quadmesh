@@ -3,7 +3,7 @@ Created on Feb 8, 2017
 
 @author: hans-werner
 '''
-from fem import System, QuadFE, DofHandler, GaussRule, Function
+from fem import Assembler, QuadFE, DofHandler, GaussRule, Function
 from mesh import Mesh
 from numbers import Number, Real
 import scipy.sparse as sp
@@ -464,7 +464,7 @@ class Gmrf(object):
             tau: (Axx,Axy,Ayy) symmetric tensor or diffusion coefficient function.
             
             boundary_conditions: tuple of boundary locator function and boundary value
-                function (viz. fem.System)
+                function (viz. fem.Assembler)
             
             
         Outputs:
@@ -472,7 +472,7 @@ class Gmrf(object):
             Q: sparse matrix, in CSC format
             
         """
-        system = System(mesh, element)
+        system = Assembler(mesh, element)
         
         #
         # Assemble (kappa * M + K)
@@ -724,7 +724,7 @@ class Gmrf(object):
             # Assemble double integral
             #
 
-            system = System(mesh, element) 
+            system = Assembler(mesh, element) 
             n_dofs = system.n_dofs()
             Sigma = np.zeros((n_dofs,n_dofs))
             

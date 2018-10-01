@@ -7,7 +7,7 @@ Created on Feb 24, 2017
 import unittest
 from plot import Plot
 from mesh import Mesh, DCEL
-from fem import System, QuadFE
+from fem import Assembler, QuadFE
 import matplotlib.pyplot as plt
 #from mpl_toolkits.mplot3d import *  # @UnresolvedImport
 import numpy as np
@@ -95,7 +95,7 @@ class TestPlot(unittest.TestCase):
         # Nodal function
         #
         element = QuadFE(2,'Q1') 
-        system = System(mesh, element)
+        system = Assembler(mesh, element)
         x = system.dof_vertices()
         fn = f(x[:,0],x[:,1])
         fig, ax[0,1] = plot.contour(ax[0,1], fig, fn, mesh, element, \
@@ -132,7 +132,7 @@ class TestPlot(unittest.TestCase):
             for i in range(3):
                 etype = element_list[i]
                 element = QuadFE(2,etype)
-                system = System(mesh, element)
+                system = Assembler(mesh, element)
                 x = system.dof_vertices()
                 fn = f(x[:,0],x[:,1])
                 fig, ax[1+j,i] = plot.contour(ax[1+j,i], fig, fn, mesh, element,\
@@ -171,7 +171,7 @@ class TestPlot(unittest.TestCase):
         #
         ax = fig.add_subplot(3,3,2, projection='3d')
         element = QuadFE(2,'Q1') 
-        system = System(mesh, element)
+        system = Assembler(mesh, element)
         x = system.dof_vertices()
         fn = f(x[:,0],x[:,1])
         # Plot
@@ -197,7 +197,7 @@ class TestPlot(unittest.TestCase):
             for i in range(3):
                 etype = element_list[i]
                 element = QuadFE(2,etype)
-                system = System(mesh, element)
+                system = Assembler(mesh, element)
                 x = system.dof_vertices()
                 fn = f(x[:,0],x[:,1])
                 ax = fig.add_subplot(3,3,3*(j+1)+(i+1), projection='3d')

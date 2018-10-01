@@ -1,12 +1,12 @@
 import unittest
-from fem import System, QuadFE, DofHandler, GaussRule
+from fem import Assembler, QuadFE, DofHandler, GaussRule
 from mesh import Mesh, DCEL, QuadMesh, Mesh2D
 import numpy as np
 import numpy.linalg as la
              
 class TestSystem(unittest.TestCase):
     """
-    Test System class
+    Test Assembler class
     
     Purpose:
     
@@ -55,7 +55,7 @@ class TestSystem(unittest.TestCase):
         # Piecewise Linear
         # ---------------------------------------------------------------------
         V = QuadFE(2,'Q1')
-        s = System(mesh,V, n_gauss=(3,9))
+        s = Assembler(mesh,V, n_gauss=(3,9))
         #
         # Mass Matrix
         # 
@@ -156,7 +156,7 @@ class TestSystem(unittest.TestCase):
         node = mesh.root_node()
         for etype in ['Q2','Q3']:
             element = QuadFE(2,etype)
-            s = System(mesh,element)
+            s = Assembler(mesh,element)
             x = s.dof_vertices()
             ui = u(x[:,0],x[:,1])
             n_dofs = s.n_dofs()
@@ -286,7 +286,7 @@ class TestSystem(unittest.TestCase):
         
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
-            s = System(mesh,element)
+            s = Assembler(mesh,element)
             x = s.dof_vertices()
             u = trial_functions[etype]
             v = test_functions[etype]
@@ -320,7 +320,7 @@ class TestSystem(unittest.TestCase):
         f = lambda x,y: 2.0*(x*(1-x)+y*(1-y))+u(x,y)  # forcing term 
         for etype in ['Q2','Q3']:
             element = QuadFE(2,etype)
-            system = System(mesh,element)
+            system = Assembler(mesh,element)
             A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
                                   boundary_conditions=bc)
             ua = la.solve(A.toarray(), b)
@@ -344,7 +344,7 @@ class TestSystem(unittest.TestCase):
         element = QuadFE(2,'Q2')
         
                 
-        system = System(mesh,element)
+        system = Assembler(mesh,element)
         A,b = system.assemble(bilinear_forms=bf, linear_forms=lf,\
                               boundary_conditions=bc)
         
@@ -435,7 +435,7 @@ class TestSystem(unittest.TestCase):
         cell = mesh.root_node().cell() 
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
-            system = System(mesh,element)
+            system = Assembler(mesh,element)
             n_dofs = element.n_dofs()
             x_ref = element.reference_nodes()
             #
@@ -508,7 +508,7 @@ class TestSystem(unittest.TestCase):
         y = np.random.rand(5,2)
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
-            system = System(mesh,element)
+            system = Assembler(mesh,element)
             y_phys = system.cell_rule().map(cell, x=y)
             x_ref = system.dof_vertices()
             f_nodes = test_functions[etype][0](x_ref[:,0],x_ref[:,1]) 
@@ -527,7 +527,7 @@ class TestSystem(unittest.TestCase):
         u = lambda x,y: x*y**2
         v = lambda x,y: x**2*y
         element = QuadFE(2,'Q2')
-        system = System(mesh,element)
+        system = Assembler(mesh,element)
         x = system.dof_vertices()
         ui = u(x[:,0],x[:,1])
         vi = v(x[:,0],x[:,1])
@@ -556,7 +556,7 @@ class TestSystem(unittest.TestCase):
         x_test = np.random.rand(10,2)
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
-            system = System(mesh,element)
+            system = Assembler(mesh,element)
             f = test_functions[etype]
             f_test = f(x_test[:,0],x_test[:,1])
             # 
@@ -589,7 +589,7 @@ class TestSystem(unittest.TestCase):
     
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
-            system = System(mesh,element)
+            system = Assembler(mesh,element)
             f = test_functions[etype]             
             f_test = f(x_test[:,0],x_test[:,1])
             # -----------------------------------------------------------------
@@ -652,7 +652,7 @@ class TestSystem(unittest.TestCase):
         f = lambda x,y: (x-1)*(y-1)**2
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
-            system = System(mesh,element)
+            system = Assembler(mesh,element)
             x_loc = system.x_loc(cell)
             u = trial_functions[etype](x_loc[:,0],x_loc[:,1])
             v = test_functions[etype](x_loc[:,0],x_loc[:,1])
@@ -721,7 +721,7 @@ class TestSystem(unittest.TestCase):
         # 
         mesh = Mesh(grid=DCEL(box=[1,4,1,3]))
         element = QuadFE(2,'Q1')
-        system = System(mesh,element)
+        system = Assembler(mesh,element)
         cell = mesh.root_node().cell()
         node = mesh.root_node()
         A = system.form_eval((1,'ux','vx'),node)
@@ -747,7 +747,7 @@ class TestSystem(unittest.TestCase):
     def test_make_generic(self):
         mesh = Mesh.newmesh()
         element = QuadFE(2,'Q1')
-        system = System(mesh, element)
+        system = Assembler(mesh, element)
         cell = mesh.root_node().cell()
         self.assertEqual(system.make_generic(cell), 'cell', \
                          'Cannot convert cell to "cell"')
@@ -762,7 +762,7 @@ class TestSystem(unittest.TestCase):
     def test_parse_derivative_info(self):
         mesh = Mesh()
         element = QuadFE(2,'Q2')
-        system = System(mesh,element)
+        system = Assembler(mesh,element)
         self.assertEqual(system.parse_derivative_info('u'), (0,),\
                          'Zeroth derivative incorrectly parsed')
         self.assertEqual(system.parse_derivative_info('ux'), (1,0),\
@@ -787,7 +787,7 @@ class TestSystem(unittest.TestCase):
         
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(2,etype)
-            system = System(mesh, element, nested=True)
+            system = Assembler(mesh, element, nested=True)
             x_coarse = system.dofhandler().dof_vertices(flag=0)
             x_fine = system.dofhandler().dof_vertices(flag=1)
             ufn = functions[etype]

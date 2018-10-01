@@ -11,7 +11,7 @@ from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
 from mpl_toolkits.mplot3d import axes3d # @UnresolvedImport
 import numpy as np
-from fem import System, Function
+from fem import Assembler, Function
 
 
 class Plot(object):
@@ -329,7 +329,7 @@ class Plot(object):
                 'Require element information for node functions'
                 
                 xy = np.array([x.ravel(), y.ravel()]).transpose()
-                system = System(mesh,element)
+                system = Assembler(mesh,element)
                 z = system.f_eval(f, xy, derivatives=derivative)
                 cm = ax.contourf(x,y,z.reshape(ny,nx),200, cmap='viridis')
                 
@@ -382,7 +382,7 @@ class Plot(object):
                 raise Exception(mesh_error)
             
         x0,x1,y0,y1 = mesh.box()        
-        system = System(mesh,element)
+        system = Assembler(mesh,element)
         if shading:
             #
             # Colormap

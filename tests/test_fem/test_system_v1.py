@@ -1,13 +1,13 @@
 import unittest
 from mesh import QuadMesh, Mesh1D, convert_to_array
-from fem import QuadFE, System, Function, DofHandler, Form, Basis, Kernel
+from fem import QuadFE, Assembler, Function, DofHandler, Form, Basis, Kernel
 import numpy as np
 import scipy.sparse as sp
 
 
 class TestSystem(unittest.TestCase):
     """
-    Test System Class
+    Test Assembler Class
     """
     def test_constructor(self):
         """
@@ -31,7 +31,7 @@ class TestSystem(unittest.TestCase):
         # Single problem consisting of a single form
         # 
         problems = form
-        system = System(problems, mesh)
+        system = Assembler(problems, mesh)
         self.assertTrue(system.single_form)
         self.assertTrue(system.single_problem)
         
@@ -39,7 +39,7 @@ class TestSystem(unittest.TestCase):
         # Single problem 
         # 
         problems = [form, form]
-        system = System(problems, mesh)
+        system = Assembler(problems, mesh)
         self.assertTrue(system.single_problem)
         self.assertFalse(system.single_form)
         
@@ -47,7 +47,7 @@ class TestSystem(unittest.TestCase):
         # Multiple problems
         # 
         problems = [form, [form, form]]
-        system = System(problems, mesh)
+        system = Assembler(problems, mesh)
         self.assertFalse(system.single_problem)
         self.assertFalse(system.single_form)
         
@@ -81,7 +81,7 @@ class TestSystem(unittest.TestCase):
         
         # Initialize assembled system for correct problems 
         problems = [problem_1, problem_2]
-        system = System(problems, mesh)
+        system = Assembler(problems, mesh)
         
         
         # Check problem_1
@@ -100,7 +100,7 @@ class TestSystem(unittest.TestCase):
         
         # Check: error initializing assembled forms for problem 3 
         problems = [problem_3]
-        self.assertRaises(Exception, System.__init__, *(problems, mesh))
+        self.assertRaises(Exception, Assembler.__init__, *(problems, mesh))
         
         # =====================================================================
         # Initialize DofHandlers
@@ -114,7 +114,7 @@ class TestSystem(unittest.TestCase):
         v = Basis(Q3, 'v')
         
         form = Form(kernel, trial=u, test=v)
-        system = System(form, mesh)
+        system = Assembler(form, mesh)
         
         etypes = ['Q1','Q2','Q3']
         for etype in etypes:
@@ -132,7 +132,7 @@ class TestSystem(unittest.TestCase):
         Q1 = QuadFE(1,'Q1')
         ux = Basis(Q1, 'ux')
         v =  Basis(Q1, 'v')
-        system = System(Form(trial=ux, test=v), mesh)
+        system = Assembler(Form(trial=ux, test=v), mesh)
         
         cell = mesh.cells.get_child(0)
         
@@ -167,8 +167,8 @@ class TestSystem(unittest.TestCase):
                       
         problem = [form_1, form_2]
                       
-        # System
-        system = System(problem, mesh)
+        # Assembler
+        system = Assembler(problem, mesh)
         
         # Shape info on cell 
         cell = mesh.cells.get_child(0)
@@ -225,7 +225,7 @@ class TestSystem(unittest.TestCase):
         form = Form(trial=u, test=v)
 
         # Define system
-        system = System(form, mesh)
+        system = Assembler(form, mesh)
         
         # Get local information
         cell = mesh.cells.get_child(0)
@@ -274,7 +274,7 @@ class TestSystem(unittest.TestCase):
         
         # Define form and system
         form = Form(kernel=kernel, test=v)
-        system = System(form, mesh)
+        system = Assembler(form, mesh)
         
         # Assemble system
         system.assemble()
@@ -309,7 +309,7 @@ class TestSystem(unittest.TestCase):
         form = Form(kernel = kernel)
         
         # Generate and assemble the system
-        system = System(form, mesh)
+        system = Assembler(form, mesh)
         system.assemble()
         
         # Check 
@@ -332,7 +332,7 @@ class TestSystem(unittest.TestCase):
         
         form = Form(trial=u, test=u)
         
-        system = System(form, mesh)
+        system = Assembler(form, mesh)
         system.assemble()
         
         #print(system.af[0]['bilinear'])
@@ -371,7 +371,7 @@ class TestSystem(unittest.TestCase):
         # 
         v = Basis(Q1, 'v')
         form = Form(kernel=kernel, test=v)
-        system = System(form, mesh)
+        system = Assembler(form, mesh)
         system.assemble()
         
         one = np.ones(n_points)
@@ -391,7 +391,7 @@ class TestSystem(unittest.TestCase):
         form = Form(kernel=kernel, test=v, trial=u)
         
         # Define and assemble system
-        system = System(form, mesh)
+        system = Assembler(form, mesh)
         system.assemble()
         
         # Extract data from bilinear form
@@ -507,7 +507,7 @@ class TestSystem(unittest.TestCase):
         L = Form(kernel=Kernel(f), test=u)
         
         problem = [a,L]
-        system = System(problem, mesh)
+        system = Assembler(problem, mesh)
         system.assemble()
         
         print(type(system.af[0]['bilinear']['rows']))
@@ -547,7 +547,7 @@ class TestSystem(unittest.TestCase):
         for vtx in mesh.get_boundary_vertices():
             vtx.mark(1)
     
-        system.apply_dirichlet_bc('D1') 
+        system.extract_dirichlet_nodes('Doi1') 
         
         print(system.af[0]['dirichlet_cols'])
         
@@ -572,7 +572,7 @@ class TestSystem(unittest.TestCase):
         
         mesh = Mesh1D(resolution=(1,))
         element = QuadFE(1, 'Q1')
-        system = System(mesh, element)
+        system = Assembler(mesh, element)
         bf = [(1,'u','v')]
         #A = system.assemble(bf)
     '''
@@ -618,7 +618,7 @@ class TestSystem(unittest.TestCase):
         etypes = ['DQ0', 'Q1','Q2','Q3']
         for etype in etypes:
             element = QuadFE(1, etype)
-            system = System(mesh, element)
+            system = Assembler(mesh, element)
             one = Function(1,'constant')
             form = Form(one, 'u', 'v')
             A = form.eval(I)
@@ -634,7 +634,7 @@ class TestSystem(unittest.TestCase):
         mesh = QuadMesh()
         cell = mesh.cells.get_child(0)
         element = QuadFE(2,'Q1')
-        system = System(mesh, element)
+        system = Assembler(mesh, element)
         one = Function(1, 'constant')
         lf = (one,'v')
         bf = (one,'u','v')
@@ -691,7 +691,7 @@ class TestSystem(unittest.TestCase):
             
             # Define element and system
             element = QuadFE(2,etype)
-            system = System(mesh,element)
+            system = Assembler(mesh,element)
             
             # Extract local reference vertices
             x_loc = system.x_loc(cell)
@@ -770,7 +770,7 @@ class TestSystem(unittest.TestCase):
         # 
         mesh = QuadMesh(box=[1,4,1,3])
         element = QuadFE(2,'Q1')
-        system = System(mesh,element)
+        system = Assembler(mesh,element)
         cell = mesh.cells.get_child(0)
         A = system.form_eval((one,'ux','vx'),cell)
         #

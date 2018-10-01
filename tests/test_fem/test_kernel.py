@@ -1,6 +1,6 @@
 import unittest
 from mesh import QuadMesh, Mesh1D, convert_to_array, Tree
-from fem import QuadFE, System, Function, GaussRule, Form, Kernel, DofHandler
+from fem import QuadFE, Assembler, Function, GaussRule, Form, Kernel, DofHandler
 import numpy as np
 import matplotlib.pyplot as plt
 
