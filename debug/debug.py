@@ -1,118 +1,198 @@
-from mesh import QuadMesh
-from fem import DofHandler, Assembler, QuadFE
-from fem import Kernel, Form, Basis, Function
+from fem import Function
+from fem import QuadFE
+from fem import DofHandler
+from fem import Kernel
+from fem import Basis
+from fem import Form
+from fem import Assembler
 from fem import LinearSystem
 from plot import Plot
+from mesh import convert_to_array
+from mesh import QuadMesh
+from mesh import Mesh1D
 import matplotlib.pyplot as plt
 import scipy.sparse as sp
+import scipy
 import numpy as np
 
-def bnd_fn_1(he):
-    """
-    
-    """
-    x1, y1 = he.base().coordinates()
-    x2, y2 = he.head().coordinates()
-    if np.abs(x1)<1e-9 and np.abs(x2)<1e-9:
-        return True
-    else:
-        return False
-    
 
-def bnd_fn_2(he):
-    """
-    """
-    x1, y1 = he.base().coordinates()
-    x2, y2 = he.head().coordinates()
-    if np.abs(x1-1)<1e-9 and np.abs(x2-1)<1e-9:
-        return True
-    else:
-        return False
-    
-# 
-# Define mesh
-# 
-mesh = QuadMesh(resolution=(2,2))
-cell = mesh.cells.get_child(2)
-cell.mark(1)
-mesh.cells.refine(refinement_flag=1)
 
-mesh.mark_boundary_vertices('D1',bnd_fn_1)
-mesh.mark_boundary_vertices('D2',bnd_fn_2)
-for he in mesh.half_edges.get_leaves():
-    if he.is_marked('D1'):
-        print('D1', [he.base().coordinates(),he.head().coordinates()])
-    elif he.is_marked('D2'):
-        print('D2', [he.base().coordinates(),he.head().coordinates()])
-        
-        
 #
-# Define Elements
+# Define mesh
+#  
+mesh = QuadMesh(resolution=(2,1))
+mesh.cells.get_child(1).mark(1)
+mesh.cells.refine(refinement_flag=1)
+    
 # 
-element = QuadFE(2, 'Q1')
-dofhandler = DofHandler(mesh, element)
+# Define element
+# 
+Q1 = QuadFE(2,'Q1')
+dofhandler = DofHandler(mesh, Q1)
 dofhandler.distribute_dofs()
 dofhandler.set_hanging_nodes()
-hn = dofhandler.get_hanging_nodes()
-print(hn=={})
-#
-# Plot Dofs
-#
-fig = plt.figure()
-ax = fig.add_subplot(1,1,1)
-plot = Plot(quickview=False)
-plot.mesh(mesh, ax=ax, dofhandler=dofhandler, dofs=True)
-#plt.show()
 
+print(dofhandler.constraints)
+print(dofhandler.get_hanging_nodes())
 #
-# Set up system
+# Define exact solution
 # 
-ux = Basis(element, 'ux')
-uy = Basis(element, 'uy')
-u  = Basis(element, 'u')
+ue = Function(lambda x,y: x, 'nodal', dofhandler=dofhandler)
 
-one = Kernel(Function(1,'constant'))
-problem = [Form(one, trial=ux, test=ux), Form(one, test=u)]
+#
+# Assemble weak form
+# 
+one = Function(1, 'constant')
+zero = Function(0, 'constant')
+u = Basis(Q1, 'u')
+ux = Basis(Q1, 'ux')
+uy = Basis(Q1, 'uy')
 
-assembler = Assembler(problem, mesh)
+ax = Form(kernel=Kernel(one), trial=ux, test=ux)
+ay = Form(kernel=Kernel(one), trial=uy, test=uy)
+L = Form(kernel=Kernel(zero), test=u)
+
+assembler = Assembler([ax, ay, L], mesh)
 assembler.assemble()
-
-equation = LinearSystem(assembler, compressed=True)
-equation.extract_dirichlet_nodes('D1')
-equation.extract_dirichlet_nodes('D2')
-print(equation.A().todense().shape)
-u = equation.solve()
-
-i_free = equation.free_indices()
-print(sum(i_free))
-for d in equation.dirichlet:
-    print(int(d['mask']))
-#print([d['mask'] for d in equation.dirichlet])
 
 rows = assembler.af[0]['bilinear']['rows']
 cols = assembler.af[0]['bilinear']['cols']
-dofs = assembler.af[0]['bilinear']['row_dofs']
 vals = assembler.af[0]['bilinear']['vals']
+dofs = assembler.af[0]['bilinear']['row_dofs']
 
-problem = assembler.af[0]
-print(problem['linear'].keys())
-A = sp.coo_matrix((vals,(rows,cols)))
-Ad = A.todense()
+b = assembler.af[0]['linear']['vals']
 
-#A, b = system.extract_dirichlet_nodes('D1')
+n = len(dofs)
+
+#
+# Check bilinear form by integrating
+# 
+A = sp.coo_matrix((vals, (rows, cols)))
+
+assert np.allclose(np.sum(np.ones(n)*A.dot(np.ones(n))),0)
+
+u = Function(lambda x,y: 2*x+x*y-y, 'nodal', dofhandler=dofhandler)
+v = Function(lambda x,y: -x+2*y, 'nodal', dofhandler=dofhandler)
+
+assert np.allclose(np.sum(u.fn()*A.dot(v.fn())), -3.5)
 
 
+f = Function(lambda x,y: x + y, 'nodal', dofhandler=dofhandler)
+fx = f.fn()
+uex = ue.fn()
+assert np.allclose(np.sum(uex*A.dot(fx)),1)
 
 
-x = np.arange(4)
-y = np.array([1,3,6,2])
-ii = np.array([0,1,1,1,0,3,2,2])
-print(y[ii])
-z = np.array([3,2])
-dirichlet = np.zeros(4, dtype=np.bool)
-for zi in z:
-    dirichlet[y==zi] = True
-print(x[dirichlet])
-print(x[~dirichlet])
-print(y)
-print(dirichlet)
+print(12*A.todense())
+
+print('look here')
+AD = A.todense()
+p = np.zeros(uex.shape)
+p[:] = AD[2][:] + 0.5*AD[8][:]
+
+
+print(p)
+print(uex.dot(p))
+
+#
+# Form linear system
+# 
+system = LinearSystem(assembler, compressed=False)
+#x = system.dofhandler.get_dof_vertices(dofs)
+#x = convert_to_array(x)
+
+
+print(A.dot(ue.fn())-b)
+
+
+system.extract_hanging_nodes()
+
+print('*'*60)
+print(uex)
+print(system.A().dot(uex)-system.b())
+print('*'*60)
+
+
+print('marking dirichlet vertices')
+
+# Mark Dirichlet Regions
+f_left = lambda x, dummy: np.abs(x)<1e-9
+f_right = lambda x, dummy: np.abs(x-1)<1e-9
+f_top = lambda dummy, y: np.abs(y-1)<1e-9
+f_bottom = lambda dummy, y: np.abs(y)<1e-9
+
+
+mesh.mark_region('left', f_left, on_boundary=True)
+mesh.mark_region('right', f_right, on_boundary=True)
+mesh.mark_region('top', f_top, on_boundary=True)
+mesh.mark_region('bottom', f_bottom, on_boundary=True)
+
+# Getting mesh 
+print(system.has_hanging_nodes())
+#print(system.hanging_nodes)
+
+#print('*'*60)
+#print(uex)
+#print(system.A().dot(uex)-system.b())
+#print('*'*60)
+    
+# Extract Dirichlet conditions 
+system.extract_dirichlet_nodes('left', 0)
+
+
+#print(6*system.b())
+#print(6*system.A().todense())
+
+system.extract_dirichlet_nodes('right',1)
+print(system.dofhandler.constraints)
+
+system.compress()
+
+
+#system.extract_dirichlet_nodes('top', ue)
+#system.extract_dirichlet_nodes('bottom', ue)
+
+print(12*system.b())
+print(12*system.A().todense())
+
+print('*'*60)
+print(uex)
+print(system.A().dot(uex)-system.b())
+print(np.linalg.det(system.A().todense()))
+print('*'*60)
+
+
+A = system.A().todense()
+ua = np.linalg.solve(A,system.b())
+
+
+print(ua)
+
+#print('*'*60)
+#print(uex)
+#print(system.A().dot(uex)-system.b())
+#print('*'*60)
+
+print(12*system.A().todense())
+print(12*system.b())
+
+#plt.imshow(A.todense()) 
+#plt.show()
+A = system.A().todense()
+print(np.linalg.det(A))
+
+#plot = Plot(quickview=False)
+system.solve()
+u = system.sol(as_function=True)
+
+plot = Plot(quickview=False)
+fig = plt.figure()
+ax = fig.gca(projection='3d')
+ax = plot.wire(u, axis=ax)
+#ax = plot.mesh(mesh, axis=ax, dofhandler=system.dofhandler, dofs=True)
+plt.show()
+"""
+DQ0 = QuadFE(2,'DQ0')
+f = Function(lambda x, y: y*x**2, 'nodal', mesh=mesh, element=DQ0)
+plot.wire(f, mesh)
+"""

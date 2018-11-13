@@ -30,13 +30,13 @@ class TestPlot(unittest.TestCase):
         # Define mesh
         # 
         grid = DCEL(resolution=(2,2))
-        mesh = Mesh(grid=grid)
+        mesh = Mesh(dcel=grid)
         mesh.refine()      
         mesh.root_node().children[1,1].mark(1)
         mesh.refine(1)
         
         # Plot simple mesh
-        ax[0,0] = plot.mesh(ax[0,0], mesh)
+        ax[0,0] = plot.mesh(mesh, axis=ax[0,0])
         
         #
         # Flag a few cells

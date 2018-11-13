@@ -3,7 +3,8 @@ from fem import Assembler, QuadFE, DofHandler, GaussRule
 from mesh import Mesh, DCEL, QuadMesh, Mesh2D
 import numpy as np
 import numpy.linalg as la
-             
+
+'''             
 class TestSystem(unittest.TestCase):
     """
     Test Assembler class
@@ -743,7 +744,7 @@ class TestSystem(unittest.TestCase):
     def test_edge_rule(self):
         pass
     
-    '''          
+    """          
     def test_make_generic(self):
         mesh = Mesh.newmesh()
         element = QuadFE(2,'Q1')
@@ -756,7 +757,7 @@ class TestSystem(unittest.TestCase):
             self.assertEqual(system.make_generic((edge,direction)),\
                              ('edge',direction),\
                              'Cannot convert edge to generic edge')
-    '''
+    """
     
             
     def test_parse_derivative_info(self):
@@ -817,4 +818,5 @@ class TestSystem(unittest.TestCase):
             # 
             R = system.restrict(0, 1)
             self.assertTrue(np.allclose(np.dot(R,u_fine),u_coarse,1e-9))
+'''
    

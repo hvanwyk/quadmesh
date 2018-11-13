@@ -125,10 +125,11 @@ class TestGaussRule(unittest.TestCase):
         
         # Map rule to physical entity
         x_phys, jacobian = e.reference_map(x_ref, jacobian=True)
+    
         x_phys = convert_to_array(x_phys, dim=2)
         fvec = f(x_phys[:,0],x_phys[:,1])
         
-        jac = np.linalg.norm(jacobian)
+        jac = np.linalg.norm(jacobian[0])
         self.assertAlmostEqual(np.dot(fvec,w)*jac,np.sqrt(2)/4,places=10,\
                                msg='Failed to integrate x^2y.')
         self.assertAlmostEqual(np.sum(w)*jac, np.sqrt(2), places=10,\

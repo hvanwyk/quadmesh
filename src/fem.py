@@ -1053,7 +1053,7 @@ class Function(object):
             self.dofhandler.distribute_dofs()
             self.dofhandler.set_dof_vertices()
             self.__global_dofs = \
-                self.dofhandler.get_global_dofs(subforest_flag=subforest_flag)
+                self.dofhandler.get_region_dofs(subforest_flag=subforest_flag)
         #
         # Store function type
         #
@@ -1201,7 +1201,7 @@ class Function(object):
                 self.__f[pos] = v
             else:
                 self.__f = v
-                              
+                                          
      
     def mesh_compatible(self, mesh, subforest_flag=None):                          
         """
@@ -1490,7 +1490,7 @@ class Function(object):
                     # Evaluate function at local dofs 
                     # 
                     idx_cell = [self.__global_dofs.index(i) for i in \
-                                self.dofhandler.get_global_dofs(cell)]  
+                                self.dofhandler.get_cell_dofs(cell)]  
                     if self.n_samples() is None:
                         f_loc = self.__f[idx_cell]
                     elif samples is 'all':
@@ -1562,7 +1562,7 @@ class Function(object):
         # 
         dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs(subforest_flag=subforest_flag)
-        dofs = dofhandler.get_global_dofs(subforest_flag=subforest_flag)
+        dofs = dofhandler.get_region_dofs(subforest_flag=subforest_flag)
         x = dofhandler.get_dof_vertices(dofs)       
         #
         # Evaluate function at dof vertices
@@ -1612,7 +1612,7 @@ class Function(object):
         #
         # Determine dof vertices
         #
-        dofs = dofhandler.get_global_dofs(subforest_flag=flag)
+        dofs = dofhandler.get_region_dofs(subforest_flag=flag)
         x = dofhandler.get_dof_vertices(dofs)       
         #
         # Evaluate function at dof vertices
@@ -1749,7 +1749,12 @@ class DofHandler(object):
         self.element = element
         self.mesh = mesh
         self.__global_dofs = {}
-        self.__hanging_nodes = {}
+        self.constraints = {'constrained_dofs': [], 
+                            'supporting_dofs': [], 
+                            'coefficients': [],
+                            'affine_terms': []}
+        self.__hanging_nodes = {}  # TODO: delete
+        self.__l2g = {}     # TODO: delete
         self.__dof_count = 0
         self.__dof_vertices = {}
     
@@ -1822,7 +1827,7 @@ class DofHandler(object):
         Share cell's dofs with its children (only works for quadcells)
         """
         assert cell.has_children(), 'Cell should have children'
-        cell_dofs = self.get_global_dofs(cell)
+        cell_dofs = self.get_cell_dofs(cell)
         for child in cell.get_children():
             dofs = []
             pos = []
@@ -1870,7 +1875,7 @@ class DofHandler(object):
                     #
                     self.share_dofs_with_neighbors(cell, half_edge, flag=flag)
         else:
-            dofs = self.get_global_dofs(cell, pivot)
+            dofs = self.get_cell_dofs(cell, pivot, interior=True)
             if len(dofs)!=0:
                 if isinstance(pivot, Vertex):
                     # 
@@ -1932,7 +1937,7 @@ class DofHandler(object):
             # Cell not in dictionary -> add it
             # 
             self.__global_dofs[cell] = [None]*self.element.n_dofs()
-        cell_dofs = self.get_global_dofs(cell)  
+        cell_dofs = self.get_cell_dofs(cell)  
         
         if not None in cell_dofs:
             #
@@ -1986,7 +1991,7 @@ class DofHandler(object):
                         self.assign_dofs(dofs, c, v)
 
                     # Throw out used dofs
-                    vertex_dofs = self.get_global_dofs(cell, vertex)
+                    vertex_dofs = self.get_cell_dofs(cell, vertex)
                     for dof in dofs:
                         if dof in vertex_dofs:
                             dofs.pop(dofs.index(dof))
@@ -2026,7 +2031,7 @@ class DofHandler(object):
                             self.assign_dofs(twin_dofs, twin.cell(), twin)
                         
                         # Throw out used dofs
-                        he_dofs = self.get_global_dofs(cell, half_edge)
+                        he_dofs = self.get_cell_dofs(cell, half_edge, interior=True)
                         for dof in he_dofs:
                             if dof in dofs:
                                 dofs.remove(dof)
@@ -2044,7 +2049,7 @@ class DofHandler(object):
                     self.assign_dofs(dofs, cell, cell)
                     
                     # Throw out used dofs
-                    cell_dofs = self.get_global_dofs(cell, cell)
+                    cell_dofs = self.get_cell_dofs(cell, cell, interior=True)
                     for dof in dofs:
                         if dof in cell_dofs:
                             dofs.pop(dofs.index(dof))
@@ -2093,7 +2098,7 @@ class DofHandler(object):
             # Cell not in dictionary -> add it
             # 
             self.__global_dofs[cell] = [None]*self.element.n_dofs()
-        cell_dofs = self.get_global_dofs(cell)  
+        cell_dofs = self.get_cell_dofs(cell)  
         
                 
         if pos is not None:
@@ -2219,7 +2224,8 @@ class DofHandler(object):
         
             dofs: int, list of dofs associated with the given entity
             
-        TODO: Include support for arbitrary Vertex (Periodicity?)
+        TODO: Delete
+            
         """
         if entities is None:
             #
@@ -2282,8 +2288,8 @@ class DofHandler(object):
                     dofs += [i for i in range(dof_start, dof_start + dpc)]
         dofs.sort()
         return dofs
+       
             
-             
     def get_global_dofs(self, cell=None, entity=None, subforest_flag=None, 
                         mode='breadth-first', all_dofs=False):
         """
@@ -2307,6 +2313,8 @@ class DofHandler(object):
         Outputs:
         
              global_dofs: list of global dofs 
+             
+        TODO: Delete
         """
         # =====================================================================
         # Get everything
@@ -2392,8 +2400,331 @@ class DofHandler(object):
                 cell_dofs = self.__global_dofs[cell]
                 i = cell.n_vertices()*dpv + cell.n_half_edges()*dpe
                 return cell_dofs[i:i+dpc]
-        return None
+        return None         
+    ''' 
+    def get_global_dofs(self, cell=None, entity=None, interior=False):
+        """
+        Return all global dofs corresponding to a given cell, or one of its Vertices/HalfEdges 
+        edges.
         
+        Inputs:
+        
+            *cell: Cell, whose dofs we seek. 
+            
+            *entity: Vertex/HalfEdge within cell, whose dofs we seek
+            
+            *subforest_flag: flag, specifying submesh.
+            
+            *mode: str, ['breadth-first'] or 'depth-first', mode of mesh traversal
+            
+            *all_dofs: bool, if True return all dofs in hierarchical mesh
+                if False return only dofs associated with LEAF nodes.
+            
+            
+        Outputs:
+        
+             global_dofs: list of global dofs 
+        """
+        # =====================================================================
+        # No cell specified -> get all dofs within region
+        # =====================================================================
+        if cell is None:
+            mesh_dofs = set()
+            cells = self.mesh.cells
+            if hierarchical_traversal:
+                for cell in cells.traverse(flag=subforest_flag, mode=mode):
+                    #
+                    # Traverse all cells in hierarchichal mesh
+                    # 
+                    if entity is None:
+                        #
+                        # No entity is specified -> return all dofs in the cell
+                        # 
+                        mesh_dofs = mesh_dofs.union(self.__global_dofs[cell])
+                    elif 
+            else:
+                for cell in cells.get_leaves(subforest_flag=subforest_flag, \
+                                             mode=mode):
+                    #
+                    # Get only LEAF cells
+                    # 
+                    
+                    
+                
+            if entity is None:
+                
+              
+         
+            mesh_dofs = set()
+            if all_dofs:
+                #
+                # Return all dofs in the hierarchical mesh
+                # 
+                cells = self.mesh.cells
+                for cell in cells.traverse(flag=subforest_flag, mode=mode):
+                    mesh_dofs = mesh_dofs.union(self.__global_dofs[cell])
+            else:
+                #
+                # Return only dofs corresponding to LEAF nodes
+                # 
+                cells = self.mesh.cells
+                for cell in cells.get_leaves(subforest_flag=subforest_flag, mode=mode):
+                    mesh_dofs = mesh_dofs.union(self.__global_dofs[cell])
+            return list(mesh_dofs)
+        
+        # =====================================================================
+        # Cell is specified
+        # =====================================================================    
+        if entity is None:
+            if cell is None or cell not in self.__global_dofs:
+                return None
+            else:
+                return self.__global_dofs[cell]
+        
+        if entity is not None:
+            # =================================================================
+            # HalfEdge or Vertix's Dof(s)
+            # =================================================================
+            if cell is None or cell not in self.__global_dofs:
+                return None
+            
+            if isinstance(entity, Vertex):
+                # =============================================================
+                # Vertex (need a cell)
+                # =============================================================
+                assert cell is not None, 'Need cell.'
+                cell_dofs = self.__global_dofs[cell]
+                i = 0
+                dpv = self.element.n_dofs('vertex')
+                for vertex in cell.get_vertices():
+                    if vertex==entity:
+                        return cell_dofs[i:i+dpv]
+                    i += dpv
+            elif isinstance(entity, Interval):
+                # =============================================================
+                # Interval (interior)
+                # =============================================================
+                assert cell is not None, 'Need cell.'
+                cell_dofs = self.__global_dofs[cell]
+                dpv = self.element.n_dofs('vertex')
+                dpe = self.element.n_dofs('edge')
+                i = 2*dpv
+                return cell_dofs[i:i+dpe]
+            
+            elif isinstance(entity, HalfEdge):
+                # =============================================================
+                # HalfEdge
+                # =============================================================
+                dpv = self.element.n_dofs('vertex')
+                dpe = self.element.n_dofs('edge')
+                cell = entity.cell()
+                cell_dofs = self.__global_dofs[cell]
+                i = cell.n_vertices()*dpv
+                for half_edge in cell.get_half_edges():
+                    if entity==half_edge:
+                        return cell_dofs[i:i+dpe]
+                    i += dpe
+            elif isinstance(entity, Cell):
+                # =============================================================
+                # Cell (interior)
+                # =============================================================
+                dpv = self.element.n_dofs('vertex')
+                dpe = self.element.n_dofs('edge')
+                dpc = self.element.n_dofs('cell')
+                cell_dofs = self.__global_dofs[cell]
+                i = cell.n_vertices()*dpv + cell.n_half_edges()*dpe
+                return cell_dofs[i:i+dpc]
+        return None
+    '''    
+        
+    def get_cell_dofs(self, cell, entity=None, interior=False, doftype='global', 
+                      subforest_flag=None):
+        """
+        Returns all (global/local) dofs of a specific entity within a cell
+        
+        
+        Inputs:
+        
+            cell: Cell, cell within which to seek global dofs 
+            
+            entity: Vertex/HalfEdge, sub-entity
+            
+            interior: bool, if True only return dofs associated with entity interior
+            
+                cell: No dofs associated with half-edges or vertices
+                
+                half_edge: No dofs associated with endpoint vertices
+                
+                interval: No dofs associated with endpoint vertices 
+
+            subforest_flag: str/int/tuple, 
+            
+        Outputs:
+        
+            dofs: int, list of global dofs associated with entity within
+                cell.
+                
+        Note: Replaces ```get_global_dofs``` method
+        """
+        if doftype=='global':
+            #
+            # Global dofs sought
+            # 
+            # Check that we have global dofs
+            if cell is None or cell not in self.__global_dofs:
+                return None
+            
+            #
+            # Check whether we are on a submesh
+            # 
+            if subforest_flag is not None:
+                cell_dofs = self.__global_dofs[subforest_flag][cell]
+            else:
+                cell_dofs = self.__global_dofs[cell]
+        elif doftype=='local':
+            #
+            # Local dofs sought
+            # 
+            cell_dofs = [i for i in range(self.element.n_dofs())]
+            if cell is None:
+                return cell_dofs
+             
+        if entity is None:
+            # =================================================================
+            # No entity specified: Return all cell dofs
+            # =================================================================
+            dofs = cell_dofs
+        
+        elif isinstance(entity, Vertex):
+            # =============================================================
+            # Vertex
+            # =============================================================
+            i = 0
+            dpv = self.element.n_dofs('vertex')
+            for vertex in cell.get_vertices():
+                if vertex==entity:
+                    dofs = cell_dofs[i:i+dpv]
+                    break
+                i += dpv
+                
+        elif isinstance(entity, Interval):
+            # =============================================================
+            # Interval
+            # =============================================================
+            if not interior:
+                #
+                # All dofs within interval (equivalent to entity=None)
+                # 
+                dofs = cell_dofs
+            else:
+                #
+                # Inly dofs interior to interval
+                #  
+                dpv = self.element.n_dofs('vertex')
+                dpe = self.element.n_dofs('edge')
+                i = 2*dpv
+                dofs = cell_dofs[i:i+dpe]
+        
+        elif isinstance(entity, HalfEdge):
+            # =============================================================
+            # HalfEdge
+            # =============================================================
+            # Dofs per entity
+            dpv = self.element.n_dofs('vertex')
+            dpe = self.element.n_dofs('edge')
+            
+            dofs = []
+            if not interior:
+                #
+                # Return all dofs within halfedge (including endpoints)   
+                #
+                end_points = entity.get_vertices()
+                i = 0
+                for v in cell.get_vertices():
+                    #
+                    # Add endpoint vertices
+                    # 
+                    if v in end_points:
+                        dofs.append(cell_dofs[i])
+                    i += dpv 
+            else:
+                #
+                # Return only dofs interior to half-edge
+                # 
+                i = cell.n_vertices()*dpv
+            #
+            # Add dofs on the interior of the edge
+            # 
+            for half_edge in cell.get_half_edges():
+                if entity==half_edge:
+                    dofs.extend(cell_dofs[i:i+dpe])
+                    break
+                i += dpe
+                    
+        elif isinstance(entity, Cell):
+            # =============================================================
+            # Cell 
+            # =============================================================
+            # Dofs per entity
+            dpv = self.element.n_dofs('vertex')
+            dpe = self.element.n_dofs('edge')
+            dpc = self.element.n_dofs('cell')
+            
+            if not interior:
+                #
+                # Return all cell dofs (same as entity=None)
+                # 
+                dofs = cell_dofs
+            else:
+                #
+                # Return only dofs interior to cell
+                #
+                i = cell.n_vertices()*dpv + cell.n_half_edges()*dpe
+                dofs = cell_dofs[i:i+dpc]
+        #
+        # Return list of dofs
+        # 
+        return dofs
+    
+    
+    def get_region_dofs(self, entity_type='cell', entity_flag=None, 
+                        interior=False, on_boundary=False, subforest_flag=None):
+        """
+        Returns all global dofs of a specific entity type within a mesh region.
+        
+        
+        Inputs: 
+        
+            entity_type: str, specifying the type of entities whose dofs we seek.
+                If None, then return all dofs within cell. Possible values:
+                'cell', 'half_edge', 'interval', 'vertex'
+            
+            entity_flag: str/int/tuple, marker used to specify subset of entities
+                
+            interior: bool, if True only return dofs associated with entity interior
+                (See "get_cell_global_dofs")
+                
+            on_boundary: bool, if True, seek only dofs on the boundary
+            
+            subforest_flag: str/int/tuple, submesh marker
+                
+                
+        Output:
+        
+            dofs: list of all dofs associated with region
+        """
+        dofs = set()
+        for entity, cell in self.mesh.get_region(entity_flag, entity_type, 
+                                                 on_boundary=on_boundary,
+                                                 subforest_flag=subforest_flag,
+                                                 return_cells=True):
+            #
+            # Iterate over all entities within region
+            # 
+            new_dofs = self.get_cell_dofs(cell, entity, interior=interior)
+            dofs = dofs.union(new_dofs)
+        return list(dofs)
+    
     
     def set_dof_vertices(self, subforest_flag=None):
         """
@@ -2410,7 +2741,7 @@ class DofHandler(object):
         for cell in self.mesh.cells.traverse(flag=subforest_flag):
                         
             # Retrieve cell's dofs
-            dofs = self.get_global_dofs(cell)
+            dofs = self.get_cell_dofs(cell)
             
             if not all([dof in self.__dof_vertices for dof in dofs]):
                 #
@@ -2444,7 +2775,7 @@ class DofHandler(object):
         
             dofs: int, list of global dofs
             
-            *cells [None]: dictionary of (dof, Cell), specifying the cell
+            *cells [None]: dictionary of type {dof: Cell}, specifying the cell
             in which the dofs must occur. 
         """
         is_singleton = False
@@ -2453,7 +2784,7 @@ class DofHandler(object):
             is_singleton = True
         
         if dofs is None:
-            dofs = self.get_global_dofs(subforest_flag=subforest_flag)
+            dofs = self.get_region_dofs(subforest_flag=subforest_flag)
         vertices = []
         for dof in dofs:
             if len(self.__dof_vertices[dof])==1:
@@ -2509,7 +2840,176 @@ class DofHandler(object):
         #
         dofs = self.get_global_dofs(all_dofs=all_dofs, subforest_flag=subforest_flag)
         return len(dofs)
-          
+      
+      
+    def set_l2g_map(self, subforest_flag=None):
+        """
+        Set up the mapping expressing the global basis functions in terms of
+        local ones. This is used during assembly to ensure that the solution
+        is continuous across edges with hanging nodes
+        
+        
+        Input:
+        
+            subforest_flag: str/int/tuple, marker specifiying submesh.
+            
+            
+        Outputs:
+        
+            None
+            
+        
+        Internal:
+        
+            self.__l2g[subforest_flag]: dictionary, indexed by cells, whose 
+                entries l2g[cell] are themselves dictionaries, indexed by 
+                global dofs and whose values are the numpy arrays of 
+                coefficients of the associated global basis function in terms 
+                of the local basis.
+                
+                
+        Note: 
+        
+            Ideally, this should be done within the ```set_hanging_nodes```
+            method. 
+            
+        TODO: I think this is not necessary
+        
+        """  
+        mesh = self.mesh
+        element = self.element
+        l2g = dict.fromkeys(mesh.cells.get_leaves(subforest_flag=subforest_flag))
+        for cell in mesh.cells.get_leaves(subforest_flag=subforest_flag):
+            n_dofs = element.n_dofs()
+            gdofs = self.get_cell_dofs(cell)
+            #
+            # Initialize local-to-global map
+            # 
+            if l2g[cell] is None:
+                #
+                # Dictionary keys are global dofs in cell
+                # 
+                l2g[cell] = dict.fromkeys(gdofs)
+                #
+                # Values are expansion coefficients ito local basis
+                # 
+                I = np.identity(n_dofs)
+                for i in range(n_dofs):
+                    l2g[cell][gdofs[i]] = I[i,:]
+            
+            if self.mesh.dim()==1:
+                #
+                # One dimensional mesh has no hanging nodes
+                # 
+                continue
+            #
+            # Search for hanging nodes
+            #     
+            for he in cell.get_half_edges():
+                if he.twin() is not None and he.twin().has_children():
+                    #
+                    # Edge with hanging nodes
+                    # 
+                    
+                    # Collect dofs on long edge
+                    le_ldofs = self.get_cell_dofs(cell, entity=he, doftype='local')
+                    le_gdofs = [gdofs[ldof] for ldof in le_ldofs]
+                    
+                    #
+                    # Iterate over subtending cells
+                    # 
+                    twin = he.twin()
+                    for che in twin.get_children():
+                        subcell = che.cell()
+                        #
+                        # Initialize mapping for sub-cell
+                        # 
+                        if l2g[subcell] is None:
+                            #
+                            # Dictionary keys are global dofs in cell
+                            # 
+                            sc_gdofs = self.get_cell_dofs(subcell)
+                            l2g[subcell] = dict.fromkeys(sc_gdofs)
+                            #
+                            # Values are expansion coefficients ito local basis
+                            # 
+                            I = np.identity(n_dofs)
+                            for i in range(n_dofs):
+                                l2g[subcell][sc_gdofs[i]] = I[i,:]
+                                
+                        # =============================================================
+                        # Expansion coefficients of global basis function on sub-cell 
+                        # =============================================================
+                    
+                        #    
+                        # Local dofs on sub-edge
+                        #    
+                        se_ldofs = self.get_cell_dofs(subcell, entity=che, \
+                                                      doftype='local')
+                        
+                        #
+                        # Get vertices associated with these local dofs
+                        # 
+                        rsub = element.reference_nodes()[se_ldofs,:]
+                        x = subcell.reference_map(rsub, mapsto='physical')
+                        
+                        #
+                        # Evaluate coarse scale basis functions at fine scale vertices
+                        # 
+                        r = cell.reference_map(x, mapsto='reference')
+                        
+                        for le_ldof, le_gdof in zip(le_ldofs, le_gdofs):
+                            #
+                            # Evaluate global basis function at all sub-edge dof-verts
+                            # 
+                            vals = element.phi(le_ldof,r)
+                            coefs = np.zeros(n_dofs)
+                            coefs[se_ldofs] = vals
+                            l2g[subcell][le_gdof] = coefs
+                            
+                        #
+                        # Constrain hanging node dofs
+                        #
+                        # Global dofs on small edge
+                        se_gdofs = [sc_gdofs[ldof] for ldof in se_ldofs]
+                        for se_ldof, se_gdof in zip(se_ldofs, se_gdofs):
+                            if se_gdof not in le_gdofs:
+                                #
+                                # Hanging Dof must be adjusted 
+                                # 
+                                l2g[subcell][se_gdof]
+        #
+        # Store local-to-global mapping in a dictionary                    
+        # 
+        if subforest_flag is None:
+            self.__l2g = l2g
+        else: 
+            self.__l2g[subforest_flag] = l2g
+            
+            
+    def get_l2g_map(self, cell, subforest_flag=None):
+        """
+        Return the local to global map for a particular cell
+        """
+        if subforest_flag is not None:
+            #
+            # Submesh
+            # 
+            # Check that l2g mapping is present
+            assert subforest_flag in self.__l2g.keys(), \
+                'First run "set_l2g_map" for this submesh.'
+            
+            return self.__l2g[subforest_flag][cell]
+        else:
+            #
+            # On entire mesh
+            # 
+            # Check that l2g mapping is present
+            assert len(self.__l2g) != 0, \
+                'First run "set_l2g_map". ' 
+            
+            return self.__l2g[cell]
+    
     
     def set_hanging_nodes(self, subforest_flag=None):
         """
@@ -2521,6 +3021,12 @@ class DofHandler(object):
         
             - Hanging nodes are never periodic
         """
+        if self.mesh.dim()==1:
+            #
+            # One dimensional meshes have no hanging nodes
+            # 
+            return 
+        
         #
         # Discontinuous elements don't have hanging nodes
         # 
@@ -2584,8 +3090,19 @@ class DofHandler(object):
                                     he_ch = twin.get_child(i_rhe_ch)
                                     hn_dof = self.get_global_dofs(he_ch.cell())
                                     i_child = rhe_ch.cell().get_node_position()
-                                    hanging_nodes[hn_dof[v.get_pos(1, i_child)]] = \
+                                    constrained_dof = hn_dof[v.get_pos(1, i_child)]
+                                    
+                                    hanging_nodes[constrained_dof] = \
                                         (supporting_dofs, constraint_coefficients)
+                                    
+                                    if constrained_dof not in self.constraints['constrained_dofs']:
+                                        #
+                                        # Update Constraints
+                                        # 
+                                        self.constraints['constrained_dofs'].append(constrained_dof)
+                                        self.constraints['supporting_dofs'].append(supporting_dofs)
+                                        self.constraints['coefficients'].append(constraint_coefficients)
+                                        self.constraints['affine_terms'].append(0)
         #
         # Store all hanging nodes in dictionary
         #  
@@ -2608,6 +3125,38 @@ class DofHandler(object):
             self.set_hanging_nodes()
             return self.__hanging_nodes
         
+    
+    def has_hanging_nodes(self, subforest_flag=None):
+        """
+        Determine whether there are hanging nodes
+        """
+        if self.mesh.dim()==1:
+            #
+            # One dimensional meshes don't have hanging nodes
+            # 
+            return False
+            
+        elif self.__hanging_nodes == {}:
+            #
+            # 2D Mesh with no hanging nodes
+            # 
+            return False
+            
+        else:
+            #
+            # 2D Mesh with hanging nodes
+            # 
+            if subforest_flag is not None:
+                #
+                # Hanging nodes for subforest flag? 
+                # 
+                return subforest_flag in self.__hanging_nodes
+            else:
+                #
+                # Has hanging nodes, return True
+                # 
+                return True
+            
         
 class GaussRule(object):
     """
@@ -3173,7 +3722,7 @@ class Form(object):
                 'dx' - integrate over a cell
                 'ds' - integrate over an edge
                     
-            *flag: str/int/tuple cell/edge marker
+            *flag: str/int/tuple cell/half_edge/vertex marker
             
             *samples: integer array o
             
@@ -3199,10 +3748,10 @@ class Form(object):
         #
         # Parse measure
         # 
-        assert dmu in ['dx', 'ds'], \
-        'Input "dmu" should be "dx" or "ds".'
+        assert dmu in ['dx', 'ds', 'dv'], \
+        'Input "dmu" should be "dx", "ds", or "dv".'
         
-        # TODO: Check: ds can only be used in 2D.
+        # TODO: Add Check: ds can only be used in 2D.
          
         self.dmu = dmu
         
@@ -3249,7 +3798,6 @@ class Form(object):
         """
         Determine all shape functions that must be evaluated (f, trial, and test)
         
-        Inputs:
         
             compatible_functions: set, of Functions that are defined on 
             
@@ -3333,6 +3881,9 @@ class Form(object):
                 # 
                 regions.append(cell)
         elif dmu=='ds':
+            #
+            # Integration region is a half-edge
+            # 
             for half_edge in cell.get_half_edges():
                 #
                 # Iterate over half edges
@@ -3342,6 +3893,19 @@ class Form(object):
                     # Valid HalfEdge
                     # 
                     regions.append(half_edge)
+        elif dmu=='dv':
+            #
+            # Integration region is a vertex
+            # 
+            for vertex in cell.get_vertices():
+                #
+                # Iterate over cell vertices
+                # 
+                if self.flag is None or vertex.is_marked(self.flag):
+                    #
+                    # Valid vertex
+                    # 
+                    regions.append(vertex)
         return regions
         
     
@@ -3370,7 +3934,10 @@ class Form(object):
         
             Constant-, linear-, or bilinear forms and their associated local
             degrees of freedom.
-                            
+        
+        
+        TODO: Explain what the output looks like! 
+        Note: This method should be run in conjunction with the Assembler class                  
         """
         # Determine regions over which form is defined
         regions = self.integration_regions(cell)
@@ -3399,7 +3966,7 @@ class Form(object):
                     if n_samples is None:
                         f_loc = 0
                     else:
-                        f_loc = np.zeros(self.kernel.n_samples)
+                        f_loc = np.zeros(n_samples)
                 #
                 # Update form
                 # 
@@ -3450,15 +4017,17 @@ class Form(object):
                 trial = phi[region][trial_etype][trial_der]
                 n_dofs_trial = trial.shape[1]
                 
-                
+                #
+                # Initialize local matrix if necessary
+                # 
                 if f_loc is None:
                     #
                     # Initialize form
                     # 
                     if n_samples is None:
-                        f_loc = np.zeros(n_dofs_test*n_dofs_trial)
+                        f_loc = np.zeros((n_dofs_test,n_dofs_trial))
                     else:
-                        f_loc = np.zeros((n_dofs_test*n_dofs_trial,n_samples))
+                        f_loc = np.zeros((n_dofs_test,n_dofs_trial,n_samples))
                 
                 #
                 # Update form
@@ -3467,51 +4036,28 @@ class Form(object):
                     #
                     # Deterministic kernel
                     # 
+                    '''
                     f_loc_det = np.dot(test.T, np.dot(np.diag(wg[region]*Ker),trial))
-                    f_loc += f_loc_det.reshape((n_dofs_test*n_dofs_trial,), order='F') 
+                    f_loc += f_loc_det.reshape((n_dofs_test*n_dofs_trial,), order='F')
+                    ''' 
+                    f_loc += np.dot(test.T, np.dot(np.diag(wg[region]*Ker),trial))
                 else:
                     #
                     # Sampled kernel
                     # 
+                    '''
                     f_loc_smp = []
                     for i in range(n_dofs_trial):
                         f_loc_smp.append(np.dot(test.T, (trial[:,i]*wKer.T).T))
                     f_loc += np.concatenate(f_loc_smp, axis=0)
-                                           
-        #        
-        # Compute local dofs and return result       
+                    '''
+                    for i in range(n_dofs_trial):
+                        f_loc[:,i,:] += np.dot(test.T, (trial[:,i]*wKer.T).T)
+        #
+        # Return f_loc
         # 
-        if self.type=='constant':
-            #
-            # Constant
-            #  
-            # Return local constant form
-            return f_loc
-        elif self.type=='linear':
-            #
-            # Linear
-            #
-            
-            # Compute local row dofs
-            rows = np.arange(n_dofs_test)
-            
-            # Return result
-            return f_loc, rows
-        
-        elif self.type=='bilinear':
-            #
-            # Bilinear 
-            #
-            
-            # Compute local row and column dofs
-            rows, cols = np.meshgrid(np.arange(n_dofs_test), 
-                                     np.arange(n_dofs_trial)) 
-                                     
-            rows = rows.ravel() 
-            cols = cols.ravel()
-            
-            # Return result
-            return f_loc, rows, cols
+        return f_loc
+              
                 
         """                
         for region in regions:
@@ -3621,6 +4167,30 @@ class Form(object):
 class Assembler(object):
     """
     Representation of sums of bilinear/linear forms as matrices/vectors  
+    
+    Attributes:
+    
+        problems
+        
+        single_form
+        
+        single_problem 
+        
+        mesh
+        
+        subforest_flag
+        
+        n_gauss1d
+        
+        n_gauss2d
+        
+        cell_rule
+        
+        edge_rule
+        
+        dofhandlers
+        
+        assembled_forms
     """
     def __init__(self, problems, mesh, subforest_flag=None, n_gauss=(4,16)):
         """
@@ -3637,15 +4207,15 @@ class Assembler(object):
             n_gauss: int tuple, number of quadrature nodes in 1d and 2d respectively
                         
         """
-        #
+        # =====================================================================
         # Store mesh
-        # 
+        # =====================================================================
         self.mesh = mesh
         self.subforest_flag = subforest_flag
         
-        #
+        # =====================================================================
         # Initialize Gauss Quadrature Rule
-        # 
+        # =====================================================================
         self.n_gauss_2d = n_gauss[1]
         self.n_gauss_1d = n_gauss[0]
         dim = self.mesh.dim()
@@ -3661,9 +4231,9 @@ class Assembler(object):
             self.edge_rule = GaussRule(self.n_gauss_1d,shape='interval')
             self.cell_rule = GaussRule(self.n_gauss_2d,shape='quadrilateral')
             
-        #
-        # Check "problems" input
-        # 
+        # =====================================================================
+        # Parse "problems" input
+        # =====================================================================
         single_problem = False
         single_form = False
         problem_error = 'Input "problems" should be (i) a Form, (ii) a list '+\
@@ -3690,7 +4260,10 @@ class Assembler(object):
                         # Found problem not in list form
                         # 
                         assert isinstance(problem, Form), problem_error
-                        problems[problems.index(problem)] = [problem]  # convert form to problem
+                        #
+                        # Convert form to problem
+                        #
+                        problems[problems.index(problem)] = [problem]  
         else:
             #
             # Single form
@@ -3700,22 +4273,25 @@ class Assembler(object):
             single_form = True
             problems = [[problems]]
         
-        """
-        # Debug
-        assert type(problems) is list, 'Problems must be list'
-        for problem in problems:
-            assert type(problem) is list, 'Problem must be list.'
-        """
+       
         
         # Store info    
         self.single_problem = single_problem
         self.single_form = single_form
         self.problems = problems
             
-        #
+        # =====================================================================
         # Initialize Dofhandlers   
-        # 
+        # =====================================================================
         self.initialize_dofhandlers()
+        
+        """
+        #
+        # Compute local-to-global mappings
+        # 
+        for dofhandler in self.dofhandlers.values():
+            dofhandler.set_l2g_map(subforest_flag=self.subforest_flag)
+        """
         
         #
         # Initialize dictionaries for storing assembled forms
@@ -3727,10 +4303,6 @@ class Assembler(object):
         """
         Initialize list of dictionaries encoding the assembled forms associated
         with each problem
-        
-        Input:
-        
-            problems: list of problems (=list of list of forms).
         """
         af = []
         for problem in self.problems:
@@ -3888,93 +4460,18 @@ class Assembler(object):
         self.dofhandlers = dofhandlers
             
             
-
- 
- 
-    def assemble(self):
+            
+    def assemble(self, consolidate=True):
         """
         Assembles constant, linear, and bilinear forms over computational mesh,
 
         
         Input:
         
-            problems: A list of dictionaries that define a finite element 
-                problem. Each problem contains the following fields:
-                
-                linear: list of tuples (f,'v*', dx, flag) defining the problem's
-                    linear forms, where
-                    
-                    f: Function
-                    
-                    v*: is a string of the form 'v', 'vx', or 'vy' that
-                        represents the test function
-                
-                    dx: string, that represents the integration region
-                        'da' = integrate over cells/intervals
-                        'ds' = integrate over half-edges
-                        
-                    flag: specifying the cells/half-edges over which to integrate
-                    
-                
-                bilinear: list of 3 tuples (f,u*, v*, dx, flag) defining the 
-                    problem's bilinear forms, where
-                    
-                    f: Function
-                    
-                    u*: is a string of the form 'u', 'ux', or 'uy' that 
-                        represents the trial function
-                        
-                    v*: is a string of the form 'v', 'vx', or 'vy' that
-                        represents the test function
-                
-                    dx: string, that represents the integration region
-                        'da' = integrate over cells/intervals
-                        'ds' = integrate over half-edges
-            
-                    flag: specifying the cells/half-edges over which to integrate 
-                    
-                
-                bc: dictionary encoding boundary conditions, whose keys are
-                
-                    dirichlet: list of dictionaries encoding the parameters of
-                        the problem's Dirichlet boundary conditions,
-                        
-                            u(xi) = g(xi) for xi in {Dirichlet nodes}
-                        
-                        marker: list of str or a boolean functions specifying 
-                            the boundary segments on which Dirichlet conditions 
-                            are to be applied.
-                            
-                        g: Function, values of the solution at the Dirichlet nodes
-                    
-                    neumann: list of dictionaries specifying the problem's 
-                        Neumann boundary conditions
-                    
-                            -n*(A nabla(u)) = g(x) on Neumann edge
-                            
-                        marker: list of str or boolean functions specifying 
-                            Neumann edges (or nodes in 1D).
-                        
-                        g: list of Functions, values of the fluxes on the 
-                            Neumann edges
-                    
-                    robin: dictionary specifying the problem's Robin boundary
-                        conditions. 
-                        
-                            -n*(A nabla(u)) = gma*( u - g )
-                        
-                        marker: list of str or a boolean functions specifying 
-                            the boundary segments on which Robin conditions are
-                            to be applied.
-                        
-                        gma: constant, list of proportionality constants   
-                        
-                        g: Function, list of Robin data functions
-                                    
-            subforest_flag: str/int, flag specifying the submesh on which to 
-                assemble the problem.
-                               
-                               
+            problems: A list of finite element problems. Each problem is a list
+                of constant, linear, and bilinear forms. 
+                 
+               
         Output:
         
             assembled_forms: list of dictionaries (one for each problem), each of 
@@ -3987,7 +4484,6 @@ class Assembler(object):
                     'j': list of column entries
                     
                     'val': list of matrix values 
-                    TODO: Add support for samples for assembled matrices
                     
                     'dir_dofs': set, consisting of all dofs corresponding to 
                         Dirichlet vertices
@@ -4008,7 +4504,7 @@ class Assembler(object):
         #            
         for cell in self.mesh.cells.get_leaves(subforest_flag=self.subforest_flag):
             #
-            # Get cell dofs for each element type  
+            # Get global cell dofs for each element type  
             #
             cell_dofs = self.cell_dofs(cell)
             
@@ -4023,7 +4519,7 @@ class Assembler(object):
             xg, wg = self.gauss_rules(shape_info)
             
             #
-            # Compute shape functions and quadrature nodes & -weights on cell
+            # Compute shape functions on cell
             #  
             phi = self.shape_eval(shape_info, xg, cell)
             
@@ -4040,49 +4536,50 @@ class Assembler(object):
                     # Evaluate form
                     # 
                     form_loc = form.eval(cell, xg, wg, phi, cell_dofs, \
-                                         self.compatible_functions)
-                    #
-                    # Global assembly
-                    # 
+                                         self.compatible_functions)                   
+                    
                     if form.type=='constant':
                         #
-                        # Constant form: increment value
+                        # Constant form
                         # 
+                        
+                        # Increment value
                         self.af[i_problem]['constant'] += form_loc 
                     elif form.type=='linear':
                         # 
                         # Linear form
                         # 
-                        lf_loc, rows = form_loc
                         
-                        # Extract global dofs
-                        etype_test = form.test.element.element_type()
-                        test_dofs = cell_dofs[etype_test]
-                        
+                        # Extract test dof indices
+                        etype_tst = form.test.element.element_type()
+                        dofs_tst  = cell_dofs[etype_tst]
+                                
                         # Store dofs and values in assembled_form
-                        self.af[i_problem]['linear']['row_dofs'].append(test_dofs)
-                        self.af[i_problem]['linear']['vals'].append(lf_loc)
+                        self.af[i_problem]['linear']['row_dofs'].append(dofs_tst)
+                        self.af[i_problem]['linear']['vals'].append(form_loc)
                         
                     elif form.type=='bilinear':
                         #
                         # Bilinear Form
                         # 
-                        bf_loc, rows, cols = form_loc
                         
-                        # Extract global dofs 
-                        etype_test = form.test.element.element_type()
-                        etype_trial = form.trial.element.element_type()
-                        test_dofs = cell_dofs[etype_test][rows]
-                        trial_dofs = cell_dofs[etype_trial][cols]
+                        # Test dof indices
+                        etype_tst = form.test.element.element_type()
+                        etype_trl = form.trial.element.element_type()
+                        
+                        # Trial dof indices
+                        dofs_tst = cell_dofs[etype_tst]
+                        dofs_trl = cell_dofs[etype_trl]    
                         
                         # Store dofs and values in assembled form 
-                        self.af[i_problem]['bilinear']['row_dofs'].append(test_dofs)
-                        self.af[i_problem]['bilinear']['col_dofs'].append(trial_dofs)
-                        self.af[i_problem]['bilinear']['vals'].append(bf_loc)
+                        self.af[i_problem]['bilinear']['row_dofs'].append(dofs_tst)
+                        self.af[i_problem]['bilinear']['col_dofs'].append(dofs_trl)
+                        self.af[i_problem]['bilinear']['vals'].append(form_loc)
         #
         # Post-process assembled forms
         #  
-        self.consolidate_assembly()
+        if consolidate:
+            self.consolidate_assembly()
         '''   
         #
         # Assemble forms over boundary edges 
@@ -4258,7 +4755,116 @@ class Assembler(object):
             return tuple(out)
         '''
     
+    '''
+    def map_to_global(self, form_loc, form, cell):
+        """
+        Maps local form on a cell (in terms of local shape functions) onto the 
+        global form (in terms of global basis functions). Global basis functions
+        are the same as shape functions, except in cells adjoining hanging nodes.
+        There, global basis fns are extended to ensure continuity over hanging n.
         
+        Input:
+        
+            loc_form: double, np.array representing the local form returned
+                by method 'Form.eval'
+            
+            
+            form: Form, class used to extract element types
+                    
+            cell: Cell, mesh cell over which assembly is occurring.
+            
+            
+        Output: 
+        
+            form_glb: double, array evaluated form in terms of global basis
+                functions. 
+                
+                'constant': (1,) or (n_smpl, ) array
+                'linear': (n_tst_glb, 1) or (n_tst_glb, n_smpl) array
+                'bilinear: (n_tst_glb, n_trl_glb, n_smpl) array
+        
+        TODO: Not necessary.
+        """
+        subforest_flag = self.subforest_flag
+        if form.type=='constant':
+            #
+            # Constant form
+            # 
+            return form_loc
+        elif form.type=='linear':
+            #
+            # Linear form
+            # 
+            
+            # Get element types for test functions
+            etype_tst = form.test.element.element_type()
+            
+            # Extract dofhandler
+            dh_tst = self.dofhandlers[etype_tst]
+            
+            # Retrieve local to global mapping
+            l2g_tst = dh_tst.get_l2g_map(cell, subforest_flag=subforest_flag)
+            
+            # Get global dofs
+            dofs_tst = list(l2g_tst.keys())
+            
+            # Convert l2g map to matrix
+            l2g_tst = np.array(list(l2g_tst.values()))
+
+            # Compute linear form in terms of global basis
+            L = l2g_tst.dot(form_loc)
+            
+            # Return global linear form and global test dofs
+            return L, dofs_tst
+        
+        elif form.type=='bilinear':
+            #
+            # Bilinear form
+            # 
+            
+            # Get element types for test and trial functions
+            etype_tst = form.test.element.element_type()
+            etype_trl = form.trial.element.element_type()
+            
+            # Extract dofhandlers for both element types
+            dh_tst = self.dofhandlers[etype_tst]
+            dh_trl = self.dofhandlers[etype_trl]
+            
+            # Retrieve the local to global mapping for each dh over the cell
+            l2g_tst = dh_tst.get_l2g_map(cell, subforest_flag=subforest_flag)
+            l2g_trl = dh_trl.get_l2g_map(cell, subforest_flag=subforest_flag)
+            
+            # Get global dofs 
+            dofs_tst = list(l2g_tst.keys())
+            dofs_trl = list(l2g_trl.keys())
+            
+            # Convert l2g maps to matrix form
+            l2g_tst = np.array(list(l2g_tst.values()))
+            l2g_trl = np.array(list(l2g_trl.values()))
+            
+            # Compute bilinear form in terms of global basis
+            dim = len(form_loc.shape)
+            if dim==3:
+                #
+                # Sampled bilinear form (n_tst, n_trl, n_smpl)
+                # 
+                
+                # Change to (n_smpl, n_tst, n_trl)
+                form_loc = form_loc.transpose([2,0,1])
+                
+                # Multiply each slice by Test*(..)*Trial^T  
+                B = l2g_tst.dot(form_loc.dot(l2g_trl.T))
+                
+                # Change dimensions to (n_glb_tst, n_glb_trl, n_smpl)
+                B = B.transpose([0,2,1])
+            elif dim==2:
+                #
+                # Deterministic bilinear form (n_tst, n_trl)
+                # 
+                B = l2g_tst.dot(form_loc).dot(l2g_trl.T)
+            return B, dofs_tst, dofs_trl
+    '''   
+                                 
     def consolidate_assembly(self):
         """
         Postprocess assembled forms to make them amenable to linear algebra 
@@ -4275,7 +4881,7 @@ class Assembler(object):
             
             rows: (n_nonzero,) row indices (renumbered)
             
-            cols: (n_nonzero,) column indiced (renumbered). 
+            cols: (n_nonzero,) column indices (renumbered). 
             
             vals: (n_nonzero, n_samples) numpy array of matrix values
                 corresponding to each row-column pair
@@ -4305,42 +4911,66 @@ class Assembler(object):
                     #
                     # Parse row and column dofs
                     # 
-                    # Flatten lists of lists 
-                    rdofs = [item for sublist in form['row_dofs'] for item in sublist]
-                    cdofs = [item for sublist in form['col_dofs'] for item in sublist]
+                    # Flatten
+                    rows = []
+                    cols = []
+                    vals = []
+                    rcv = (form['row_dofs'], form['col_dofs'], form['vals'])
+                    for rdof, cdof, val in zip(*rcv):
+                        #
+                        # Store global dofs in vectors
+                        #
+                        R,C = np.meshgrid(rdof,cdof)
+                        rows.append(R.ravel())
+                        cols.append(C.ravel())
+                        
+                        #
+                        # Store values
+                        # 
+                        n_entries = len(rdof)*len(cdof) 
+                        if n_samples is None:
+                            #
+                            # Deterministic form
+                            # 
+                            vals.append(val.reshape(n_entries, order='F'))
+                        else:
+                            #
+                            # Sampled form
+                            # 
+                            v = val.reshape((n_entries,n_samples), order='F')
+                            vals.append(v)
                     
+                    # 
+                    rows = np.concatenate(rows, axis=0)
+                    cols = np.concatenate(cols, axis=0)
+                    vals = np.concatenate(vals, axis=0)
+                       
+                    #
+                    # Renumber dofs from 0 ... n_dofs
+                    # 
                     # Extract sorted list of unique dofs for rows and columns
-                    unique_rdofs = list(set(rdofs))
-                    unique_cdofs = list(set(cdofs))
+                    unique_rdofs = list(set(list(rows)))
+                    unique_cdofs = list(set(list(cols)))
                     
-                    # Compute matrix row and column indices based on unique dofs
-                    rows = [unique_rdofs.index(i) for i in rdofs]
-                    cols = [unique_cdofs.index(i) for i in cdofs]
+                    # Dof to index mapping for rows
+                    map_rows = np.zeros(unique_rdofs[-1]+1, dtype=np.int)
+                    map_rows[unique_rdofs] = np.arange(len(unique_rdofs))
+                    
+                    # Dof-to-index mapping for cols
+                    map_cols = np.zeros(unique_cdofs[-1]+1, dtype=np.int)
+                    map_cols[unique_cdofs] = np.arange(len(unique_cdofs))
+                    
+                    # Transform from dofs to indices
+                    rows = map_rows[rows]
+                    cols = map_cols[cols]
                     
                     # Store row and column information
                     form['row_dofs'] = np.array(unique_rdofs)
                     form['col_dofs'] = np.array(unique_cdofs)
-                    form['rows'] = np.array(rows)
-                    form['cols'] = np.array(cols)
-                    
-                    # 
-                    # Parse matrix entries
-                    #  
-                    vals = form['vals']
-                    if n_samples is None:
-                        #
-                        # Deterministic problem
-                        #  
-                        # Flatten data list of arrays
-                        vals = np.array(vals).ravel()
-                    else:
-                        #
-                        # Deal with samples
-                        # 
-                        # Stack cellwise values vertically
-                        vals = np.concatenate(vals, axis=0)
-                    # Overwrite values
+                    form['rows'] = rows
+                    form['cols'] = cols
                     form['vals'] = vals
+                    
                 elif form_type=='linear':
                     # =========================================================
                     # Linear Form 
@@ -4349,14 +4979,21 @@ class Assembler(object):
                     # Parse row dofs
                     # 
                     # Flatten list of lists
-                    rdofs = [item for sublist in form['row_dofs'] for item in sublist]
+                    rows = [item for sublist in form['row_dofs'] for item in sublist]
                     
                     # Extract sorted list of unique dofs for rows and columns
-                    unique_rdofs = list(set(rdofs))
+                    unique_rdofs = list(set(rows))
                     n_dofs = len(unique_rdofs)
                     
-                    # Compute vector rows
-                    rows = [unique_rdofs.index(i) for i in rdofs]
+                    # Convert rows into numpy array
+                    rows = np.array(rows) 
+                    
+                    # Dof-to-index mapping for rows
+                    map_rows = np.zeros(unique_rdofs[-1]+1, dtype=np.int)
+                    map_rows[unique_rdofs] = np.arange(n_dofs)
+                    
+                    # Transform from dofs to indices
+                    rows = map_rows[rows]
                     
                     # Concatenate all function values in a vector
                     vals = np.concatenate(form['vals'])
@@ -4373,7 +5010,7 @@ class Assembler(object):
                         # 
                         b = np.zeros((n_dofs,n_samples))
                         for i in range(n_dofs):
-                            b[i,:] = vals[rows==unique_rdofs[i]].sum(axis=0)
+                            b[i,:] = vals[rows==unique_rdofs[i],:].sum(axis=0)
 
                     # Store arrays
                     form['row_dofs'] = np.array(unique_rdofs)        
@@ -4383,7 +5020,7 @@ class Assembler(object):
                     # Constant form
                     # 
                     pass
-            i_problem += 1
+            
         
     
     def get_assembled_form(self, form_type, i_problem=0, i_sample=None):
@@ -4482,10 +5119,8 @@ class Assembler(object):
             return c
                 
     
-
-    
             
-        
+    '''    
     def get_boundary_dofs(self, etype, bnd_marker):
         """
         Determine the Dofs associated with the boundary vertices marked by
@@ -4501,6 +5136,7 @@ class Assembler(object):
             
         TODO: Test
         TODO: Make this more general and move it to DofHandler class
+        TODO: Delete!!
         """    
         # Check that dofhandler     
         assert etype in self.dofhandlers, \
@@ -4545,7 +5181,8 @@ class Assembler(object):
                                                            entity=edge)
                     dofs.extend(edge_dofs)
         return dofs
-
+    '''
+        
         
     def n_samples(self, i_problem, form_type):
         """
@@ -4677,6 +5314,41 @@ class Assembler(object):
                                 # 
                                 D = form_info[etype]['derivatives']
                                 info[half_edge][etype]['derivatives'].update(D)
+                elif form.dmu == 'dv':
+                    #
+                    # Evaluate integrand at vertex
+                    # 
+                    for vertex in cell.get_vertices():
+                        if form.flag is None or vertex.is_marked(form.flag):
+                            #
+                            # Vertex marked by flag specified by Form
+                            # 
+                            # Initialize ith key if necessary
+                            if vertex not in info:
+                                info[vertex] = {}
+                            
+                            #
+                            # Get shape information from form
+                            # 
+                            form_info = form.shape_info(self.compatible_functions)
+                            
+                            #
+                            # Update shape function information on vertex
+                            # 
+                            for etype in form_info.keys():
+                                if etype not in info[vertex]:
+                                    #
+                                    # Initialize etype key if necessary
+                                    # 
+                                    info[vertex][etype] = \
+                                        {'element': form_info[etype]['element'],
+                                         'derivatives': set()}
+                                #
+                                # Update derivatives
+                                # 
+                                D = form_info[etype]['derivatives']
+                                info[vertex][etype]['derivatives'].update(D)
+                    
                             
         for region in info.keys():
             for etype in info[region].keys():
@@ -4690,8 +5362,8 @@ class Assembler(object):
     
     def cell_dofs(self, cell):
         """
-        Returns the degrees of freedom assciated with cell for all elements
-        considered
+        Returns the global degrees of freedom assciated with cell for all 
+        elements considered
         
         Input:
         
@@ -4701,13 +5373,22 @@ class Assembler(object):
         
             cell_dofs: dict, consisting of the dofs associated with a cell.
         """
+        subforest_flag = self.subforest_flag
         cell_dofs = {}
         for etype in self.dofhandlers.keys():
-            cell_dofs[etype] = \
-                np.array(self.dofhandlers[etype].get_global_dofs(cell))
+            
+            # Get Dofhandler for etype
+            dh = self.dofhandlers[etype]
+            
+            # Get cell dofs 
+            cd = dh.get_cell_dofs(cell, subforest_flag=subforest_flag)
+            
+            # Turn into an array
+            cell_dofs[etype] = np.array(cd)
+            
         return cell_dofs
+
     
-                    
     def gauss_rules(self, shape_info):
         """
         Compute the Gauss nodes and weights over all regions specified by the 
@@ -4745,8 +5426,13 @@ class Assembler(object):
                 # Quadrilateral
                 #
                 xg[region], wg[region] = self.cell_rule.mapped_rule(region)
+            elif isinstance(region, Vertex):
+                #
+                # Vertex
+                # 
+                xg[region], wg[region] = region.coordinates(), 1
             else:
-                raise Exception('Only Intervals, HalfEdges, & QuadCells supported')  
+                raise Exception('Only Intervals, HalfEdges, Vertices, & QuadCells supported')  
         return xg, wg
         
         
@@ -4998,8 +5684,7 @@ class LinearSystem(object):
         interpolate
      
     """
-    def __init__(self, assembler, i_problem=0, i_sample=(0,0), 
-                 compressed=False):
+    def __init__(self, assembler, i_problem=0, i_sample=(0,0)):
         """
         Constructor
         
@@ -5022,7 +5707,6 @@ class LinearSystem(object):
         """
         self.assembler = assembler
         self.__i_problem = i_problem
-        self.__compressed = compressed 
         
         #
         # Extract forms
@@ -5047,6 +5731,7 @@ class LinearSystem(object):
 
         self.__etype = etype
         
+        
         #
         # Determine system dofs   
         # 
@@ -5063,6 +5748,16 @@ class LinearSystem(object):
         
         self.__dofs = dofs
         
+
+        #
+        # Form Dof-to-Equation Mapping
+        # 
+        n_dofs = len(dofs)
+        dof2eqn = np.zeros(dofs[-1]+1, dtype=np.int)
+        dof2eqn[dofs] = np.arange(n_dofs, dtype=np.int)
+        
+        # Store mapping 
+        self.__dof2eqn = dof2eqn
         
         #
         # Form system matrix
@@ -5086,7 +5781,8 @@ class LinearSystem(object):
         #
         # Store as sparse matrix 
         # 
-        self.__A = sparse.coo_matrix((vals,(rows,cols)))
+        A = sparse.coo_matrix((vals,(rows,cols)))
+        self.__A = A.tocsr()
     
         #
         # Form right hand side
@@ -5104,51 +5800,40 @@ class LinearSystem(object):
             
             vals = linear_form['vals'][i_linear_sample]
 
-        self.__b = vals
+        self.__b = sparse.csr_matrix(vals).T
         
         #
         # Initialize solution vector
         #  
-        n_dofs = len(dofs)
         self.__u = np.zeros(n_dofs)      
-        
+            
         #
-        # List of Dirichlet conditions 
-        #                     
-        self.dirichlet = []
-        
-        #
-        # List of Hanging nodes
+        # List of Hanging nodes 
         # 
         subforest_flag = assembler.subforest_flag
-        dofhandler = assembler.dofhandlers[etype]
-        self.hanging_nodes = \
-            dofhandler.get_hanging_nodes(subforest_flag=subforest_flag) 
-        self.dofhandler = dofhandler
+        self.dofhandler().set_hanging_nodes(subforest_flag=subforest_flag)
         
-        if self.has_hanging_nodes():
-            #
-            # System has hanging nodes
-            # 
-            # Add masking matrix used to extract hanging node dofs
-            n_dofs = len(dofs)
-            mask = np.zeros(n_dofs, dtype=np.bool)
-            for hn in self.hanging_nodes.keys():
-                mask[dofs==hn] = 1
-            self.hanging_nodes_mask = mask
-            
-            #
-            # Extract hanging nodes, since these are known
-            #
-            self.extract_hanging_nodes()
-            
-            
+        
+    def dofhandler(self):
+        """
+        Return the system's dofhandler
+        """   
+        return self.assembler.dofhandlers[self.etype()]
+    
+    
     def dofs(self):
         """
         Return system dofs
         """
         return self.__dofs
 
+    
+    def dof2eqn(self, dofs):
+        """
+        Convert vector of dofs to equivalent equations
+        """
+        return self.__dof2eqn[dofs]
+    
     
     def etype(self):
         """
@@ -5170,23 +5855,41 @@ class LinearSystem(object):
         """
         return self.__b
         
+    
+    def C(self):
+        """
+        Return constraint matrix
+        """ 
+        return self.__C
+    
+    
+    def d(self):
+        """
+        Return constraint affine term
+        """
+        return self.__d
+     
         
-    def is_compressed(self):
+    def sol(self, as_function=False):
         """
-        Returns true if hanging nodes and Dirichlet boundary conditions are to
-        be eliminated from system.
+        Returns the solution of the linear system 
         """
-        return self.__compressed   
-     
-     
-    def has_hanging_nodes(self):
-        """
-        Returns true if the system has hanging nodes.
-        """
-        return self.hanging_nodes != {}
+        if not as_function:
+            #
+            # Return solution vector
+            # 
+            return self.__u
+        else: 
+            #
+            # Return solution as nodal function
+            # 
+            u = Function(self.__u, 'nodal', mesh=self.assembler.mesh, \
+                         dofhandler=self.dofhandler(), \
+                         subforest_flag=self.assembler.subforest_flag)
+            return u
        
-        
-    def extract_dirichlet_nodes(self, bnd_marker, dirichlet_function=0):
+    
+    def add_dirichlet_constraint(self, bnd_marker, dirichlet_function=0, on_boundary=True):
         """
         Modify an assembled bilinear/linear pair to account for Dirichlet 
         boundary conditions. The system matrix is modified "in place", 
@@ -5223,10 +5926,6 @@ class LinearSystem(object):
             dirichlet_function: Function, defining the Dirichlet boundary 
                 conditions.
             
-            compressed: bool, delete rows and columns corresponding to
-                dirichlet boundary conditions. The solution of the linear
-                system can be reconstructed using "resolve_dirichlet_nodes"
-            
             
         Notes:
         
@@ -5261,27 +5960,64 @@ class LinearSystem(object):
         """
         #
         # Get Dofs Associated with Dirichlet boundary
-        # TODO: Move this to dofhandler
-        etype = self.etype()
-        dirichlet_dofs = self.assembler.get_boundary_dofs(etype, bnd_marker)
+        #
+        subforest_flag = self.assembler.subforest_flag
+        dh = self.dofhandler()
+        
+        if dh.mesh.dim()==1:
+            #
+            # One dimensional mesh
+            # 
+            dirichlet_dofs = dh.get_region_dofs(entity_type='vertex', \
+                                                entity_flag=bnd_marker,\
+                                                interior=False, \
+                                                on_boundary=on_boundary,\
+                                                subforest_flag=subforest_flag)
+        elif dh.mesh.dim()==2:
+            #
+            # Two dimensional mesh
+            #
+            dirichlet_dofs = dh.get_region_dofs(entity_type='half_edge', 
+                                                entity_flag=bnd_marker, 
+                                                interior=False, 
+                                                on_boundary=on_boundary, \
+                                                subforest_flag=subforest_flag) 
+        
         
         #
         # Evaluate dirichlet function at vertices associated with dirichlet dofs
         # 
-        dofhandler = self.assembler.dofhandlers[etype]
-        dirichlet_vertices = dofhandler.get_dof_vertices(dirichlet_dofs)
-        if dirichlet_function==0:
+        dirichlet_vertices = dh.get_dof_vertices(dirichlet_dofs)
+        if isinstance(dirichlet_function, numbers.Number):
             #
-            # Homogeneous boundary conditions
+            # Dirichlet function is constant
             # 
-            dirichlet_vals = np.zeros(len(dirichlet_dofs))
+            n_dirichlet = len(dirichlet_dofs)
+            if dirichlet_function==0:
+                #
+                # Homogeneous boundary conditions
+                # 
+                dirichlet_vals = np.zeros(n_dirichlet)
+            else:
+                #
+                # Non-homogeneous, constant boundary conditions
+                # 
+                dirichlet_vals = dirichlet_function*np.ones(n_dirichlet)
         else:
             #
-            # Nonhomogeneous Dirichlet boundary conditions 
+            # Nonhomogeneous, nonconstant Dirichlet boundary conditions 
             #
             x_dir = convert_to_array(dirichlet_vertices)
-            dirichlet_vals = dirichlet_function(x_dir)
+            dirichlet_vals = dirichlet_function.eval(x_dir)
         
+        constraints = dh.constraints
+        for dof, val in zip(dirichlet_dofs, dirichlet_vals):
+            constraints['constrained_dofs'].append(dof)
+            constraints['supporting_dofs'].append([])
+            constraints['coefficients'].append([])
+            constraints['affine_terms'].append(val)
+        
+        """
         #
         # Mark Dirichlet Dofs
         #
@@ -5290,6 +6026,7 @@ class LinearSystem(object):
         dirichlet_mask = np.zeros(n_dofs, dtype=np.bool)
         for dirichlet_dof in dirichlet_dofs:
             dirichlet_mask[dofs==dirichlet_dof] = True
+        
         
         # =====================================================================
         # Modify matrix-vector pair
@@ -5307,6 +6044,7 @@ class LinearSystem(object):
                 #
                 # Iterate over rows
                 # 
+                print('Dirichlet Dof?', dofs[i_row])
                 if dofs[i_row] in dirichlet_dofs:
                     #
                     # Dirichlet row
@@ -5319,22 +6057,35 @@ class LinearSystem(object):
                     # Assign Dirichlet value to b[i]
                     i_dirichlet = dirichlet_dofs.index(dofs[i_row])
                     b[i_row] = dirichlet_vals[i_dirichlet]
+                    
+                    print(dofs[i_row], 'dirichlet row')
+                    print('assigning', dirichlet_vals[i_dirichlet], 'to entry', i_row)
+                    print('b=', b)
                 else:
                     #
                     # Check for Dirichlet columns 
                     # 
+                    new_row = []
+                    new_data = []
                     n_cols = len(A.rows[i_row])  # number of elements in row
                     for j_col, col in zip(range(n_cols), A.rows[i_row]):
                         #
                         # Iterate over columns
-                        # 
+                        #
                         if dofs[col] in dirichlet_dofs:
                             #
                             # Dirichlet column: move it to the right
                             # 
                             j_dirichlet = dirichlet_dofs.index(dofs[col])
-                            b[j_col] -= A.data[i_row][j_col]*dirichlet_vals[j_dirichlet]
-                            
+                            b[i_row] -= A.data[i_row][j_col]*dirichlet_vals[j_dirichlet]
+                        else:
+                            #
+                            # Store unaffected columns in new list
+                            # 
+                            new_row.append(col)
+                            new_data.append(A.data[i_row][j_col])
+                    A.rows[i_row] = new_row
+                    A.data[i_row] = new_data
         else:
             #
             # Compressed format
@@ -5350,8 +6101,6 @@ class LinearSystem(object):
             n_rows, n_cols = A.shape
             assert n_rows==n_cols, \
             'Number of columns and rows should be equal.'
-            
-            print(self.hanging_nodes_mask)
             
             assert n_rows == np.sum(i_free), \
             'Dimensions of matrix not compatible with cumulative mask.'+\
@@ -5384,7 +6133,7 @@ class LinearSystem(object):
         self.__b = b
         
         """
-        
+        """
         for row, i_row in zip(A.rows, range(n_rows)):
             if row_dofs[i_row] in dirichlet_test_dofs:
                 #
@@ -5443,20 +6192,248 @@ class LinearSystem(object):
                 pass
             pass
         """
-
+   
     
-    def resolve_dirichlet_nodes(self):
+      
+    def set_constraint_matrix(self):
         """
-        Enlarge the solution vector to include Dirichlet nodes
-        """
+        Define the constraint matrix C and affine term d so that 
         
-        for dirichlet in self.dirichlet:
+            x = Cx + d,
+            
+        where the rows in C corresponding to unconstrained dofs are rows of the
+        identity matrix.
+        """
+        dofs = self.dofs()
+        n_dofs = len(dofs)
+        
+        #    
+        # Define constraint matrix
+        #
+        constraints = self.dofhandler().constraints
+        c_dofs = np.array(constraints['constrained_dofs'], dtype=np.int)
+        c_rows = []
+        c_cols = []
+        c_vals = []  
+        for dof, supp, coeffs, dummy in zip(*constraints.values()):
             #
-            # Iterate over Dirichlet boundaries and assign Dirichlet values
+            # Iterate over constrained dofs, supporting dofs, and coefficients
             # 
-            self.__u[dirichlet['mask']] = dirichlet['vals']
+            for s_dof, ck in zip(supp, coeffs):
+                #
+                # Populate rows (constraints), columns (supports), and 
+                # values (coeffs)
+                # 
+                c_rows.append(self.dof2eqn(dof))
+                c_cols.append(self.dof2eqn(s_dof))
+                c_vals.append(ck)
+        C = sparse.coo_matrix((c_vals,(c_rows, c_cols)),(n_dofs,n_dofs))
+        C = C.tocsr()
+        
+        #
+        # Add diagonal terms for unconstrained dofs
+        # 
+        one = np.ones(n_dofs)
+        one[self.dof2eqn(c_dofs)] = 0 
+        I = sparse.dia_matrix((one, 0),shape=(n_dofs,n_dofs));        
+        C += I
+        
+        # Store constraint matrix
+        self.__C = C
+                
+        #
+        # Define constraint vector
+        # 
+        d = np.zeros(n_dofs)
+        d[c_dofs] = np.array(constraints['affine_terms'])
+        
+        # Store constraint vector
+        self.__d = d
     
     
+    def incorporate_constraints(self):
+        """
+        Incorporate constraints due to (i) boundary conditions, (ii) hanging 
+        nodes, and/or other linear compatibility conditions. Constraints are 
+        of the form 
+        
+            x = Cx + d
+            
+        where C is an (n,n) sparse matrix of constraints and d is an (n,) 
+        vector. The constraints are incorporated in the following steps
+        
+        Step 1:  Replace constrained variable in each row with the 
+            appropriate linear combinations of supporting variables and/or
+            right hand sides
+        
+        Step 2: Zero out columns corresponding to constrained variables.
+        
+        Step 3: Distribute equation at constrained dof to equations at 
+            supporting dofs. 
+            
+        Step 4: Replace constrained dof's equation with kth row with scaled
+            trivial equation a*x_k = 0
+         
+        """
+        dofs = self.dofs()
+        n_dofs = len(dofs)
+        
+        A, b = self.A(), self.b()
+        C, d = self.C(), self.d()
+        
+        constraints = self.dofhandler().constraints
+        c_dofs = constraints['constrained_dofs']
+        
+        #
+        # Eliminate constrained variables
+        # 
+        for c_dof in c_dofs:
+            #
+            # Equation number of constrained dof
+            #
+            k = self.dof2eqn(c_dof)
+            
+            #
+            # Form outer product A[:,k]*C[k,:]
+            #
+            ck = C.getrow(k)
+            ak = A.getcol(k)
+            
+            #
+            # Modify A's columns
+            #
+            A += ak.dot(ck)
+            
+            #
+            # Modify b's rows
+            #
+            b -= d[k]*ak
+            
+            #
+            # Remove Column k
+            #
+            one = np.ones(n_dofs)
+            one[k] = 0
+            Imk = sparse.dia_matrix((one,0),shape=(n_dofs,n_dofs))
+            A = A.dot(Imk)
+
+            #
+            # Distribute constrained equation among supporting rows
+            # 
+            
+            #
+            # Modify A's rows 
+            # 
+            ak = A.getrow(k)            
+            A += ck.T.dot(ak)
+            
+            #
+            # Modify b's rows
+            # 
+            bk = b[k].toarray()[0,0]
+            b += bk*ck.T
+                        
+            #
+            # Zero out row k 
+            # 
+            A = Imk.dot(A)
+            
+            #
+            # Add diagonal row
+            # 
+            zero = np.zeros(n_dofs)
+            zero[k] = 1
+            Ik  = sparse.dia_matrix((zero,0), shape=(n_dofs,n_dofs))
+            A += Ik
+        
+        #
+        # Set diagonal entries of constrained nodes equal to mean(A[k,k]) 
+        # 
+        a_diag = A.diagonal()
+        ave_vec = np.ones(n_dofs)
+        n_cdofs = len(c_dofs)
+        if n_dofs > n_cdofs:
+            #
+            # If there are unconstrained dofs, use average diagonal to scale 
+            # 
+            ave_vec[c_dofs] = (np.sum(a_diag)-n_cdofs)/(n_dofs-n_cdofs)
+        I_ave = sparse.dia_matrix((ave_vec,0), shape=(n_dofs,n_dofs))
+        A = A.dot(I_ave)
+          
+        #
+        # Set b = 0 at constraints 
+        # 
+        zc = np.ones(n_dofs)
+        zc[c_dofs] = 0
+        Izc = sparse.dia_matrix((zc,0),shape=(n_dofs,n_dofs)) 
+        b = Izc.dot(b)
+        
+        
+        self.__A = A
+        self.__b = b
+        
+   
+    def solve(self):
+        """
+        Returns the solution (in vector form) of a problem
+        
+        Inputs:
+        
+            return_solution_function: bool, if true, return solution as nodal
+                function expanded in terms of finite element basis. 
+                
+                
+        Outputs: 
+        
+            u: double, (n_dofs,) vector representing the values of the
+                solution at the node dofs.
+                
+                or 
+                
+                Function, representing the finite element solution
+            
+        """ 
+        A = self.A()
+        b = self.b()
+
+        self.__u = sparse.linalg.spsolve(A,b)    
+    
+    
+    def resolve_constraints(self, x=None):
+        """
+        Impose constraints on a vector x
+        """  
+        if x is None:
+            u = self.__u
+        else:
+            u = x
+            
+        #
+        # Get constraint system x = Cx + d
+        # 
+        C, d = self.C(), self.d()
+        
+        #
+        # Modify dofs that don't depend on others
+        # 
+        n_dofs = self.dofhandler().n_dofs()
+        ec_dofs = [i for i in range(n_dofs) if C.getrow(i).nnz==0]
+        u[ec_dofs] = d[ec_dofs]
+        
+        #
+        # Modify other dofs
+        # 
+        u = C.dot(u) + d
+        
+        #
+        # Store or return result       
+        # 
+        if x is None:
+            self.__u = u
+        else:
+            return u
+        
+    '''
     def extract_hanging_nodes(self):
         """
         Incorporate hanging nodes into linear system, by 
@@ -5479,6 +6456,9 @@ class LinearSystem(object):
                 be extracted BEFORE extracting dirichlet nodes.
         
         """
+        if not self.has_hanging_nodes():
+            return 
+        
         # Convert A to a lil matrix
         A = self.A().tolil() 
         b = self.b()
@@ -5507,7 +6487,6 @@ class LinearSystem(object):
                 #
                 # Row corresponds to hanging node
                 #
-                print('hanging_node - row %d, dof %d'%(i,dofs[i]))
                 if not self.is_compressed():
                     #
                     # Replace equation in hanging node row with interpolation
@@ -5527,9 +6506,7 @@ class LinearSystem(object):
             else:
                 row = A.rows[i]
                 data = A.data[i]
-                print('row %d'%(i))
-                print(row)
-                print(data)
+                
                 for hn in hanging_nodes.keys():
                     #
                     # For each row, determine what hanging nodes are supported
@@ -5539,14 +6516,11 @@ class LinearSystem(object):
                         # If hanging node appears in row, modify
                         #
                         j_hn = row.index(dof2idx[hn])
-                        print('hanging node %d in col %d'%(hn, j_hn))
                         for js,vs in zip(*hanging_nodes[hn]):
                             #
                             # Loop over supporting indices and coefficients
                             # 
-                            print('supporting dof %d, index %d'%(js, dof2idx[js]))
                             if dof2idx[js] in row:
-                                print('supporting dof already in row. change value')
                                 #
                                 # Index exists: modify entry
                                 #
@@ -5564,11 +6538,9 @@ class LinearSystem(object):
                         #
                         # Zero out column that contains the hanging node
                         #
-                        print('row before popping out hanging node')
                         print(row)
                         row.pop(j_hn)
                         data.pop(j_hn)
-                        print('afterwards')
                         print(row)
                 if self.is_compressed():
                     #
@@ -5578,9 +6550,6 @@ class LinearSystem(object):
                         j_hn = bisect_left(row, dof2idx[hn])
                         for j in range(j_hn,len(row)):
                             row[j] -= 1
-                print('modified row')
-                print(row)
-                print(data)
         if self.is_compressed():
             #
             # Delete rows corresponding to hanging nodes
@@ -5592,12 +6561,9 @@ class LinearSystem(object):
             b = np.delete(b,hn_list,0)
             A._shape = (A._shape[0]-n_hn, A._shape[1]-n_hn)
         
-        for row in A.rows:
-            print(row)
         #
         # Store modified system 
         # 
-        print(A.todense())
         self.__A = A.tocoo()
         self.__b = b
             
@@ -5640,83 +6606,7 @@ class LinearSystem(object):
             
             self.__u[dof2idx[hn]] = \
                 np.dot(self.__u[dof2idx[supp_dofs]], supp_vals)
-            
-        """
-        hanging_nodes = self.hanging_nodes
-        hang = [hn for hn in hanging_nodes.keys()]
-        n = len(u)
-        not_hang = [i for i in range(n) if i not in hang]
-        k = len(hang)
-        uu = np.zeros((n+k,))
-        uu.flat[not_hang] = u
-        for i in range(k):
-            i_s, c_s = hanging_nodes[hang[i]]
-            uu[hang[i]] = np.dot(uu[i_s],np.array(c_s))
-        return uu   
-        """
-   
-    def solve(self, return_function=False):
-        """
-        Returns the solution (in vector form) of a problem
-        
-        Inputs:
-        
-            return_solution_function: bool, if true, return solution as nodal
-                function expanded in terms of finite element basis. 
-                
-                
-        Outputs: 
-        
-            u: double, (n_dofs,) vector representing the values of the
-                solution at the node dofs.
-                
-                or 
-                
-                Function, representing the finite element solution
-            
-        """ 
-        A = self.A()
-        b = self.b()
-        n_dofs = len(self.dofs())
-        self.__u = np.zeros(n_dofs)
-        
-        if self.is_compressed():
-            #
-            # Solve reduced system  
-            # 
-            i_free = self.free_indices()
-            self.__u[i_free] = sparse.linalg.spsolve(A,b)
-        
-            #
-            # Resolve Dirichlet conditions
-            # 
-            self.resolve_dirichlet_nodes()
-            
-            #
-            # Resolve hanging nodes
-            # 
-            self.resolve_hanging_nodes()
-        else:
-            #
-            # Not compressed
-            #
-            self.__u = sparse.linalg.spsolve(A,b)
                  
-        if not return_function:
-            #
-            # Return solution vector
-            # 
-            return self.__u
-        else: 
-            #
-            # Return solution as nodal function
-            # 
-            u = Function(self.__u, 'nodal', mesh=self.assembler.mesh, \
-                         dofhandler=self.dofhandler, \
-                         subforest_flag=self.assembler.subforest_flag)
-        return u
-        
-    
     
     def free_indices(self):
         """
@@ -5747,4 +6637,4 @@ class LinearSystem(object):
             unchanged_entries = np.ones(n_dofs, dtype=np.bool)
             
         return unchanged_entries
-        
+    '''    

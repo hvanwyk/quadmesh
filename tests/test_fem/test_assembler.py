@@ -85,7 +85,6 @@ class TestAssembler(unittest.TestCase):
         
         
         # Check problem_1
-        print(system.af[0].keys())
         self.assertEqual(system.af[0]['bilinear']['trial_etype'],'Q1')
         self.assertEqual(system.af[0]['bilinear']['test_etype'],'Q1')
         self.assertTrue('linear' in system.af[0])
@@ -203,7 +202,7 @@ class TestAssembler(unittest.TestCase):
         self.assertEqual(Q1, si[cell]['Q1']['element'])
         self.assertEqual(Q2, si[cell]['Q2']['element'])
         
-    def test_assemble(self):
+    def test_assemble_1d(self):
         """
         Test system assembly
         """ 
@@ -244,7 +243,8 @@ class TestAssembler(unittest.TestCase):
         self.assertTrue((0,) in phi[cell]['Q1'])
         
         # Assemble system                
-        system.assemble()
+        system.assemble(consolidate=True)
+        
         
         # Extract system bilinear form
         rows = np.array(system.af[0]['bilinear']['rows'])
@@ -428,7 +428,10 @@ class TestAssembler(unittest.TestCase):
         mesh.cells.record((0,1))
     
         
-    
+    def test_assemble_2d(self):
+        """
+        Test Assembly of some 2D systems
+        """
     '''
     def test_assemble(self):
         """

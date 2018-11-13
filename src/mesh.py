@@ -886,6 +886,94 @@ class Tree(object):
             # 
             return False
         
+     
+    def coarsen(self, subforest_flag=None, coarsening_flag=None, 
+                new_label=None, clean_up=True, debug=False):
+        """
+        Coarsen tree by 
+        """
+        if subforest_flag is not None:
+            #
+            # Subforest specified
+            # 
+            if not self.is_marked(subforest_flag):
+                #
+                # Tree not in subforest, nothing to coarsen
+                # 
+                return 
+            
+        #
+        # Check whether to coarsen 
+        # 
+        coarsen = False
+        if coarsening_flag is not None: 
+            #
+            # Check whether tree is flagged (if applicable)
+            # 
+            if self.is_marked(coarsening_flag):
+                coarsen = True
+        else:
+            #
+            # Are children LEAF nodes?
+            # 
+            if self.has_children(flag=subforest_flag):
+                #
+                # Check if children are in subforest
+                # 
+                for child in self.get_children():
+                    #
+                    # All children have to be LEAF nodes
+                    # 
+                    coarsen = True
+                    if child.get_node_type()!='LEAF':
+                        coarsen = False
+                        break
+            
+        
+        if new_label is not None:
+            #
+            # Apply new label to node (regardless of whether to coarsen)
+            #
+            self.mark(new_label)
+            
+        if coarsen:
+            #
+            # Coarsen tree 
+            #
+            if new_label is not None:
+                #
+                # If new_label specified, don't mess with children
+                # 
+                pass 
+            elif subforest_flag is not None:
+                #
+                # Remove subforest flag from children
+                # 
+                for child in self.get_children():
+                    child.unmark(subforest_flag)
+            else:
+                #
+                # Delete children
+                #  
+                self.delete_children()
+                
+            if coarsening_flag is not None and clean_up:
+                #
+                # Remove coarsening flag if necessary
+                # 
+                self.unmark(coarsening_flag)
+        else:
+            #
+            # Recursion step, check children
+            # 
+            if self.has_children(flag=subforest_flag):
+                for child in self.get_children():
+                    child.coarsen(subforest_flag=subforest_flag, 
+                                  coarsening_flag=coarsening_flag, 
+                                  new_label=new_label, 
+                                  clean_up=clean_up, 
+                                  debug=debug)
+                               
         
 class Forest(object):
     """
@@ -1051,12 +1139,16 @@ class Forest(object):
                 # 
                 if node.is_marked(flag):
                     #
-                    # If node is flagged, mark all its ancestors
+                    # If node is flagged, mark all its ancestors & siblings
                     # 
                     ancestor = node
                     while ancestor.has_parent():
                         ancestor = ancestor.get_parent()
+                        # Mark ancestor
                         ancestor.mark(flag)
+                        for child in ancestor.get_children():
+                            # Mark siblings
+                            child.mark(flag)
           
     
     def is_forest_of_rooted_subtree(self, flag):
@@ -1080,10 +1172,11 @@ class Forest(object):
             if not root_node.is_marked(flag):
                 return False
             else:
-                for node in root_node.traverse(mode='breadth-first'):
+                for node in root_node.traverse():
                     if node.is_marked(flag):
                         #
-                        # Check that ancestors of flagged node are also marked 
+                        # Check that ancestors and sibilngs of flagged node
+                        # are also marked 
                         # 
                         ancestor = node
                         while ancestor.has_parent():
@@ -1093,7 +1186,14 @@ class Forest(object):
                                 # Ancestor not marked: not a rooted subtree
                                 # 
                                 return False
-        #
+                            for child in ancestor.get_children():
+                                if not child.is_marked(flag):
+                                    #
+                                    # Sibling not marked
+                                    # 
+                                    return False
+                              
+        #                    
         # No problems: it's a forest of rooted subtrees
         #
         return True               
@@ -1198,12 +1298,18 @@ class Forest(object):
     
         
     def coarsen(self, subforest_flag=None, coarsening_flag=None, 
-                new_label=None, clean_up=True):
+                new_label=None, clean_up=True, debug=False):
         """
         Coarsen (sub)forest (delimited by 'subforest_flag', by (possibly)
-        merging (=deleting or unlabeling the siblings of) nodes marked with 
-        'coarsening_flag' and labeling said nodes with new_label. 
+        merging (=deleting or unlabeling the siblings of) children of nodes 
+        marked with 'coarsening_flag' and labeling said nodes with new_label. 
         
+        If subforest_flag is None, coarsen all nodes
+        If new_label is None, then:
+            - either remove subforest flag (if there is one), or 
+            - delete child nodes
+            
+            
         Inputs:
         
             *subforest_flag: flag, specifying the subforest being coarsened.
@@ -1221,68 +1327,200 @@ class Forest(object):
         if subforest_flag is not None:
             self.make_forest_of_rooted_subtrees(subforest_flag)
         
+        
+        for tree in self.get_children():
+            tree.coarsen(subforest_flag=subforest_flag, 
+                         coarsening_flag=coarsening_flag, 
+                         new_label=new_label, 
+                         clean_up=clean_up, debug=debug)
+        """    
+        if coarsening_flag is not None:
+            #
+            # Coarsen 
+            # 
+            for tree in self.get_children():
+                coarsened = False
+                if tree.is_marked(coarsening_flag):
+                    #
+                    # Coarsen tree
+                    # 
+                    if new_label is not None:
+                        #
+                        # Mark tree with new label and move on
+                        # 
+                        tree.mark(new_label)
+                        continue
+                    elif subforest_flag is not None:
+                        #
+                        # Remove subforest flag from progeny
+                        # 
+                        for child in tree.get_children(subforest_flag):
+                            child.unmark(subforest_flag, recursive=True)
+                    else:
+                        #
+                        # Delete children
+                        # 
+                        tree.delete_children()
+                    # Record coarsened
+                    coarsened = True
+                    
+                elif tree.get_node_type()=='LEAF':
+                    #
+                    # Already a leaf: no need to coarsen
+                    # 
+                    coarsened = True
+                
+                while not coarsened:
+                    
+                    if subforest_flag is not None:
+                        if tree.has_children(subforest_flag):
+                            for child in tree.get_children():
+                        else:
+                            pass
+                        
+                        
+                    for child in tree.get_children():
+                        pass
+                else:
+                    #
+                    # Don't coarsen yet, go to children
+                    # 
+                    if tree.has_children(subforest_flag):
+                        for child in tree.get_children():
+                            
+                        
+            pass
+        
+        if clean_up:
+            to_clean = []
         #
         # Look for marked leaves within the submesh
         #
         for leaf in self.get_leaves(subforest_flag=subforest_flag):
-            #
-            # Find leaves that must be coarsened
-            #
-            if coarsening_flag is not None:
-                #
-                # Only coarsen flagged nodes
-                #
-                if leaf.has_parent(coarsening_flag):
-                    parent = leaf.get_parent()
-                     
-                    if clean_up:
-                        #
-                        # Remove coarsening flag
-                        # 
-                        parent.unmark(coarsening_flag)
-                else:
-                    if new_label is not None:
-                        #
-                        # Nodes not flagged for coarsening should be part of new mesh
-                        #
-                        for child in parent.get_children(): 
-                            child.mark(new_label)
-                    continue
-            else:
-                #
-                # Indiscriminate coarsening
-                # 
-                if leaf.has_parent():
-                    parent = leaf.get_parent()  
-                else:
-                    if new_label is not None:
-                        leaf.mark(new_label)
-                    continue
-            #
-            # Coarsen
             # 
-            if subforest_flag is None and new_label is None:
+            # During coarsening, some leaves may already be unmarked
+            #
+            if debug:
+                print('leaf info')
+                leaf.info()
+                
+            if subforest_flag is not None:
+                if not leaf.is_marked(subforest_flag):
+                    continue
+            #
+            # Find nodes that must be coarsened
+            #
+            if not leaf.has_parent():
+                if debug:
+                    print('ROOT Node')
+                
                 #
-                # Delete self and siblings
+                # Leaf without parent is a ROOT: must be part of the new mesh.
                 # 
-                parent.delete_children()
-            elif new_label is None:
+                if new_label is not None:
+                    #
+                    # Mark leaf with new_label
+                    # 
+                    leaf.mark(new_label)
+                
+                if clean_up and coarsening_flag is not None:
+                    #
+                    # Remove coarsening flag
+                    # 
+                    to_clean.append(leaf) 
+                    
+                # On to the next leaf
+                continue 
+            
+            
+            #
+            # Can get parent
+            # 
+            parent = leaf.get_parent()
+            if debug:
+                print('LEAF has parent')
+                parent.info()
+         
+            #
+            # Determine whether to coarsen
+            # 
+            if coarsening_flag is None:
+                coarsen = True
+            elif parent.is_marked(coarsening_flag):
+                coarsen = True
+                if clean_up:
+                    #
+                    # Remove coarsening flag 
+                    # 
+                    parent.unmark(coarsening_flag, recursive=True)
+            else:
+                coarsen = False
+            
+            if debug:
+                print('Coarsen', coarsen)
+                             
+            if not coarsen:
                 #
-                # Remove 'subforest_label' from leaf and siblings
+                # Don't coarsen   
                 # 
-                for child in parent.get_children():
-                    child.unmark(subforest_flag)
+                if new_label is not None:
+                    #
+                    # Apply new label to leaf and siblings
+                    #
+                    for child in parent.get_children():
+                        child.mark(new_label)
+                
+                # Move to the next LEAF
+                continue
             else:
                 #
-                # Mark parents with new_label
-                # 
-                parent.mark(new_label)
-        #
+                # Coarsen
+                #
+                if subforest_flag is None and new_label is None:
+                    #
+                    # Delete marked node's children
+                    # 
+                    parent.delete_children()
+                    
+                    if debug:
+                        print('Deleting children')
+                        parent.info()
+                elif new_label is None:
+                    #
+                    # Remove 'subforest_label' from leaf and siblings
+                    # 
+                    for child in parent.get_children():
+                        child.unmark(subforest_flag)
+                        
+                    if debug:
+                        print('Removing subforest_flag')
+                        for child in parent.get_children():
+                            print(child.is_marked(subforest_flag))  
+                else:
+                    #
+                    # Mark parents with new_label
+                    # 
+                    parent.mark(new_label)
+                    
+                    if debug:
+                        print('Marking parent with new label')
+                        parent.info()
+                    
+                if clean_up and coarsening_flag is not None:
+                    #
+                    # Remove coarsening flag
+                    # 
+                    parent.unmark(coarsening_flag)
+                    
+                    if debug:
+                        print('removing flag', coarsening_flag)
+                        parent.info()           
+        #            
         # Apply new label to coarsened submesh if necessary
         # 
         if new_label is not None:
             self.make_forest_of_rooted_subtrees(new_label)
-            
+        """ 
     
     def refine(self, subforest_flag=None, refinement_flag=None, new_label=None, 
                clean_up=True):
@@ -5737,13 +5975,20 @@ class Mesh1D(Mesh):
         """
         Returns the interval endpoints
         """
-        v0, v1 = self.get_boundary_vertices()
+        if self.is_periodic():
+            #
+            # Periodic meshes have no boundary vertices, get them explicitly
+            # 
+            v0 = self.cells.get_child(0).base()
+            v1 = self.cells.get_child(-1).head()
+        else:
+            v0, v1 = self.get_boundary_vertices()
         x0, = v0.coordinates()
         x1, = v1.coordinates()
         return x0, x1
     
 
-    def mark_region(self, flag, f, entity='vertex', strict_containment=True, 
+    def mark_region(self, flag, f, entity_type='vertex', strict_containment=True, 
                     on_boundary=False, subforest_flag=None):
         """
         Flags all entities of specified type within specified 1D region in mesh
@@ -5756,7 +6001,7 @@ class Mesh1D(Mesh):
                 output is True if the point is contained in the region to be 
                 marked, False otherwise.
                 
-            entity: str, entity to be marked ('cell', 'vertex') 
+            entity_type: str, entity to be marked ('cell', 'vertex') 
                 
             strict_containment: bool, if True, an entity is marked only
                 if all its vertices are contained in the region. If False,
@@ -5770,7 +6015,7 @@ class Mesh1D(Mesh):
             #
             # Entity adjacent to boundary
             # 
-            if entity=='vertex':
+            if entity_type=='vertex':
                 #
                 # Vertices
                 #
@@ -5781,7 +6026,7 @@ class Mesh1D(Mesh):
                         # Vertex in region -> mark it
                         # 
                         v.mark(flag)
-            elif entity=='cell':
+            elif entity_type=='cell':
                 #
                 # Intervals
                 # 
@@ -5826,7 +6071,7 @@ class Mesh1D(Mesh):
             # Region not adjacent to boundary 
             # 
             for cell in self.cells.get_leaves(subforest_flag=subforest_flag):
-                if entity=='vertex':
+                if entity_type=='vertex':
                     #
                     # Mark vertices
                     # 
@@ -5837,7 +6082,7 @@ class Mesh1D(Mesh):
                             # Vertex is in region -> mark it
                             # 
                             v.mark(flag)
-                elif entity=='cell':
+                elif entity_type=='cell':
                     #
                     # Mark intervals
                     # 
@@ -5865,10 +6110,113 @@ class Mesh1D(Mesh):
                     if mark:
                         #
                         # Mark interval if necessary
-                        # 
+                        #  
                         cell.mark(flag)
+  
+  
+    def get_region(self, flag=None, entity_type='vertex', on_boundary=False, 
+                   subforest_flag=None, return_cells=False):
+        """
+        Returns a list of entities marked with the specified flag in 1D mesh
+        
+        
+        Inputs:
+        
+            flag: str/int/tuple, entity marker
+            
+            entity_type: str, type of entity to be returned 
+                ('vertex', 'cell', or 'half_edge')
+                
+            on_boundary: bool, if True, seek region only along boundary
+            
+            subforest_flag: str/int/tuple, submesh flag
+            
+            return_cells: bool, if True, return tuples of the form 
+                (entity, cell), i.e. include the cell containing the entity.
+            
+            
+        Outputs:
+        
+            region_entities: list, or Cells/Intervals/HalfEdges/Vertices 
+                located within region. 
+        """
+        region_entities = set()
+        if on_boundary:
+            #
+            # Restrict region to boundary
+            # 
+            cells = self.get_boundary_cells(subforest_flag=subforest_flag)
+            bnd_vertices = self.get_boundary_vertices()
+        else:
+            #
+            # Region within 1D domain
+            # 
+            cells = self.cells.get_leaves(subforest_flag=subforest_flag)
+            
+        for cell in cells:
+            #
+            # Iterate over cells
+            # 
+            if entity_type=='vertex':
+                #
+                # Vertex
+                # 
+                for v in cell.get_vertices():
+                    add_entity = flag is None or v.is_marked(flag)
+                    if on_boundary:
+                        #
+                        # Additional check when on boundary
+                        # 
+                        add_entity = add_entity and v in bnd_vertices
+                            
+                    if add_entity:
+                        #
+                        # Add vertex to set
+                        # 
+                        if return_cells:
+                            #
+                            # Add (vertex, cell) tuple
+                            # 
+                            region_entities.add((v,cell))
+                        else:
+                            #
+                            # Add only vertex
+                            #
+                            region_entities.add(v)
+            elif entity_type=='cell':
+                #
+                # Intervals
+                # 
+                add_entity = flag is None or cell.is_marked(flag)
+                if add_entity:
+                    #
+                    # Add cell to set
+                    # 
+                    if return_cells:
+                        #
+                        # Add (cell, cell) tuple
+                        # 
+                        region_entities.add((cell, cell))
+                    else:
+                        #
+                        # Add only cell
+                        # 
+                        region_entities.add(cell)
+                                
+        return list(region_entities)
+        
+
+    def record(self, subforest_flag):
+        """
+        Record current mesh (intervals)
+        
+        Input:
+        
+            subforest_flag: str/int/tuple, name of mesh
+        """
+        self.cells.record(subforest_flag)
+        
                         
-    
 class Mesh2D(Mesh):
     """
     2D Mesh class
@@ -6020,18 +6368,30 @@ class Mesh2D(Mesh):
         Inputs: 
         
             subforest_flag: optional flag (int/str) specifying the submesh
-                within which boundary segments are sought
+                within which boundary segments are sought. 
                 
-            flag: optional flag (int/str) specifying boundary segments.
+                Note: This flag is applied to the cells in the submesh, not the edges
+                
+            flag: optional flag (int/str) specifying boundary segments
+            
+            
+        Notes: 
+        
+            - The subforest flag specified above refers to the mesh cells,
+                not to the half-edges
+                
+            - This implementation assumes that the boundary edges on the coarsest
+                mesh are a good representation of the computational region.
         """
         bnd_hes = []
         #
-        # Locate half-edges on the boundary
+        # Locate half-edges on the boundary (coarsest level)
         # 
-        for he in self.half_edges.get_leaves(subforest_flag=subforest_flag,\
-                                             flag=flag):
+        for he in self.half_edges.get_children():
             if he.twin() is None:
                 bnd_hes.append(he)
+                
+        
         #
         # Group and sort half-edges
         #
@@ -6060,12 +6420,51 @@ class Mesh2D(Mesh):
                         g2.reverse()
                         g1.extendleft(g2)
                         merger_activity = True
+                            
             if not merger_activity or len(bnd_hes_sorted)==1:
                 break    
         #
         # Multiple boundary segments
         #     
-        return [list(segment) for segment in bnd_hes_sorted]
+        bnd = [list(segment) for segment in bnd_hes_sorted]
+    
+        #
+        # Get edges on finest level (allowed by submesh)
+        # 
+        for segment in bnd:
+            hes_todo = [he for he in segment]
+            while len(hes_todo)>0:
+                #
+                # Pop out first half-edge in list
+                # 
+                he = hes_todo.pop(0)
+                if he.cell().has_children(flag=subforest_flag):
+                    #
+                    # Half-Edge has valid sub-edges: 
+                    # Replace he in list with these.
+                    # 
+                    i_he = segment.index(he)
+                    del segment[i_he]
+                    for che in he.get_children():
+                        segment.insert(i_he, che)
+                        i_he += 1
+                        
+                        #
+                        # Add che's to the list of he's to do
+                        # 
+                        hes_todo.append(che)
+            #
+            # Throw out he's that are not flagged
+            # 
+            if flag is not None:
+                for he, i_he in zip(segment, range(len(segment))):
+                    if not he.is_marked(flag):
+                        #
+                        # Not flagged: remove from list
+                        # 
+                        del segment[i_he]
+
+        return bnd
     
     
     def get_boundary_vertices(self, flag=None, subforest_flag=None):
@@ -6080,7 +6479,7 @@ class Mesh2D(Mesh):
         return vertices
     
     
-    def mark_region(self, flag, f, entity='vertex', strict_containment=True, 
+    def mark_region(self, flag, f, entity_type='vertex', strict_containment=True, 
                     on_boundary=False, subforest_flag=None):
         """
         This method marks all entities within a 2D region.
@@ -6093,7 +6492,7 @@ class Mesh2D(Mesh):
                 output is True if the point is contained in the region to be 
                 marked, False otherwise.
                 
-            entity: str, entity to be marked ('cell', 'half_edge', 'vertex') 
+            entity_type: str, entity to be marked ('cell', 'half_edge', 'vertex') 
                 
             strict_containment: bool, if True, an entity is marked only
                 if all its vertices are contained in the region. If False,
@@ -6107,7 +6506,7 @@ class Mesh2D(Mesh):
             #
             # Iterate only over boundary segments
             # 
-            for segment in self.get_boundary_segments(subforest_flag):
+            for segment in self.get_boundary_segments(subforest_flag=subforest_flag):
                 #
                 # Iterate over boundary segments
                 # 
@@ -6115,7 +6514,7 @@ class Mesh2D(Mesh):
                     #
                     # Iterate over half_edges within each segment
                     # 
-                    if entity=='vertex':
+                    if entity_type=='vertex':
                         #
                         # Mark vertices
                         # 
@@ -6129,7 +6528,7 @@ class Mesh2D(Mesh):
                                 # Mark 
                                 # 
                                 v.mark(flag)
-                    elif entity=='half_edge':
+                    elif entity_type=='half_edge':
                         #
                         # Mark Half-Edges
                         # 
@@ -6165,7 +6564,7 @@ class Mesh2D(Mesh):
                             # 
                             he.mark(flag)
                             
-                    elif entity=='cell':
+                    elif entity_type=='cell':
                         #
                         # Mark Cells
                         # 
@@ -6196,7 +6595,7 @@ class Mesh2D(Mesh):
                             # 
                             cell.mark(flag)                            
                     else:
-                        raise Exception('Entity %s not supported'%(entity))
+                        raise Exception('Entity %s not supported'%(entity_type))
         else:
             #
             # Region may lie within interior of the domain
@@ -6205,7 +6604,7 @@ class Mesh2D(Mesh):
                 #
                 # Iterate over mesh cells
                 # 
-                if entity=='vertex':
+                if entity_type=='vertex':
                     #
                     # Mark vertices 
                     # 
@@ -6216,7 +6615,7 @@ class Mesh2D(Mesh):
                             # Mark vertex
                             #  
                             v.mark(flag)
-                elif entity=='half_edge':
+                elif entity_type=='half_edge':
                     #
                     # Mark half-edges 
                     #
@@ -6248,7 +6647,7 @@ class Mesh2D(Mesh):
                             # 
                             he.mark(flag)
                                 
-                elif entity=='cell':
+                elif entity_type=='cell':
                     #
                     # Mark cells
                     # 
@@ -6280,7 +6679,172 @@ class Mesh2D(Mesh):
                         cell.mark(flag)
                             
     
-    
+    def get_region(self, flag=None, entity_type='vertex', on_boundary=False, 
+                   subforest_flag=None, return_cells=False):
+        """
+        Returns a list of entities marked with the specified flag
+        
+        
+        Inputs:
+        
+            flag: str/int/tuple, entity marker
+            
+            entity_type: str, type of entity to be returned 
+                ('vertex', 'cell', or 'half_edge')
+                
+            on_boundary: bool, if True, seek region only along boundary
+            
+            subforest_flag: str/int/tuple, submesh flag
+            
+            return_cells: bool, if True, return a list of tuples of the form
+                (entity, cell)
+            
+        Outputs:
+        
+            region_entities: list, or Cells/Intervals/HalfEdges/Vertices 
+                located within region. 
+        """
+        debug = False
+        region_entities = set()
+        if on_boundary:
+            if debug: print('On boundary')
+            #
+            # Region is a subset of the boundary
+            # 
+            for segment in self.get_boundary_segments(subforest_flag=subforest_flag):
+                #
+                # Iterate over boundary segments 
+                #
+                for he in segment:
+                    #
+                    # Iterate over boundary edges
+                    # 
+                    if entity_type=='cell':
+                        #
+                        # Get cell associated with half-edge
+                        # 
+                        cell = he.cell()
+                        
+                        #
+                        # Add cell to set
+                        # 
+                        add_entity = flag is None or cell.is_marked(flag)
+                        if add_entity:
+                            if return_cells:
+                                #
+                                # Return containing cell as cell
+                                # 
+                                region_entities.add((cell, cell))
+                            else:
+                                #
+                                # Return only entity
+                                # 
+                                region_entities.add(cell)
+                            
+                    elif entity_type=='half_edge':
+                        #
+                        # Half-edge
+                        #
+                        add_entity = flag is None or he.is_marked(flag)
+                        if add_entity:
+                            if return_cells:
+                                #
+                                # Return half-edge and cell
+                                # 
+                                cell = he.cell()
+                                region_entities.add((he, cell))
+                            else:
+                                #
+                                # Return only entity
+                                # 
+                                region_entities.add(he)
+                            
+                    elif entity_type=='vertex':
+                        #
+                        # Vertices
+                        # 
+                        for v in he.get_vertices():
+                            if debug:
+                                print('considering vertex', v.coordinates())
+                            add_entity = flag is None or v.is_marked(flag)
+                            if debug:
+                                print('to add?', add_entity)
+                                print('marked?', v.is_marked(flag))
+                            if add_entity:
+                                if return_cells:
+                                    #
+                                    # Return containing cell and entity
+                                    # 
+                                    cell = he.cell()
+                                    region_entities.add((v, cell))
+                                else:
+                                    #
+                                    # Return only entity
+                                    # 
+                                    region_entities.add(v)
+        else:
+            #
+            # Iterate over entire mesh.
+            #
+            for cell in self.cells.get_leaves(subforest_flag=subforest_flag):
+                #
+                # Iterate over mesh cells 
+                # 
+                if entity_type=='cell':
+                    #
+                    # Cells
+                    # 
+                    add_entity = flag is None or cell.is_marked(flag)
+                    if add_entity:
+                        if return_cells:
+                            #
+                            # Return containing cell as cell
+                            # 
+                            region_entities.add((cell, cell))
+                        else:
+                            #
+                            # Return only entity
+                            # 
+                            region_entities.add(cell)
+                                    
+                elif entity_type=='half_edge':
+                    # 
+                    # Half-Edges
+                    #
+                    for he in cell.get_half_edges():
+                        add_entity = flag is None or he.is_marked(flag)
+                        if add_entity:
+                            if return_cells:
+                                #
+                                # Return half-edge and cell
+                                # 
+                                region_entities.add((he, cell))
+                            else:
+                                #
+                                # Return only entity
+                                # 
+                                region_entities.add(he)
+                            
+                elif entity_type=='vertex':
+                    #
+                    # Vertices
+                    # 
+                    for he in cell.get_half_edges():
+                        for v in he.get_vertices():
+                            add_entity = flag is None or v.is_marked(flag)
+                            if add_entity:
+                                if return_cells:
+                                    #
+                                    # Return containing cell and entity
+                                    # 
+                                    region_entities.add((v, cell))
+                                else:
+                                    #
+                                    # Return only entity
+                                    # 
+                                    region_entities.add(v)  
+        return region_entities
+        
     def bounding_box(self):
         """
         Returns the bounding box of the mesh
@@ -6291,6 +6855,14 @@ class Mesh2D(Mesh):
         return x0, x1, y0, y1
     
     
+    def record(self, subforest_flag):
+        """
+        Mark all cells and half-edges within current mesh with subforest_flag 
+        """
+        self.cells.record(subforest_flag)
+        self.half_edges.record(subforest_flag)
+     
+        
     '''
     def get_boundary_edges(self, flag=None):
         """

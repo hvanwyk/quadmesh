@@ -56,14 +56,14 @@ class TestDofHandler(unittest.TestCase):
                 # 
                 if key=='all':
                     dh.assign_dofs(edofs[etype][key], cell)
-                    self.assertEqual(dh.get_global_dofs(cell), edofs[etype][key])
+                    self.assertEqual(dh.get_cell_dofs(cell), edofs[etype][key])
                 #
                 # Assign dofs at given positions
                 # 
                 elif key=='pos':
                     pos, dofs = edofs[etype]['pos']
                     dh.assign_dofs(dofs, cell, pos=pos)
-                    self.assertEqual(dh.get_global_dofs(cell)[pos[0]], dofs[0])
+                    self.assertEqual(dh.get_cell_dofs(cell)[pos[0]], dofs[0])
                 #
                 # Assign dofs to given vertex
                 #  
@@ -72,7 +72,7 @@ class TestDofHandler(unittest.TestCase):
                         v_num, dofs = edofs[etype]['vertex']
                         vertex = cell.get_vertex(v_num)
                         dh.assign_dofs(dofs, cell, vertex)
-                        self.assertEqual(dh.get_global_dofs(cell, vertex), dofs)
+                        self.assertEqual(dh.get_cell_dofs(cell, vertex), dofs)
                 #
                 # Assign dofs to interval
                 # 
@@ -80,7 +80,7 @@ class TestDofHandler(unittest.TestCase):
                     if edofs[etype][key] is not None:
                         dofs = edofs[etype][key]
                         dh.assign_dofs(dofs, cell, cell)
-                        self.assertEqual(dh.get_global_dofs(cell, cell), dofs)
+                        self.assertEqual(dh.get_cell_dofs(cell, cell, interior=True), dofs)
                 #
                 # Clear dofs to reuse DofHandler
                 # 
@@ -116,14 +116,14 @@ class TestDofHandler(unittest.TestCase):
                 # 
                 if key=='all':
                     dh.assign_dofs(edofs[etype][key], cell)
-                    self.assertEqual(dh.get_global_dofs(cell), edofs[etype][key])
+                    self.assertEqual(dh.get_cell_dofs(cell), edofs[etype][key])
                 #
                 # Assign dofs to specific position
                 # 
                 elif key=='pos':
                     pos, dofs = edofs[etype][key]
                     dh.assign_dofs(dofs, cell, pos=pos)
-                    self.assertEqual(dh.get_global_dofs(cell)[pos[0]],dofs[0])
+                    self.assertEqual(dh.get_cell_dofs(cell)[pos[0]],dofs[0])
                 #
                 # Assign dof to specific vertex
                 #
@@ -132,7 +132,7 @@ class TestDofHandler(unittest.TestCase):
                         v_num, dofs = edofs[etype][key]
                         vertex = cell.get_vertex(v_num)
                         dh.assign_dofs(dofs, cell, vertex)
-                        self.assertEqual(dh.get_global_dofs(cell, vertex), dofs)
+                        self.assertEqual(dh.get_cell_dofs(cell, vertex), dofs)
                 #
                 # Assign dofs to specific edge
                 # 
@@ -141,7 +141,7 @@ class TestDofHandler(unittest.TestCase):
                         e_num, dofs = edofs[etype][key]
                         he = cell.get_half_edge(e_num)
                         dh.assign_dofs(dofs, cell, he)
-                        self.assertEqual(dh.get_global_dofs(cell,he),dofs)
+                        self.assertEqual(dh.get_cell_dofs(cell, he, interior=True),dofs)
                 #
                 # Assign dofs to cell interior
                 # 
@@ -149,7 +149,7 @@ class TestDofHandler(unittest.TestCase):
                     if edofs[etype][key] is not None:
                         dofs = edofs[etype][key]
                         dh.assign_dofs(dofs, cell, cell)
-                        self.assertEqual(dh.get_global_dofs(cell, cell), dofs)
+                        self.assertEqual(dh.get_cell_dofs(cell, cell, interior=True), dofs)
                 
                 #
                 # Clear dofs to re-use DofHandler
@@ -336,14 +336,14 @@ class TestDofHandler(unittest.TestCase):
             # Fill left dofs and share with right neighbor
             dh.fill_dofs(lcell)
             dh.share_dofs_with_neighbors(lcell, lcell.get_vertex(1))
-            self.assertEqual(dh.get_global_dofs(rcell), edofs[etype])
+            self.assertEqual(dh.get_cell_dofs(rcell), edofs[etype])
         
             dh.clear_dofs()
             
             # Fill left dofs and share with all neighbors
             dh.fill_dofs(lcell)
             dh.share_dofs_with_neighbors(lcell)
-            self.assertEqual(dh.get_global_dofs(rcell), edofs[etype])
+            self.assertEqual(dh.get_cell_dofs(rcell), edofs[etype])
         
         #
         # Periodic
@@ -373,14 +373,14 @@ class TestDofHandler(unittest.TestCase):
             # Fill left dofs and share with right neighbor
             dh.fill_dofs(lcell)
             dh.share_dofs_with_neighbors(lcell, lcell.get_vertex(1))
-            self.assertEqual(dh.get_global_dofs(rcell), edofs[etype]['right'])
+            self.assertEqual(dh.get_cell_dofs(rcell), edofs[etype]['right'])
         
             dh.clear_dofs()
             
             # Fill left dofs and share with all neighbors
             dh.fill_dofs(lcell)
             dh.share_dofs_with_neighbors(lcell)
-            self.assertEqual(dh.get_global_dofs(rcell), edofs[etype]['all'])
+            self.assertEqual(dh.get_cell_dofs(rcell), edofs[etype]['all'])
         
         # =====================================================================
         # 2D
@@ -437,8 +437,8 @@ class TestDofHandler(unittest.TestCase):
             dh.share_dofs_with_neighbors(c00, vertex)
             
             # Check
-            self.assertEqual(dh.get_global_dofs(c10, vertex), edofs[etype]['vertex'][c10])
-            self.assertEqual(dh.get_global_dofs(c11, vertex), edofs[etype]['vertex'][c11])
+            self.assertEqual(dh.get_cell_dofs(c10, vertex), edofs[etype]['vertex'][c10])
+            self.assertEqual(dh.get_cell_dofs(c11, vertex), edofs[etype]['vertex'][c11])
             
             # Clear
             dh.clear_dofs()
@@ -456,8 +456,8 @@ class TestDofHandler(unittest.TestCase):
             dh.share_dofs_with_neighbors(c00, edge)
             
             # Check
-            self.assertEqual(dh.get_global_dofs(c10, twin), edofs[etype]['edge'][c10])
-            self.assertEqual(dh.get_global_dofs(c11, twin), edofs[etype]['edge'][c11])
+            self.assertEqual(dh.get_cell_dofs(c10, twin, interior=True), edofs[etype]['edge'][c10])
+            self.assertEqual(dh.get_cell_dofs(c11, twin, interior=True), edofs[etype]['edge'][c11])
             
             # Clear
             dh.clear_dofs()
@@ -473,8 +473,8 @@ class TestDofHandler(unittest.TestCase):
             dh.share_dofs_with_neighbors(c00)
             
             # Check
-            self.assertEqual(dh.get_global_dofs(c10), edofs[etype]['all'][c10])
-            self.assertEqual(dh.get_global_dofs(c11), edofs[etype]['all'][c11])
+            self.assertEqual(dh.get_cell_dofs(c10), edofs[etype]['all'][c10])
+            self.assertEqual(dh.get_cell_dofs(c11), edofs[etype]['all'][c11])
             
         #
         # Periodic in both directions   
@@ -531,10 +531,10 @@ class TestDofHandler(unittest.TestCase):
             
             # Check
             c10_vertex = vertex.get_periodic_pair(c10)[0]
-            self.assertEqual(dh.get_global_dofs(c10, c10_vertex), edofs[etype]['vertex'][c10])
+            self.assertEqual(dh.get_cell_dofs(c10, c10_vertex), edofs[etype]['vertex'][c10])
             
             c11_vertex = vertex.get_periodic_pair(c11)[0]
-            self.assertEqual(dh.get_global_dofs(c11, c11_vertex), edofs[etype]['vertex'][c11])
+            self.assertEqual(dh.get_cell_dofs(c11, c11_vertex), edofs[etype]['vertex'][c11])
             
             # Clear
             dh.clear_dofs()
@@ -552,8 +552,8 @@ class TestDofHandler(unittest.TestCase):
             dh.share_dofs_with_neighbors(c00, edge)
             
             # Check
-            self.assertEqual(dh.get_global_dofs(c10, twin), edofs[etype]['edge'][c10])
-            self.assertEqual(dh.get_global_dofs(c11, twin), edofs[etype]['edge'][c11])
+            self.assertEqual(dh.get_cell_dofs(c10, twin, interior=True), edofs[etype]['edge'][c10])
+            self.assertEqual(dh.get_cell_dofs(c11, twin, interior=True), edofs[etype]['edge'][c11])
             
             # Clear
             dh.clear_dofs()
@@ -569,8 +569,8 @@ class TestDofHandler(unittest.TestCase):
             dh.share_dofs_with_neighbors(c00)
             
             # Check
-            self.assertEqual(dh.get_global_dofs(c10), edofs[etype]['all'][c10])
-            self.assertEqual(dh.get_global_dofs(c11), edofs[etype]['all'][c11])
+            self.assertEqual(dh.get_cell_dofs(c10), edofs[etype]['all'][c10])
+            self.assertEqual(dh.get_cell_dofs(c11), edofs[etype]['all'][c11])
             
         
     def test_share_dofs_with_children(self):
@@ -609,8 +609,8 @@ class TestDofHandler(unittest.TestCase):
             #
             # Check whether shared dofs are as expected.
             # 
-            self.assertEqual(dh.get_global_dofs(left_child), left_child_dofs[etype])
-            self.assertEqual(dh.get_global_dofs(right_child), right_child_dofs[etype])
+            self.assertEqual(dh.get_cell_dofs(left_child), left_child_dofs[etype])
+            self.assertEqual(dh.get_cell_dofs(right_child), right_child_dofs[etype])
         #
         # 2D Test
         # 
@@ -669,7 +669,7 @@ class TestDofHandler(unittest.TestCase):
                 #
                 # Check whether shared dofs are as expected
                 # 
-                self.assertEqual(dh.get_global_dofs(child), child_dofs[i][etype])
+                self.assertEqual(dh.get_cell_dofs(child), child_dofs[i][etype])
        
            
     def test_distribute_dofs(self):
@@ -694,7 +694,7 @@ class TestDofHandler(unittest.TestCase):
                 dofhandler.distribute_dofs()
     
                 plot.mesh(mesh, dofhandler=dofhandler, dofs=True)
-        
+            
     
     def test_n_dofs(self):
         """
@@ -819,25 +819,69 @@ class TestDofHandler(unittest.TestCase):
             
             #plot.mesh(mesh, dofhandler=dofhandler, dofs=True)
 
-    
-    def test_plot(self):
+    def test_get_region_dofs(self):
+        """
+        Test the function for returning the dofs associated with a region.
+        """   
+        # 
+        # 2D
+        #
         mesh = QuadMesh()
-        element = QuadFE(2,'Q1')
-        dofhandler = DofHandler(mesh, element)
-        mesh.cells.refine(new_label=1)
-        #plot = Plot(quickview=True)
-        #plot.mesh(mesh)
-        
-        mesh.cells.find_node([0,1]).mark('r')
-        mesh.cells.refine(refinement_flag='r', new_label=2)
-        #mesh.cells.get_child(0).unmark('r',recursive=True)
-        dofhandler.distribute_dofs(subforest_flag=1)
-        dofs = dofhandler.get_global_dofs(mesh.cells.find_node([0,1]))
-        #print(dofs)
-        #print(mesh.cells.find_node([0,1]).is_marked('r'))
-        #plot.mesh(mesh, dofhandler=dofhandler, dofs=True, mesh_flag=1)
-        #plot.mesh(mesh, dofhandler=dofhandler, dofs=True, mesh_flag=2)
-    '''
+        for etype in ['Q1','Q2','Q3']:
+            element = QuadFE(2, etype)
+            dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
+            
+            # 
+            # Mark half-edges 
+            #  
+            bnd_right = lambda x,dummy: np.abs(x-1)<1e-9
+            mesh.mark_region('right', bnd_right, \
+                             entity_type='half_edge', \
+                             on_boundary=True)
+            
+            # Check that mesh.mark_region is doing the right thing. 
+            cell = mesh.cells.get_child(0)
+            marked_edge = False
+            for he in cell.get_half_edges():
+                if he.is_marked('right'):
+                    #
+                    # All vertices should be on the boundary
+                    # 
+                    marked_edge = True
+                    for v in he.get_vertices():
+                        x,y = v.coordinates()
+                    self.assertTrue(bnd_right(x,y))
+                else:
+                    #
+                    # Not all vertices on should be on the boundary
+                    # 
+                    on_right = True
+                    for v in he.get_vertices():
+                        x,y = v.coordinates()
+                        if not bnd_right(x,y):
+                            on_right = False
+                    self.assertFalse(on_right)
+            #
+            # Some half-edge should be marked
+            # 
+            self.assertTrue(marked_edge)
+            
+            #
+            # Check that we get the right number of dofs
+            #
+            n_dofs = {True: {'Q1': 0, 'Q2': 1, 'Q3': 2}, 
+                      False: {'Q1': 2, 'Q2': 3, 'Q3': 4}}
+            for interior in [True, False]:
+                dofs = dofhandler.get_region_dofs(entity_type='half_edge', \
+                                                  entity_flag='right', \
+                                                  interior=interior, \
+                                                  on_boundary=True)
+                #
+                # Check that we get the right number of dofs
+                # 
+                self.assertEqual(len(dofs), n_dofs[interior][etype])
+    '''  
     def test_distribute_dofs(self):
         #
         # Mesh

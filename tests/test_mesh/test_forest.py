@@ -219,11 +219,11 @@ class TestForest(unittest.TestCase):
         node.get_child(3).mark(1)
         forest.make_forest_of_rooted_subtrees(1)
         leaves = forest.get_leaves(subforest_flag=1)
-        self.assertEqual(len(leaves), 5, 
-                         'This tree has 5 flagged LEAF nodes.')
-        self.assertEqual(leaves[0], node.get_child(3), 
+        self.assertEqual(len(leaves), 7, 
+                         'This tree has 7 flagged LEAF nodes.')
+        self.assertEqual(leaves[0], node.get_child(0), 
                          'The first leaf should be the NE child.')
-        self.assertEqual(leaves[3], node.get_child(1).get_child(2),
+        self.assertEqual(leaves[3], node.get_child(1).get_child(0),
                          '4th flagged leaf should be SE-NW grandchild.')
         
     
@@ -329,16 +329,16 @@ class TestForest(unittest.TestCase):
         # =====================================================================
         # Coarsening Flag
         # =====================================================================        
-        # Refine and mark one child 
+        # Refine and mark one grandchild
         forest.refine()
         
-        # Check that forest is as it was
+        # Check that forest now has 10 Tree
         count = 0
         for dummy in forest.traverse():
             count += 1
         self.assertEqual(count, 10)
             
-        forest.get_child(0).get_child(0).mark(1)
+        forest.get_child(0).mark(1)
         forest.coarsen(coarsening_flag=1)
         
         # Tree 0 should not have children, while Tree 1 should have 4
@@ -360,14 +360,14 @@ class TestForest(unittest.TestCase):
         
         forest.refine()
         
-        # Make a subforest [0],[0,0], [1]  
+        # Make a subforest 0, 00, 01, 1  
         forest.get_child(0).get_child(0).mark(2)
         forest.make_forest_of_rooted_subtrees(2)
         
         count = 0
-        for dummy in forest.traverse(flag=2):
+        for node in forest.traverse(flag=2):
             count += 1
-        self.assertEqual(count, 3)
+        self.assertEqual(count, 4)
         
         # Coarsen the subforest
         forest.coarsen(subforest_flag=2)
@@ -378,15 +378,15 @@ class TestForest(unittest.TestCase):
             count += 1
         self.assertEqual(count, 2)
         
-        # Forest still contains 6
+        # Forest still contains 4 nodes (0,1,00,01,10,11)
         count = 0
         for dummy in forest.traverse():
             count += 1
         self.assertEqual(count, 6)
         
-        # New subforest: [0],[0,0], [1],[1,1]
+        # New subforest: 0, 00, 01, 1
         forest.get_child(0).get_child(0).mark(2)
-        forest.get_child(1).get_child(1).mark(2)
+        forest.make_forest_of_rooted_subtrees(2)
         
         # Count subforest nodes
         count = 0
@@ -395,7 +395,7 @@ class TestForest(unittest.TestCase):
         self.assertEqual(count,4)
 
         # Coarsening flag at a node not in the subforest 
-        forest.get_child(0).get_child(1).mark(1)
+        forest.get_child(1).get_child(1).mark(1)
         
         forest.coarsen(subforest_flag=2, coarsening_flag=1)
         
@@ -406,31 +406,36 @@ class TestForest(unittest.TestCase):
         self.assertEqual(count,4)
 
         # Apply coarsening flag to a node in the subforest
-        forest.get_child(0).get_child(0).mark(1)
+        forest.get_child(0).mark(1)
         
         # Coarsen
         forest.coarsen(subforest_flag=2, coarsening_flag=1)
         
-        # Now there should be 3 subnodes
+        # Now there should be 2 subnodes 
         count = 0
         for dummy in forest.traverse(2):
             count += 1
-        self.assertEqual(count,3)
+        self.assertEqual(count,2)
     
         # Make sure the coarsening flag is deleted.
-        self.assertFalse(forest.get_child(1).get_child(1).is_marked(1))
+        self.assertFalse(forest.get_child(0).is_marked(1))
+        
         
         # =====================================================================
         # Coarsening with new_label
         # =====================================================================
-        # Subforest is: [0], [0,0], [1], [1,1] 
+        # TODO: TEST HERE. 
+        
+        # Subforest is: 0, 00, 01, 1
         forest.get_child(0).get_child(0).mark(2)
+        forest.make_forest_of_rooted_subtrees(2)
         
         # Mark [0,0] with coarsening flag
-        forest.get_child(0).get_child(0).mark(1)
+        forest.get_child(0).mark(1)
+            
         
         # Coarsen subforest and label with new_label 
-        forest.coarsen(subforest_flag=2, coarsening_flag=1, new_label=3)
+        forest.coarsen(subforest_flag=2, coarsening_flag=1, new_label=3, debug=True)
         
         # Check that subforest still has the same nodes
         count = 0
@@ -442,7 +447,7 @@ class TestForest(unittest.TestCase):
         count = 0
         for dummy in forest.traverse(3):
             count += 1
-        self.assertEqual(count,3)
+        self.assertEqual(count,2)
         
         #
         # Now with no submesh
@@ -454,7 +459,7 @@ class TestForest(unittest.TestCase):
         self.assertEqual(count,6)
         
         # Mark with coarsening flag
-        forest.get_child(0).get_child(1).mark(1)
+        forest.get_child(0).mark(1)
         
         # Coarsen
         forest.coarsen(coarsening_flag=1, new_label=4)
@@ -469,7 +474,7 @@ class TestForest(unittest.TestCase):
         count = 0
         for dummy in forest.traverse(4):
             count += 1
-        self.assertEqual(count,5)
+        self.assertEqual(count,4)
         
         
     def test_refine(self):
@@ -524,7 +529,8 @@ class TestForest(unittest.TestCase):
         count = 0
         for dummy in forest.traverse(1):
             count += 1
-        self.assertEqual(count, 3)
+        self.assertEqual(count, 4)
+    
         
         forest.refine(subforest_flag=1)
         
@@ -532,9 +538,14 @@ class TestForest(unittest.TestCase):
         count = 0
         for dummy in forest.traverse(1):
             count += 1
-        self.assertEqual(count, 7)
+        self.assertEqual(count, 10)
         
         forest.coarsen(subforest_flag=1)
+        
+        count = 0
+        for dummy in forest.traverse(1):
+            count += 1
+        self.assertEqual(count, 4)
         
         # Now try with a refinement flag
         forest.get_child(1).mark(2)
@@ -545,7 +556,7 @@ class TestForest(unittest.TestCase):
         count = 0
         for dummy in forest.traverse(1):
             count += 1
-        self.assertEqual(count, 5)
+        self.assertEqual(count, 6)
         
         
         # =====================================================================
@@ -562,7 +573,7 @@ class TestForest(unittest.TestCase):
         count = 0
         for dummy in forest.traverse(1):
             count += 1
-        self.assertEqual(count, 3)
+        self.assertEqual(count, 4)
         
         forest.refine(subforest_flag=1, new_label=4)
         
@@ -570,13 +581,13 @@ class TestForest(unittest.TestCase):
         count = 0
         for dummy in forest.traverse(4):
             count += 1
-        self.assertEqual(count, 7)
+        self.assertEqual(count, 10)
  
         # Node count for original submesh
         count = 0
         for dummy in forest.traverse(1):
             count += 1
-        self.assertEqual(count, 3)
+        self.assertEqual(count, 4)
         
         # Refinement marker
         forest.get_child(1).mark(3)
@@ -588,6 +599,6 @@ class TestForest(unittest.TestCase):
         count = 0
         for dummy in forest.traverse(5):
             count += 1
-        self.assertEqual(count, 5)
+        self.assertEqual(count, 6)
         
         

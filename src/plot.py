@@ -8,8 +8,9 @@ import matplotlib.pyplot as plt
 from mesh import QuadCell
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
-from mpl_toolkits.mplot3d.art3d import Line3DCollection  # @UnresolvedImport
-from mpl_toolkits.mplot3d import axes3d # @UnresolvedImport
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from mpl_toolkits.mplot3d import Axes3D 
 import numpy as np
 from fem import Assembler, Function
 
@@ -24,21 +25,21 @@ class Plot(object):
         Constructor
         """
         self.__quickview = quickview
-     
         
-    def mesh(self, mesh, ax=None, dofhandler=None, show_axis=False, color_marked=None,
-             vertex_numbers=False, edge_numbers=False, cell_numbers=False, 
-             dofs=False, mesh_flag=None):
+            
+    def mesh(self, mesh, axis=None, dofhandler=None, show_axis=False, 
+             color_marked=None, vertex_numbers=False, edge_numbers=False, 
+             cell_numbers=False, dofs=False, mesh_flag=None):
         """
         Plot computational mesh
         
         Inputs: 
-        
-            ax: current axes
             
             mesh: Mesh, computational mesh
             
-            *element: QuadFE, element
+            *ax: current axes
+            
+            *dofhandler: DofHandler associated with mesh
             
             *show_axis: boolean, set axis on or off
             
@@ -49,9 +50,7 @@ class Plot(object):
             *dofs: boolean, display degrees of freedom
             
             *mesh_flag: boolean, plot only cells with the given flag
-            
-            *nested: boolean, traverse grid in a nested fashion. 
-        
+                    
         
         Outputs:
         
@@ -60,9 +59,9 @@ class Plot(object):
         """
         if self.__quickview:
             fig = plt.figure()
-            ax = fig.add_subplot(111)
+            axis = fig.add_subplot(111)
         else:
-            assert ax is not None, 'Axis not specified.'
+            assert axis is not None, 'Axis not specified.'
         #
         # Two dimensional mesh
         #
@@ -73,14 +72,14 @@ class Plot(object):
             x0, x1, y0, y1 = mesh.bounding_box()    
             hx = x1 - x0
             hy = y1 - y0
-            ax.set_xlim(x0-0.1*hx, x1+0.1*hx)
-            ax.set_ylim(y0-0.1*hy, y1+0.1*hy) 
+            axis.set_xlim(x0-0.1*hx, x1+0.1*hx)
+            axis.set_ylim(y0-0.1*hy, y1+0.1*hy) 
             #
             # Plot background rectangle
             # 
             points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
             rect = plt.Polygon(points, fc='darkgrey', edgecolor='k', alpha=0.1)
-            ax.add_patch(rect)
+            axis.add_patch(rect)
             #
             # Plot Cells
             # 
@@ -91,13 +90,13 @@ class Plot(object):
                 # 
                 vertices = [v.coordinates() for v in cell.get_vertices()]
                 rect = plt.Polygon(vertices, fc='w', edgecolor='k')
-                ax.add_patch(rect)
+                axis.add_patch(rect)
                 #
                 # Plot half-edges
                 #
                 if False: 
                     for he in cell.get_half_edges():
-                        ax.annotate(s='', xy=he.head().coordinates(), \
+                        axis.annotate(s='', xy=he.head().coordinates(), \
                                     xytext=he.base().coordinates(),\
                                     arrowprops=dict(arrowstyle="->",\
                                                     connectionstyle="arc3" )) 
@@ -105,7 +104,7 @@ class Plot(object):
                 # Plot vertices
                 # 
                 for v in vertices:
-                    ax.plot(*v, '.k')
+                    axis.plot(*v, '.k')
                         
                     
         elif mesh.dim()==1:
@@ -114,36 +113,36 @@ class Plot(object):
             # 
             x0, x1 = mesh.bounding_box()
             l = x1 - x0
-            ax.set_xlim([x0-0.1*l, x1+0.1*l])
-            ax.set_ylim([-0.1,0.1])
-            ax.get_yaxis().set_ticks([])
+            axis.set_xlim([x0-0.1*l, x1+0.1*l])
+            axis.set_ylim([-0.1,0.1])
+            axis.get_yaxis().set_ticks([])
             for interval in mesh.cells.get_leaves(flag=mesh_flag):
                 a, = interval.base().coordinates()
                 b, = interval.head().coordinates()
-                ax.plot([a,b], [0,0], '-|k')
+                axis.plot([a,b], [0,0], '-|k')
             
                                 
         #
         # Degrees of freedom
         # 
         if dofs:
-            self.dofs(ax, dofhandler)
+            self.dofs(axis, dofhandler)
         
         if not show_axis:
-            ax.axis('off')
+            axis.axis('off')
 
         #    
-        # Plot immediately or save
+        # Plot immediately and/or save
         # 
         if self.__quickview:
             if False:
                 plt.show()
             else:
                 plt.show(block=False)
-                plt.pause(1)
+                plt.pause(20)
                 plt.close()
         else:  
-            return ax
+            return axis
         
 
          
@@ -214,7 +213,13 @@ class Plot(object):
         
     def element(self, element, ax=None):
         """
+        Plot reference element
         """            
+        #
+        # Check axis
+        # 
+        
+        
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(111)
@@ -250,8 +255,9 @@ class Plot(object):
         
                     
 
-    def contour(self, ax, fig, f, mesh, element=None, derivative=(0,), \
-                colorbar=True, resolution=(100,100), flag=None):
+    def contour(self, f, mesh=None, derivative=(0,),
+                colorbar=True, resolution=(100,100), 
+                axis=None):
         """
         Returns a contour plot of a function f
         
@@ -259,24 +265,17 @@ class Plot(object):
         Inputs:
         
             ax: Axis, current axes
-            
-            fig: Figure, current figure
-            
+                        
             f: Function, function to be plotted
             
             mesh: Mesh, computational mesh
-            
-            *element [None]: TODO: Not necessary if plotting a Function 
-            
+                        
             *derivative [(0,)]: int, tuple specifying the function's derivative
             
             *colorbar [True]: bool, add a colorbar?
             
             *resolution [(100,100)]: int, tuple resolution of contour plot.
-            
-            *flag [None]: str/int, specifying submesh on which to evaluate f
-                TODO: Unnecessary.
-            
+                        
             
         Outputs: 
         
@@ -286,13 +285,32 @@ class Plot(object):
                     
         """
         #
+        # Check function
+        # 
+        assert isinstance(f, Function), 'Can only plot "Function" objects.'
+        
+        #
+        # Initialize Axes
+        # 
+        if self.__quickview:
+            fig = plt.figure()
+            axis = fig.gca()
+        else:
+            assert axis is not None, 'Axis not specified.'
+            assert axis.name=="2d", 'Axis required to be 2D.'
+            
+        #
         # Initialize grid
         # 
         x0,x1,y0,y1 = mesh.bounding_box()
-        nx, ny = resolution
-        x_range = np.linspace(x0,x1,nx)
-        y_range = np.linspace(y0,y1,ny)
-        x,y = np.meshgrid(x_range,y_range)
+        nx, ny = resolution 
+        x,y = np.meshgrid(np.linspace(x0,x1,nx),np.linspace(y0,y1,ny))
+        xy = np.array([x.ravel(), y.ravel()]).T
+        ff = f.eval(xy, derivative=derivative)
+        z  = ff.reshape(x.shape)
+        
+        cm = axis.contourf(x,y,z,30)
+        
         if callable(f):
             #
             # A function 
@@ -339,7 +357,7 @@ class Plot(object):
         return fig, ax, cm
     
     
-    def surface(self, ax, f, mesh=None, element=None, derivatives=(0,), 
+    def surface(self, f, axis=None, mesh=None, derivative=(0,), 
                 shading=True, grid=False, resolution=(100,100),
                 edge_resolution=10, flag=None):
         """
@@ -373,16 +391,21 @@ class Plot(object):
             ax: Axis, containing plot.
         
         """
+        #
+        # Check if input is a Function object
+        # 
+        assert isinstance(f, Function), 'Can only plot Function objects.'
+        
         if mesh is None:
-            if isinstance(f, Function) and f.mesh is not None:
+            if f.mesh is not None:
                 mesh = f.mesh
             else:
                 mesh_error = 'Mesh must be specified, either explicitly, '+\
                     'or as part of the Function.'
                 raise Exception(mesh_error)
             
-        x0,x1,y0,y1 = mesh.box()        
-        system = Assembler(mesh,element)
+        x0,x1,y0,y1 = mesh.bounding_box()        
+        system = Assembler()
         if shading:
             #
             # Colormap
@@ -395,17 +418,18 @@ class Plot(object):
             xy = np.array([xx.ravel(),yy.ravel()]).transpose()
         
             # Evaluate function
-            zz = system.f_eval(f, xy, derivatives)
+            zz = f.eval(xy, derivative=derivative)
             z_min, z_max = zz.min(), zz.max()
             
             if grid:
                 alpha = 0.5
             else:
                 alpha = 1
-            ax.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
-                            linewidth=1, antialiased=True, alpha=alpha)
+            axis.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
+                              linewidth=1, antialiased=True, alpha=alpha)
             
-            
+        self.exit(axis=axis)
+        
         if grid:
             #
             # Wirefunction
@@ -422,7 +446,7 @@ class Plot(object):
                     #
                     # Explicit function
                     #
-                    assert derivatives==(0,),\
+                    assert derivative==(0,),\
                         'Discretize before plotting derivatives.'
                     f_loc = f
                 elif isinstance(f, Function):
@@ -454,7 +478,7 @@ class Plot(object):
                     
                     # Evaluate function at edge points 
                     zz = system.f_eval_loc(f_loc, node, x=np.array([xx,yy]).T, \
-                                           derivatives=derivatives)
+                                           derivatives=derivative)
                     if initialize_min_max:
                         z_min = zz.min()
                         z_max = zz.max()
@@ -466,7 +490,7 @@ class Plot(object):
                     for i in range(ne-1):
                         lines.append([(xx[i],yy[i],zz[i]),(xx[i+1],yy[i+1],zz[i+1])])
                 node_count += 1   
-            ax.add_collection(Line3DCollection(lines, colors='k', linewidth=0.5))
+            axis.add_collection(Line3DCollection(lines, colors='k', linewidth=0.5))
         
         x0,x1,y0,y1 = mesh.box()
         hx = x1 - x0
@@ -474,9 +498,182 @@ class Plot(object):
         hz = z_max - z_min
         spc = 0.1
         #print(z_min,z_max)
-        ax.set_xlim(x0-spc*hx, x1+spc*hx)
-        ax.set_ylim(y0-spc*hy, y1+spc*hy)
-        ax.set_zlim(z_min-spc*hz, z_max+spc*hz)
+        axis.set_xlim(x0-spc*hx, x1+spc*hx)
+        axis.set_ylim(y0-spc*hy, y1+spc*hy)
+        axis.set_zlim(z_min-spc*hz, z_max+spc*hz)
                 
-        return ax    
+        return axis 
+    
+    def wire(self, f, mesh=None, resolution=10, axis=None): 
+        """
+        Wire plot of 2D function
+        """  
+        #
+        # Check function
+        # 
+        assert isinstance(f, Function), 'Can only plot "Function" objects.'
+        
+        #
+        # Make sure there's a mesh
+        # 
+        if f.fn_type() in ['explicit', 'constant']:
+            assert mesh is not None, \
+            'For "explicit" or "constant" functions, mesh must be given.'
+        else:
+            mesh = f.dofhandler.mesh    
+        
+        #
+        # Check axis
+        # 
+        if self.__quickview:
+            fig = plt.figure()
+            axis = fig.gca(projection="3d")
+        else:
+            assert axis is not None, 'Axis not specified.'
+            assert axis.name=="3d", 'Axis required to be 3D.'
+    
+        #
+        # Set axis bounding box 
+        #                
+        x0, x1, y0, y1 = mesh.bounding_box()    
+        hx = x1 - x0
+        hy = y1 - y0
+        axis.set_xlim(x0-0.1*hx, x1+0.1*hx)
+        axis.set_ylim(y0-0.1*hy, y1+0.1*hy)
+         
+        #
+        # Evaluate function
+        # 
+        for cell in mesh.cells.get_leaves(subforest_flag=f.flag()):
+            x = []
+            y = []
+            z = []
+            for he in cell.get_half_edges():
+                x0, y0 = he.base().coordinates()
+                x1, y1 = he.head().coordinates()
+                t = np.linspace(0,1,resolution)
+                
+                xx = x0 + t*(x1-x0)
+                yy = y0 + t*(y1-y0)
+                xy  = np.array([xx,yy]).T
+                zz = f.eval(xy, cell=cell)
+                
+                x.extend(list(xx))
+                y.extend(list(yy))
+                z.extend(list(zz))
             
+            verts = [list(zip(x,y,z))]
+            poly = Poly3DCollection(verts, edgecolor="black", linewidth=0.5,
+                                    facecolor="white")
+            axis.add_collection3d(poly, zs='z')
+        #    
+        # Plot immediately and/or save
+        # 
+        if self.__quickview:
+            if False:
+                plt.show()
+            else:
+                plt.show(block=False)
+                plt.pause(10)
+                plt.close()
+        else:  
+            return axis
+            
+        
+                
+    def line(self, f, mesh=None, resolution=10, axis=None):
+        """
+        Plot graph of 1D function
+        """
+        #
+        # Check function properties
+        # 
+        assert isinstance(f, Function), 'Can only plot "Function" objects.'
+        
+        #
+        # Ensure there's a mesh
+        # 
+        if f.fn_type() in ['explicit', 'constant']:
+            assert mesh is not None, \
+            'For "explicit" or "constant" functions, mesh must be specified.'  
+        else:
+            mesh = f.dofhandler.mesh
+            
+        assert mesh.dim()==1, 'Line plots are for 1D functions'
+        
+        #
+        # Check axis
+        #  
+        if self.__quickview:
+            fig = plt.figure()
+            axis = fig.gca()
+        else:
+            assert axis is not None, 'Axis not specified.'
+            assert axis.name=="2d", 'Axis required to be 2D.'
+             
+        #
+        # Evaluate function
+        # 
+        x = []
+        fx = []
+        for interval in mesh.cells.get_leaves(subforest_flag=f.flag()):
+            #
+            # Form grid on local interval
+            # 
+            x0, = interval.get_vertex(0).coordinates()
+            x1, = interval.get_vertex(1).coordinates()
+            xx = np.linspace(x0, x1, resolution)
+            
+            #
+            # Evaluate function on local interval
+            # 
+            ff = f.eval(xx, cell=interval)
+                        
+            #
+            # Add x and y-values to list
+            #  
+            x.extend(xx.tolist())
+            fx.extend(ff.tolist())
+            
+            #
+            # For discontinous elements, add a np.nan value
+            # 
+            if f.fn_type()=='nodal':
+                if f.dofhandler.element.torn_element():
+                    x.append(x1)
+                    fx.append(np.nan)
+        
+        #
+        # Plot graph
+        # 
+        x = np.array(x)
+        fx = np.array(fx)
+        axis.plot(x, fx, linewidth=1.5)
+        
+        #
+        # Axis limits
+        # 
+        spc = 0.1
+
+        x0, x1 = mesh.bounding_box()
+        hx = x1 - x0
+        axis.set_xlim(x0-spc*hx, x1+spc*hx)        
+        
+        y0, y1 = np.nanmin(fx), np.nanmax(fx)        
+        hy = y1-y0
+        axis.set_ylim(y0-spc*hy, y1+spc*hy)
+        
+        #    
+        # Plot immediately and/or save
+        # 
+        if self.__quickview:
+            if False:
+                plt.show()
+            else:
+                plt.show(block=False)
+                plt.pause(2)
+                plt.close()
+        else:  
+            return axis
+        
+    

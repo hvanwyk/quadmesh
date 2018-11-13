@@ -152,7 +152,7 @@ class TestMesh2D(unittest.TestCase):
         f = lambda x,dummy: np.abs(x)<tol
         
         # Mark half-edges
-        mesh.mark_region(flag, f, entity='half_edge', on_boundary=True)
+        mesh.mark_region(flag, f, entity_type='half_edge', on_boundary=True)
         
         # Check:
         for segment in mesh.get_boundary_segments():
@@ -170,7 +170,7 @@ class TestMesh2D(unittest.TestCase):
         g = lambda dummy,y: np.abs(y-1)<tol
         
         # Mark vertices
-        mesh.mark_region(flag, g, entity='vertex', on_boundary=True)
+        mesh.mark_region(flag, g, entity_type='vertex', on_boundary=True)
         
         for v in mesh.get_boundary_vertices():
             x,y = v.coordinates()

@@ -1,7 +1,7 @@
-from mesh import Mesh1D, Interval, Vertex
+from mesh import Mesh1D #, #Interval, Vertex
 import unittest
 import numpy as np
-from plot import Plot
+#from plot import Plot
 class TestMesh1D(unittest.TestCase):
     """
     Test Mesh1D
@@ -126,7 +126,7 @@ class TestMesh1D(unittest.TestCase):
         # 
         f = lambda dummy: True
         flag = '1'
-        mesh.mark_region(flag, f, entity='vertex', on_boundary=True)
+        mesh.mark_region(flag, f, entity_type='vertex', on_boundary=True)
         v0, v1 = mesh.get_boundary_vertices()
         self.assertTrue(v0.is_marked(flag))
         self.assertTrue(v1.is_marked(flag))
@@ -139,8 +139,28 @@ class TestMesh1D(unittest.TestCase):
         # Mark only one side
         # 
         f = lambda x: np.abs(x-1)<1e-9
-        mesh.mark_region(flag, f, entity='vertex', on_boundary=True)
+        mesh.mark_region(flag, f, entity_type='vertex', on_boundary=True)
         self.assertTrue(v1.is_marked(flag))
         self.assertFalse(v0.is_marked(flag))
+    
+        # unmark vertex
+        v1.unmark(flag)
+        
+        
+        #
+        # Mark interior region 
+        # 
+        tol = 1e-9
+        f = lambda x: x >= 0.3-tol and x<= 0.7+tol
+        mesh.mark_region(flag, f, entity_type='vertex', on_boundary=False)
+        count = 0
+        for v in mesh.get_region(flag):
+            self.assertTrue(v.is_marked(flag))
+            count += 1
+        self.assertEqual(count,5)
+        
+    def test_get_region(self):
+        pass
+    
         
         
