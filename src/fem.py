@@ -3983,8 +3983,8 @@ class Form(object):
                 # Define test function
                 test_der = self.test.derivative
                 test_etype = self.test.element.element_type()
+                n_dofs_test = self.test.element.n_dofs()
                 test = phi[region][test_etype][test_der]
-                n_dofs_test = test.shape[1]
                 
                 # Initialize forms if necessary
                 if f_loc is None:
@@ -4008,14 +4008,14 @@ class Form(object):
                 # Define the test function
                 test_der = self.test.derivative
                 test_etype = self.test.element.element_type()
+                n_dofs_test = self.test.element.n_dofs()
                 test = phi[region][test_etype][test_der]
-                n_dofs_test = test.shape[1]
                 
                 # Define the trial function
                 trial_der = self.trial.derivative
                 trial_etype = self.trial.element.element_type()
+                n_dofs_trial = self.trial.element.n_dofs()
                 trial = phi[region][trial_etype][trial_der]
-                n_dofs_trial = trial.shape[1]
                 
                 #
                 # Initialize local matrix if necessary
@@ -4053,12 +4053,61 @@ class Form(object):
                     '''
                     for i in range(n_dofs_trial):
                         f_loc[:,i,:] += np.dot(test.T, (trial[:,i]*wKer.T).T)
+        
+        #
+        # Initialize local matrix if necessary 
+        # 
+        if f_loc is None:
+            if self.type == 'constant':
+                #
+                # Constant form
+                # 
+                if n_samples is None:
+                    #
+                    # Deterministic form
+                    #
+                    f_loc = 0
+                else:
+                    #
+                    # Sampled form
+                    # 
+                    f_loc = np.zeros(n_samples)
+            elif self.type=='linear':
+                #
+                # Linear form
+                #
+                n_dofs_test = self.test.element.n_dofs()
+                if n_samples is None:
+                    #
+                    # Deterministic form
+                    # 
+                    f_loc = np.zeros(n_dofs_test)
+                else:
+                    #
+                    # Sampled form
+                    # 
+                    f_loc = np.zeros((n_dofs_test, n_samples))
+                
+            elif self.type=='bilinear':
+                #
+                # Bilinear form
+                # 
+                n_dofs_test = self.test.element.n_dofs()
+                n_dofs_trial = self.trial.element.n_dofs()
+                if n_samples is None:
+                    #
+                    # Deterministic form
+                    #
+                    f_loc = np.zeros((n_dofs_test, n_dofs_trial))
+                else:
+                    #
+                    # Sampled form
+                    #
+                    f_loc = np.zeros((n_dofs_test, n_dofs_trial, n_samples))        
         #
         # Return f_loc
         # 
         return f_loc
-              
-                
         """                
         for region in regions:
                     n_samples = kernel.n_samples

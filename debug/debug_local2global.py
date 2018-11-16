@@ -116,52 +116,7 @@ for cell in mesh.cells.get_leaves():
             fn[gdof] = l2g[cell][ig][ldof]
             ldof += 1
 phi = Function(fn, 'nodal', dofhandler=dofhandler)       
-"""    
-#
-# Modify l2g mapping
-# 
-for ldof,i in zip(le_ldofs,range(len(le_ldofs))):
-    gdof = l2g[cell]['global'][ldof]
-    try:
-        #
-        # Check if global long edge dof appears in sub-cell,
-        # 
-        i_gdof = l2g[sub_cell]['global'].index(gdof)
-        
-        #
-        # Modify the corresponding row of the l2g matrix
-        #
-        l2g[sub_cell]['local'][i_gdof][se_ldofs] = vals[i] 
-    except ValueError:
-        continue
 
-print(l2g[sub_cell]['local'])
-"""
-"""
-    
-# Plot mesh
-plot = Plot()
-plot.mesh(mesh, dofhandler=dofhandler, dofs=True)
-
-# Plot global basis function at one of the coarse nodes
-coarse_cell = mesh.cells.get_child(1)
-dof = l2g[coarse_cell]['global'][le_ldofs[0]]
-print('plotting global basis function ', dof)
-
-fn = np.zeros(dofhandler.n_dofs())
-for cell in mesh.cells.get_leaves():
-    gdofs = l2g[cell]['global']
-    print('In cell with global dofs', gdofs)
-    try:
-        i_dof = gdofs.index(dof)
-        fn[gdofs] = l2g[cell]['local'][i_dof,:]
-    except ValueError:
-        continue
-
-b = Function(fn, 'nodal', dofhandler=dofhandler)
-print(fn)
-
-"""
 plot = Plot()
 plot.wire(phi)
 plot.mesh(mesh, dofhandler=dofhandler, dofs=True)

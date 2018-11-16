@@ -56,7 +56,7 @@ class Gmrf(object):
     NOTES: 
     
     TODO: In what format should the sparse matrices be stored? consistency 
-    TODO: Check For sparse matrix A, Ax is computed by A.dot(x), not np.dot(A,x) 
+    TODO: Check: For sparse matrix A, Ax is computed by A.dot(x), not np.dot(A,x) 
     
     """
     @staticmethod
