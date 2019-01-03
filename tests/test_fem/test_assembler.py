@@ -85,15 +85,15 @@ class TestAssembler(unittest.TestCase):
         
         
         # Check problem_1
-        self.assertEqual(system.af[0]['bilinear']['trial_etype'],'Q1')
-        self.assertEqual(system.af[0]['bilinear']['test_etype'],'Q1')
+        self.assertEqual(system.af[0]['bilinear'].trial_etype,'Q1')
+        self.assertEqual(system.af[0]['bilinear'].test_etype,'Q1')
         self.assertTrue('linear' in system.af[0])
         self.assertTrue('bilinear' in system.af[0])
         self.assertTrue('constant' in system.af[0])
         
         # Check problem_2 
-        self.assertEqual(system.af[1]['bilinear']['trial_etype'],'Q1')
-        self.assertEqual(system.af[1]['bilinear']['test_etype'],'Q2')
+        self.assertEqual(system.af[1]['bilinear'].trial_etype,'Q1')
+        self.assertEqual(system.af[1]['bilinear'].test_etype,'Q2')
         self.assertFalse('linear' in system.af[1])
         self.assertFalse('constant' in system.af[1])
         self.assertTrue('bilinear' in system.af[1])
@@ -243,13 +243,13 @@ class TestAssembler(unittest.TestCase):
         self.assertTrue((0,) in phi[cell]['Q1'])
         
         # Assemble system                
-        system.assemble(consolidate=True)
+        system.assemble()
         
         
         # Extract system bilinear form
-        rows = np.array(system.af[0]['bilinear']['rows'])
-        cols = np.array(system.af[0]['bilinear']['cols'])
-        vals = np.array(system.af[0]['bilinear']['vals'])
+        rows = np.array(system.af[0]['bilinear'].rows)
+        cols = np.array(system.af[0]['bilinear'].cols)
+        vals = np.array(system.af[0]['bilinear'].vals)
         
         A = sp.coo_matrix((vals,(rows, cols)))
         
@@ -285,8 +285,8 @@ class TestAssembler(unittest.TestCase):
         fv = f.eval(xv)
         
         # Assemble linear form into
-        bb = system.af[0]['linear']['vals']
-        rows = system.af[0]['linear']['row_dofs']
+        bb = system.af[0]['linear'].vals
+        rows = system.af[0]['linear'].row_dofs
         b = np.zeros(3)
         for row, bv in zip(rows, bb):
             b[row] += bv
@@ -314,7 +314,7 @@ class TestAssembler(unittest.TestCase):
         system.assemble()
         
         # Check 
-        self.assertAlmostEqual(system.af[0]['constant'],1/3)
+        self.assertAlmostEqual(system.af[0]['constant'].vals,1/3)
         
         
         
@@ -376,7 +376,7 @@ class TestAssembler(unittest.TestCase):
         system.assemble()
         
         one = np.ones(n_points)
-        b = system.af[0]['linear']['vals']
+        b = system.af[0]['linear'].vals
         integrals = one.dot(b)
         for i in range(n_samples):
             self.assertAlmostEqual(integrals[i],0.5*a[i])
@@ -396,9 +396,9 @@ class TestAssembler(unittest.TestCase):
         system.assemble()
         
         # Extract data from bilinear form
-        vals = system.af[0]['bilinear']['vals'] 
-        rows = system.af[0]['bilinear']['rows']
-        cols = system.af[0]['bilinear']['cols']
+        vals = system.af[0]['bilinear'].vals 
+        rows = system.af[0]['bilinear'].rows
+        cols = system.af[0]['bilinear'].cols
         
         # Express x^2 in terms of trial function basis
         dofhandlerQ2 = DofHandler(mesh, Q2)

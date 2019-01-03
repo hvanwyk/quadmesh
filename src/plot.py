@@ -20,12 +20,12 @@ class Plot(object):
     Plots related to finite element mesh and functions
     """
     
-    def __init__(self, quickview=True):
+    def __init__(self, time=5, quickview=True):
         """
         Constructor
         """
         self.__quickview = quickview
-        
+        self.__time= time
             
     def mesh(self, mesh, axis=None, dofhandler=None, show_axis=False, 
              color_marked=None, vertex_numbers=False, edge_numbers=False, 
@@ -139,7 +139,7 @@ class Plot(object):
                 plt.show()
             else:
                 plt.show(block=False)
-                plt.pause(20)
+                plt.pause(self.__time)
                 plt.close()
         else:  
             return axis
@@ -298,11 +298,12 @@ class Plot(object):
         else:
             assert axis is not None, 'Axis not specified.'
             assert axis.name=="2d", 'Axis required to be 2D.'
-            
+        
+        assert isinstance(f,Function)    
         #
         # Initialize grid
         # 
-        x0,x1,y0,y1 = mesh.bounding_box()
+        x0,x1,y0,y1 = f.dofhandler.mesh.bounding_box()
         nx, ny = resolution 
         x,y = np.meshgrid(np.linspace(x0,x1,nx),np.linspace(y0,y1,ny))
         xy = np.array([x.ravel(), y.ravel()]).T
@@ -316,45 +317,27 @@ class Plot(object):
             # A function 
             # 
             z = f(x,y)  
-            cm = ax.contourf(x,y,z.reshape(ny,nx),100)
+            cm = axis.contourf(x,y,z.reshape(ny,nx),100)
         elif isinstance(f, Function):
             xy = [(xi,yi) for xi,yi in zip(x.ravel(),y.ravel())]
             z = f.eval(xy)
-            cm = ax.contourf(x,y,z.reshape(ny,nx),100)
-        else:
-            #
-            # A vector
-            #
-            if len(f)==mesh.n_nodes():
-                #
-                # Mesh function 
-                #
-                patches = []
-                for node in mesh.root_node().get_leaves(flag=flag):
-                    cell = node.cell()
-                    x0,x1,y0,y1 = cell.box()
-                    rectangle = Rectangle((x0,y0), x1-x0, y1-y0)
-                    patches.append(rectangle)
-                    
-                p = PatchCollection(patches)
-                p.set_array(f)
-                cm = ax.add_collection(p)
-            else:
-                #
-                # A Node contour
-                #  
-                assert element is not None, \
-                'Require element information for node functions'
-                
-                xy = np.array([x.ravel(), y.ravel()]).transpose()
-                system = Assembler(mesh,element)
-                z = system.f_eval(f, xy, derivatives=derivative)
-                cm = ax.contourf(x,y,z.reshape(ny,nx),200, cmap='viridis')
-                
+            cm = axis.contourf(x,y,z.reshape(ny,nx),100)
+        
         if colorbar:
-            fig.colorbar(cm, ax=ax, format='%g')
+            fig.colorbar(cm, ax=axis, format='%g')
             
-        return fig, ax, cm
+        #    
+        # Plot immediately and/or save
+        # 
+        if self.__quickview:
+            if False:
+                plt.show()
+            else:
+                plt.show(block=False)
+                plt.pause(self.__time)
+                plt.close()
+        else:  
+            return axis
     
     
     def surface(self, f, axis=None, mesh=None, derivative=(0,), 
@@ -574,7 +557,7 @@ class Plot(object):
                 plt.show()
             else:
                 plt.show(block=False)
-                plt.pause(10)
+                plt.pause(self.__time)
                 plt.close()
         else:  
             return axis
@@ -671,7 +654,7 @@ class Plot(object):
                 plt.show()
             else:
                 plt.show(block=False)
-                plt.pause(2)
+                plt.pause(self.__time)
                 plt.close()
         else:  
             return axis

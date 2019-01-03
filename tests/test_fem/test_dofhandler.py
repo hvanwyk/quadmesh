@@ -1,7 +1,6 @@
 import unittest
 from fem import DofHandler, QuadFE
-from mesh import Mesh1D, Mesh2D, QuadMesh, QuadCell, DCEL, Vertex, HalfEdge,\
-    convert_to_array
+from mesh import Mesh1D, Mesh2D, QuadMesh
 import numpy as np
 from plot import Plot
     

@@ -2,6 +2,7 @@ import unittest
 import numpy as np
 from mesh import Mesh1D
 from mesh import QuadMesh
+from fem import DofHandler
 from fem import Function
 from fem import Basis
 from fem import Form
@@ -9,6 +10,8 @@ from fem import Kernel
 from fem import Assembler
 from fem import QuadFE
 from fem import LinearSystem
+from plot import Plot
+
 
 class TestLinearSystem(unittest.TestCase):
     """
@@ -21,6 +24,7 @@ class TestLinearSystem(unittest.TestCase):
         Solve one dimensional boundary value problem with dirichlet 
         conditions on left and right
         """
+        print('test01')
         #
         # Define mesh
         # 
@@ -58,7 +62,7 @@ class TestLinearSystem(unittest.TestCase):
             #
             # Form linear system
             # 
-            system = LinearSystem(assembler)
+            system = LinearSystem(assembler, 0)
             
             #
             # Dirichlet conditions 
@@ -75,37 +79,24 @@ class TestLinearSystem(unittest.TestCase):
             # Add Dirichlet constraints
             system.add_dirichlet_constraint('left', ue)
             system.add_dirichlet_constraint('right', ue)
-            
-            
-            # 
-            # Summarize all constraints in system x = Cx+d
-            #
-            system.set_constraint_matrix()
-            
-            #
-            # Eliminate constraints from system
-            # 
-            system.incorporate_constraints()
+    
             
             #
             # Solve system
             # 
-            system.solve()
+            system.solve_system()
             
-            #
-            # Enforce Dirichlet constraints
-            # 
-            system.resolve_constraints()
             
             #
             # Get solution
             # 
-            ua = system.sol(as_function=True)
+            ua = system.get_solution(as_function=True)
             
             # Compare with exact solution
             self.assertTrue(np.allclose(ua.fn(), ue.fn()))
         
     def test02_1d_dirichlet_higher_order(self):
+        print('test02')
         mesh = Mesh1D()
         for etype in ['Q2','Q3']:
             element = QuadFE(1,etype)
@@ -131,7 +122,7 @@ class TestLinearSystem(unittest.TestCase):
             assembler.assemble()
             
             # Set up linear system
-            system = LinearSystem(assembler)
+            system = LinearSystem(assembler, 0)
             
             # Boundary functions
             bnd_left = lambda x: np.abs(x)<1e-9 
@@ -145,20 +136,17 @@ class TestLinearSystem(unittest.TestCase):
             system.add_dirichlet_constraint('left',0)
             system.add_dirichlet_constraint('right',0)
             
-            # Incorporate all constraints
-            system.set_constraint_matrix()
-            system.incorporate_constraints()
-            
             # Solve system
-            system.solve()
+            system.solve_system()
             system.resolve_constraints()
             
             # Compare solution with the exact solution
-            ua = system.sol(as_function=True)
+            ua = system.get_solution(as_function=True)
             self.assertTrue(np.allclose(ua.fn(), ue.fn()))
     
     
     def test03_1d_mixed(self):
+        print('test03')
         mesh = Mesh1D()
         element = QuadFE(1,'Q3')
         
@@ -199,26 +187,26 @@ class TestLinearSystem(unittest.TestCase):
         #
         # Linear System
         #
-        system = LinearSystem(assembler)
+        system = LinearSystem(assembler, 0)
         
         # Add Dirichlet constraints
         system.add_dirichlet_constraint('left',0)
-        system.set_constraint_matrix()
+        system.set_constraint_relation()
         
         #
         # Solve
         # 
-        system.incorporate_constraints()
-        system.solve()
-        system.resolve_constraints()
+        system.solve_system()
+
         
         # Compare solution with exact solution
-        ua = system.sol(as_function=True)
+        ua = system.get_solution(as_function=True)
         
         self.assertTrue(np.allclose(ua.fn(), ue.fn()))
     
     
     def test04_1d_periodic(self):
+        print('test04')
         #
         # Dirichlet Problem on a Periodic Mesh
         # 
@@ -261,26 +249,31 @@ class TestLinearSystem(unittest.TestCase):
         #
         # Linear System
         #
-        system = LinearSystem(assembler)
+        system = LinearSystem(assembler,0)
         
         # Add dirichlet constraint
         system.add_dirichlet_constraint('left',0, on_boundary=False)
         
         # Assemble constraints
-        system.set_constraint_matrix()
-        system.incorporate_constraints()
-        system.solve()
-        system.resolve_constraints()
+        #system.set_constraint_relation()
+        #system.incorporate_constraints()
+        system.solve_system()
+        #system.resolve_constraints()
         
         # Compare with interpolant of exact solution
-        ua = system.sol(as_function=True)
-        self.assertTrue(np.allclose(ua.fn(), ue.fn()))
+        ua = system.get_solution(as_function=True)
         
+        #plot = Plot(2)
+        #plot.line(ua)
+        #plot.line(ue)
+        self.assertTrue(np.allclose(ua.fn(), ue.fn()))
+        # TODO: Problems
         
     def test05_2d_dirichlet(self):        
         """
         Two dimensional Dirichlet problem with hanging nodes
         """
+        print('test05')
         #
         # Define mesh
         #
@@ -328,7 +321,7 @@ class TestLinearSystem(unittest.TestCase):
             #
             # Linear System
             # 
-            system = LinearSystem(assembler)
+            system = LinearSystem(assembler, 0)
             
             #
             # Constraints
@@ -336,19 +329,18 @@ class TestLinearSystem(unittest.TestCase):
             # Add dirichlet conditions
             system.add_dirichlet_constraint('left',ue)
             system.add_dirichlet_constraint('right',ue)
-            system.set_constraint_matrix()
-            system.incorporate_constraints()
+            
             
             #
             # Solve
             # 
-            system.solve()
-            system.resolve_constraints()
+            system.solve_system()
+            #system.resolve_constraints()
             
             #
             # Check solution
             # 
-            ua = system.sol(as_function=True)            
+            ua = system.get_solution(as_function=True)            
             self.assertTrue(np.allclose(ua.fn(),ue.fn()))
             
      
@@ -356,6 +348,7 @@ class TestLinearSystem(unittest.TestCase):
         """
         Dirichlet problem with Neumann data on right and Dirichlet data on left
         """
+        print('test06')
         #
         # Define Mesh
         # 
@@ -397,24 +390,290 @@ class TestLinearSystem(unittest.TestCase):
             assembler = Assembler(problem, mesh)
             assembler.assemble()
            
-            system = LinearSystem(assembler)
+            system = LinearSystem(assembler,0)
             
             #
             # Add constraints
             # 
             system.add_dirichlet_constraint('left',0)
-            system.set_constraint_matrix()
-            system.incorporate_constraints()
+            #system.set_constraint_relation()
+            #system.incorporate_constraints()
             
             #
             # Solve system
             # 
-            system.solve()
-            system.resolve_constraints()
+            system.solve_system()
+            #system.resolve_constraints()
             
             #
             # Check solution
             # 
-            ua = system.sol(as_function=True)
+            ua = system.get_solution(as_function=True)
             self.assertTrue(np.allclose(ue.fn(), ua.fn()))
     
+    
+    def test07_1d_mesh_refinement(self):
+        """
+        Define the input parameters and solution on different resolution meshes
+        """
+        print('test07')
+        #
+        # Define mesh at two different resolutoins
+        # 
+        mesh = Mesh1D(resolution=(1,))
+        mesh.cells.record(0)
+        
+        for dummy in range(3):
+            mesh.cells.refine()
+        
+        #
+        # Elements
+        # 
+        DQ0 = QuadFE(1, 'DQ0')
+        Q1  = QuadFE(1, 'Q1')
+        
+        #
+        # Diffusion parameter on coarse mesh
+        # 
+        q = Function(np.array([1]), 'nodal', mesh=mesh, element=DQ0, subforest_flag=0)
+        f = Function(0, 'constant')
+        
+        #
+        # Basis functions
+        # 
+        u = Basis(Q1, 'u')
+        ux = Basis(Q1, 'ux')
+        
+        #
+        # Forms
+        # 
+        a = Form(kernel=Kernel(q), trial=ux, test=ux)
+        L = Form(kernel=Kernel(f), test=u)
+        problem = [a,L]
+        
+        #
+        # Assemble
+        # 
+        assembler = Assembler(problem, mesh)
+        assembler.assemble()
+        
+        #
+        # System
+        # 
+        system = LinearSystem(assembler, 0)
+        
+        #
+        # Dirichlet Constraints
+        # 
+        left = lambda x: np.abs(x)<1e-9
+        right = lambda x: np.abs(1-x)<1e-9
+        mesh.mark_region('left', left)
+        mesh.mark_region('right', right)
+        system.add_dirichlet_constraint('left',0)
+        system.add_dirichlet_constraint('right',1)
+        
+        
+        #
+        # Solve 
+        # 
+        system.set_constraint_relation()
+        #system.incorporate_constraints()
+        system.solve_system()
+        #system.resolve_constraints()
+        
+        #
+        # Compare solution with the exact solution
+        # 
+        ua = system.get_solution(as_function=True)
+        ue = Function(lambda x: x, 'nodal', mesh, Q1)        
+        self.assertTrue(np.allclose(ua.fn(), ue.fn()))
+    
+    
+    def test08_1d_sampled_rhs(self):
+        print('test08')
+        #
+        # Mesh
+        # 
+        mesh = Mesh1D(resolution=(1,))
+        mesh.mark_region('left', lambda x: np.abs(x)<1e-9, on_boundary=True)
+        mesh.mark_region('right', lambda x: np.abs(1-x)<1e-9, on_boundary=True)
+        
+        #
+        # Elements
+        # 
+        Q3 = QuadFE(1,'Q3')
+        dofhandler = DofHandler(mesh, Q3)
+        dofhandler.distribute_dofs()
+        
+        #
+        # Define sampled right hand side and exact solution
+        # 
+        xv = dofhandler.get_dof_vertices()
+        n_points = dofhandler.n_dofs()
+        
+        n_samples = 6
+        a = np.arange(n_samples)
+        
+        f = lambda x, a: a*x
+        u = lambda x,a: a/6*(x-x**3)+x
+        fdata = np.zeros((n_points,n_samples))
+        udata = np.zeros((n_points,n_samples))
+        for i in range(n_samples):
+            fdata[:,i] = f(xv,a[i]).ravel()
+            udata[:,i] = u(xv,a[i]).ravel()
+            
+            
+        # Define sampled function
+        fn = Function(fdata, 'nodal', dofhandler=dofhandler)
+        ue = Function(udata, 'nodal', dofhandler=dofhandler)
+        
+        #
+        # Basis
+        # 
+        u = Basis(Q3, 'u')
+        ux = Basis(Q3, 'ux')
+        
+        #
+        # Forms
+        # 
+        one = Function(1,'constant') 
+        a = Form(Kernel(one), test=ux, trial=ux)
+        L = Form(Kernel(fn), test=u)
+        problem = [a,L]
+        
+        #
+        # Assembler
+        # 
+        assembler = Assembler(problem, mesh)
+        assembler.assemble()
+        
+        #
+        # Linear System
+        # 
+        system = LinearSystem(assembler, 0)
+        
+        # Set constraints
+        system.add_dirichlet_constraint('left',0)
+        system.add_dirichlet_constraint('right',1)
+        #system.set_constraint_relation()
+        #system.incorporate_constraints()
+        
+        # Solve and resolve constraints
+        system.solve_system()
+        #system.resolve_constraints()
+        
+        # Extract finite element solution
+        ua = system.get_solution(as_function=True)
+        
+        # Check that the solution is close
+        self.assertTrue(np.allclose(ue.fn(), ua.fn()))
+        
+        
+        
+    
+    def test09_1d_inverse(self):
+        """
+        Compute the inverse of a matrix and apply it to a vector/matrix.
+        """
+        print('test09')
+        #
+        # Mesh
+        # 
+        mesh = Mesh1D(resolution=(1,))
+        mesh.mark_region('left', lambda x: np.abs(x)<1e-9, on_boundary=True)
+        mesh.mark_region('right', lambda x: np.abs(1-x)<1e-9, on_boundary=True)
+        
+        #
+        # Elements
+        # 
+        Q3 = QuadFE(1,'Q3')
+        dofhandler = DofHandler(mesh, Q3)
+        dofhandler.distribute_dofs()
+        
+        #
+        # Define sampled right hand side and exact solution
+        # 
+        xv = dofhandler.get_dof_vertices()
+        n_points = dofhandler.n_dofs()
+        
+        n_samples = 6
+        a = np.arange(n_samples)
+        
+        f = lambda x, a: a*x
+        u = lambda x,a: a/6*(x-x**3)+x
+        fdata = np.zeros((n_points,n_samples))
+        udata = np.zeros((n_points,n_samples))
+        for i in range(n_samples):
+            fdata[:,i] = f(xv,a[i]).ravel()
+            udata[:,i] = u(xv,a[i]).ravel()
+            
+            
+        # Define sampled function
+        fn = Function(fdata, 'nodal', dofhandler=dofhandler)
+        ue = Function(udata, 'nodal', dofhandler=dofhandler)
+        
+        #
+        # Basis
+        # 
+        u = Basis(Q3, 'u')
+        ux = Basis(Q3, 'ux')
+        
+        #
+        # Forms
+        # 
+        one = Function(1,'constant') 
+        a = Form(Kernel(one), test=ux, trial=ux)
+        L = Form(Kernel(fn), test=u)
+        problem = [[a],[L]]
+        
+        #
+        # Assembler
+        # 
+        assembler = Assembler(problem, mesh)
+        assembler.assemble()
+        
+        #
+        # Linear System
+        # 
+        system = LinearSystem(assembler, 0)
+        
+        # Set constraints
+        system.add_dirichlet_constraint('left',0)
+        system.add_dirichlet_constraint('right',1)
+        #system.set_constraint_relation()
+        #system.incorporate_constraints()
+        
+        
+        # Solve and resolve constraints
+        #b = assembler.af[1]['linear'].get_matrix()
+        
+        #system.factor()
+        #system.modify_rhs(b)
+        system.solve_system(assembler.af[1]['linear'])
+        
+        #system.resolve_constraints()
+        
+        # Extract finite element solution
+        ua = system.get_solution(as_function=True)
+        
+        system2 = LinearSystem(assembler, \
+                               bilinear_form=assembler.af[0]['bilinear'], 
+                               linear_form=assembler.af[1]['linear'])
+        # Set constraints
+        system2.add_dirichlet_constraint('left',0)
+        system2.add_dirichlet_constraint('right',1)
+        #system2.set_constraint_relation()
+        #system2.incorporate_constraints()
+        
+        system2.solve_system()
+        #system2.resolve_constraints()
+        u2 = system2.get_solution(as_function=True)
+        
+        #plot = Plot()
+        #plot.line(ua)
+        #plot.line(u2)
+        #plot.line(ue)
+    
+        # Check that the solution is close
+        self.assertTrue(np.allclose(ue.fn(), ua.fn()))
+        self.assertTrue(np.allclose(ue.fn(), u2.fn()))

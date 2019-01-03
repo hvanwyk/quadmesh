@@ -1059,15 +1059,17 @@ class Forest(object):
             queue = deque(reversed(self._trees))
         elif mode=='breadth-first':
             queue = deque(self._trees)
+        else:
+            raise Exception('Input "mode" must be "depth-first"'+\
+                            ' or "breadth-first".')
             
         while len(queue) != 0:
             if mode == 'depth-first':
                 node = queue.pop()
             elif mode == 'breadth-first':
                 node = queue.popleft()
-            else:
-                raise Exception('Input "mode" must be "depth-first"'+\
-                                ' or "breadth-first".')
+            
+                
             if node.has_children():
                 reverse = True if mode=='depth-first' else False    
                 for child in node.get_children(reverse=reverse):
@@ -2424,7 +2426,7 @@ class Interval(HalfEdge):
         HalfEdge.assign_next(self,nxt)
      
      
-    def get_neighbor(self, pivot, subforest_flag=None):
+    def get_neighbor(self, pivot, subforest_flag=None, mode='physical'):
         """
         Returns the neighboring interval
         
@@ -2433,8 +2435,16 @@ class Interval(HalfEdge):
             pivot: int, 0 (=left) or 1 (=right)
             
             subforest_flag (optional): marker to specify submesh
-
-        Note that neighbors in 1D can live on different levels. 
+            
+            mode: str, specify the type of neighbor search. When intervals are 
+                arranged within a forest, two adjoining intervals may be on
+                different refinement levels. 
+                
+                mode='physical': return the interval adjoining input interval 
+                    on the mesh
+                    
+                mode='level-wise': return the neighboring interval on the same
+                    level in the forest. 
         """
         #
         # Pivot is a vertex
@@ -2447,75 +2457,156 @@ class Interval(HalfEdge):
             else:
                 raise Exception('Vertex not an interval endpoint')
         
-        #
-        # Move left or right
-        # 
-        if pivot == 0:
-            #
-            # Left neighbor
-            # 
-            itv = self
-            prev = itv.previous()
-            #
-            # Go up the tree until thre is a "previous"
-            # 
-            while prev is None:
-                if itv.has_parent():
+        if mode=='level-wise':
+            # =================================================================
+            # Return Level-wise Neighbor
+            # =================================================================
+            if pivot == 0:
+                #
+                # Left neighbor
+                # 
+                nbr = self.previous()
+                if nbr is None:
                     #
-                    # Go up one level and check
+                    # No previous, may still be periodic
                     # 
-                    itv = itv.get_parent()
-                    prev = itv.previous()
+                    v = self.base()
+                    if v.is_periodic():
+                        #
+                        # Get coarsest cell periodically associated with v
+                        #
+                        for pair in v.get_periodic_pair():
+                            nbr, dummy = pair 
+                            while nbr.get_depth()<self.get_depth():
+                                #
+                                # Search children until depth matches
+                                # 
+                                if nbr.has_children(flag=subforest_flag):
+                                    nbr = nbr.get_child(0)
+                                else:
+                                    #
+                                    # There are no children at same depth as interval
+                                    # 
+                                    return None
+                                #
+                                # Found nbr at correct depth
+                                # 
+                            return nbr
                 else:
                     #
-                    # No parent: check whether vertex is periodic 
+                    # Return previous interval
                     # 
-                    if itv.base().is_periodic():
-                        for pair in itv.base().get_periodic_pair():
-                            prev, dummy = pair 
-                    else:
-                        return None
-            #
-            # Go down tree (to the right) as far as you can 
-            #
-            nxt = prev 
-            while nxt.has_children(flag=subforest_flag):
-                nxt = nxt.get_child(nxt.n_children()-1)
-            return nxt
-             
-        elif pivot==1:
-            #
-            # Right neighbor
-            # 
-            itv = self
-            nxt = itv.next()
-            #
-            # Go up the tree until there is a "next"
-            # 
-            while nxt is None:
-                if itv.has_parent():
+                    return nbr
+            elif pivot == 1:
+                #
+                # Right neighbor
+                #
+                nbr = self.next()
+                if nbr is None:
                     #
-                    # Go up one level and check
-                    #
-                    itv = itv.get_parent()
-                    nxt = itv.next()
+                    # No next, may still be periodic
+                    # 
+                    v = self.head()
+                    if v.is_periodic():
+                        #
+                        # Get coarsest cell periodically associated with v
+                        # 
+                        for pair in v.get_periodic_pair():
+                            nbr, dummy = pair
+                            while nbr.get_depth()<self.get_depth():
+                                #
+                                # Iterate through children until depth matches
+                                # 
+                                if nbr.has_children(flag=subforest_flag):
+                                    nbr = nbr.get_child(1)
+                                else:
+                                    #
+                                    # There are no cells matching cell's depth
+                                    # 
+                                    return None
+                                #
+                                # Found nbr at correct depth
+                                # 
+                            return nbr
                 else:
                     #
-                    # No parent: check whether vertex is periodic
-                    # 
-                    if itv.head().is_periodic():
-                        for nxt, dummy in itv.head().get_periodic_pair():
-                            pass
-                    else:
-                        return None
+                    # Return next interval
+                    #  
+                    return nbr
+                
+        elif mode=='physical':
+            # =================================================================
+            # Return Physical Neighbor
+            # =================================================================
             #
-            # Go down tree (to the left) as far as you can
+            # Move left or right
             # 
-            prev = nxt
-            while prev.has_children(flag=subforest_flag):
-                prev = prev.get_child(0)
-            return prev
+            if pivot == 0:
+                #
+                # Left neighbor
+                # 
+                itv = self
+                prev = itv.previous()
+                #
+                # Go up the tree until there is a "previous"
+                # 
+                while prev is None:
+                    if itv.has_parent():
+                        #
+                        # Go up one level and check
+                        # 
+                        itv = itv.get_parent()
+                        prev = itv.previous()
+                    else:
+                        #
+                        # No parent: check whether vertex is periodic 
+                        # 
+                        if itv.base().is_periodic():
+                            for pair in itv.base().get_periodic_pair():
+                                prev, dummy = pair 
+                        else:
+                            return None
+                #
+                # Go down tree (to the right) as far as you can 
+                #
+                nxt = prev 
+                while nxt.has_children(flag=subforest_flag):
+                    nxt = nxt.get_child(nxt.n_children()-1)
+                return nxt
                  
+            elif pivot==1:
+                #
+                # Right neighbor
+                # 
+                itv = self
+                nxt = itv.next()
+                #
+                # Go up the tree until there is a "next"
+                # 
+                while nxt is None:
+                    if itv.has_parent():
+                        #
+                        # Go up one level and check
+                        #
+                        itv = itv.get_parent()
+                        nxt = itv.next()
+                    else:
+                        #
+                        # No parent: check whether vertex is periodic
+                        # 
+                        if itv.head().is_periodic():
+                            for nxt, dummy in itv.head().get_periodic_pair():
+                                pass
+                        else:
+                            return None
+                #
+                # Go down tree (to the left) as far as you can
+                # 
+                prev = nxt
+                while prev.has_children(flag=subforest_flag):
+                    prev = prev.get_child(0)
+                return prev
+                     
     
     def split(self, n_children=None):
         """

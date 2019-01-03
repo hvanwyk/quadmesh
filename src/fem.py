@@ -6,7 +6,7 @@ from mesh import Vertex, HalfEdge, Mesh2D
 from mesh import Cell, QuadCell, Interval
 from mesh import RHalfEdge, RInterval, RQuadCell
 from mesh import convert_to_array
-from bisect import bisect_left, bisect_right
+#from bisect import bisect_left, bisect_right
 from itertools import count
 
 
@@ -1886,7 +1886,7 @@ class DofHandler(object):
                         # 1D
                         # 
                         # Get neighbor and check that it's not None
-                        nbr = cell.get_neighbor(pivot)
+                        nbr = cell.get_neighbor(pivot, mode='level-wise')
                         if nbr is None:
                             return
                         if pivot.is_periodic():
@@ -2702,7 +2702,7 @@ class DofHandler(object):
             entity_flag: str/int/tuple, marker used to specify subset of entities
                 
             interior: bool, if True only return dofs associated with entity interior
-                (See "get_cell_global_dofs")
+                (See "get_cell_dofs")
                 
             on_boundary: bool, if True, seek only dofs on the boundary
             
@@ -3705,8 +3705,8 @@ class Form(object):
     """
     Constant, Linear, or Bilinear forms (integrals)
     """
-    def __init__(self, kernel=None, trial=None, test=None, dmu='dx',\
-                 flag=None, samples=None):
+    def __init__(self, kernel=None, trial=None, test=None,\
+                 dmu='dx', flag=None):
         """
         Constructor
         
@@ -4169,48 +4169,7 @@ class Form(object):
                 return f_loc
         """
         
-    def bilinear_loc(self,weight,kernel,trial,test):
-        """
-        Compute the local bilinear form over an element
-        
-        TODO: DELETE
-        """
-        if len(kernel.shape)==1:
-            #
-            # Deterministic kernel
-            # 
-            B_loc = np.dot(test.T, np.dot(np.diag(weight*kernel),trial))
-        else:
-            #
-            # Sampled kernel
-            # 
-            B_loc = []
-            n_sample = kernel.shape[1]
-            for i in range(n_sample):
-                B_loc.append(np.dot(test.T, np.dot(np.diag(weight*kernel[:,i]),trial)))
-        return B_loc
-    
-    
-    def linear_loc(self,weight,kernel,test):
-        """
-        Compute the local linear form over an element
-        
-        TODO: DELETE!
-        """
-        if len(kernel.shape)==1:
-            #
-            # Deterministic kernel
-            # 
-            L_loc = np.dot(test.T, weight*kernel)
-        else:
-            #
-            # Sampled kernel
-            # 
-            L_loc = []
-            n_sample = kernel.shape[1]
-            for i in range(n_sample):
-                L_loc.append(np.dot(test.T, weight*kernel[:,i]))
-        return L_loc        
+     
         
     
 class Assembler(object):
@@ -4350,85 +4309,69 @@ class Assembler(object):
     
     def initialize_assembled_forms(self):
         """
-        Initialize list of dictionaries encoding the assembled forms associated
+        Initialize list of AssembledForm's encoding the assembled forms associated
         with each problem
         """
         af = []
-        for problem in self.problems:
+        for i_problem in range(len(self.problems)):
+            problem = self.problems[i_problem]
             af_problem = {}
             for form in problem:
+                n_samples = self.n_samples(i_problem, form.type)
                 if form.type=='constant':
                     #
                     # Constant type forms
                     # 
                     if 'constant' not in af_problem:
-                        af_problem['constant'] = 0
+                        #
+                        # New assembled form
+                        # 
+                        af_problem['constant'] = \
+                            AssembledForm(form, n_samples=n_samples)
+                    else:
+                        #
+                        # Check compatibility with existing assembled form
+                        # 
+                        af_problem['constant'].check_compatibility(form)
+                        
                 elif form.type=='linear':  
                     #
                     # Linear form
                     # 
                     if 'linear' not in af_problem:
-                        af_problem['linear'] = {'row_dofs': [], 
-                                                'vals': [],
-                                                'test_etype': None}
-                        
-                    if af_problem['linear']['test_etype'] is None:
                         #
-                        # Test element type not yet specified
+                        # New assembled form
                         # 
-                        af_problem['linear']['test_etype'] = \
-                            form.test.element.element_type() 
+                        af_problem['linear'] = \
+                            AssembledForm(form, n_samples=n_samples)
                     else:
                         #
-                        # Check for test element consistency
+                        # Check compatibility with existing assembled form
                         # 
-                        assert af_problem['linear']['test_etype']\
-                            ==form.test.element.element_type(), \
-                            'All linear forms in problem should have the '+\
-                            'same test function space.'
+                        af_problem['linear'].check_compatibility(form)
+                    
                 elif form.type=='bilinear':
                     #
                     #  Bilinear form     
                     # 
                     if 'bilinear' not in af_problem:
                         #
-                        # Initialize bilinear assembled form
+                        # New assembled form
                         #
                         af_problem['bilinear'] = \
-                            {'row_dofs': [], 'col_dofs': [], 'vals': [],\
-                             'test_etype': None, 'trial_etype': None}
-                            
-                    if af_problem['bilinear']['test_etype'] is None:
-                        #
-                        # Test element type not yet specified
-                        # 
-                        af_problem['bilinear']['test_etype'] = \
-                            form.test.element.element_type()
+                            AssembledForm(form, n_samples=n_samples)
                     else:
                         #
-                        # Check for test element consistency
+                        # Check compatibility with existing assembled form
                         # 
-                        assert af_problem['bilinear']['test_etype']\
-                            ==form.test.element.element_type(),\
-                            'All bilinear forms in problem should have '+\
-                            'the same test function space.'
-                        
-                    if af_problem['bilinear']['trial_etype'] is None:
-                        #
-                        # Trial element type not yet specified
-                        # 
-                        af_problem['bilinear']['trial_etype'] = \
-                            form.trial.element.element_type()
-                    else:
-                        #
-                        # Check for trial element consistency
-                        # 
-                        assert af_problem['bilinear']['trial_etype']\
-                            ==form.trial.element.element_type(),\
-                            'All bilinear forms in problem should have '+\
-                            'the same trial function space.'
-                        
+                        af_problem['bilinear'].check_compatibility(form)
+            #
+            # Update list of problems
+            # 
             af.append(af_problem)
+        #
+        # Store assembled forms
+        # 
         self.af = af 
         
  
@@ -4510,7 +4453,7 @@ class Assembler(object):
             
             
             
-    def assemble(self, consolidate=True):
+    def assemble(self, clear_cell_data=True):
         """
         Assembles constant, linear, and bilinear forms over computational mesh,
 
@@ -4556,6 +4499,7 @@ class Assembler(object):
             # Get global cell dofs for each element type  
             #
             cell_dofs = self.cell_dofs(cell)
+            cell_address = cell.get_node_address()
             
             #
             # Determine what shape functions and Gauss rules to compute on current cells
@@ -4593,7 +4537,7 @@ class Assembler(object):
                         # 
                         
                         # Increment value
-                        self.af[i_problem]['constant'] += form_loc 
+                        self.af[i_problem]['constant'].update(cell_address, form_loc) 
                     elif form.type=='linear':
                         # 
                         # Linear form
@@ -4604,8 +4548,12 @@ class Assembler(object):
                         dofs_tst  = cell_dofs[etype_tst]
                                 
                         # Store dofs and values in assembled_form
-                        self.af[i_problem]['linear']['row_dofs'].append(dofs_tst)
-                        self.af[i_problem]['linear']['vals'].append(form_loc)
+                        self.af[i_problem]['linear'].update(cell_address, 
+                                                            form_loc, 
+                                                            row_dofs=dofs_tst)
+                        
+                        #self.af[i_problem]['linear']['row_dofs'].append(dofs_tst)
+                        #self.af[i_problem]['linear']['vals'].append(form_loc)
                         
                     elif form.type=='bilinear':
                         #
@@ -4621,14 +4569,30 @@ class Assembler(object):
                         dofs_trl = cell_dofs[etype_trl]    
                         
                         # Store dofs and values in assembled form 
-                        self.af[i_problem]['bilinear']['row_dofs'].append(dofs_tst)
-                        self.af[i_problem]['bilinear']['col_dofs'].append(dofs_trl)
-                        self.af[i_problem]['bilinear']['vals'].append(form_loc)
+                        self.af[i_problem]['bilinear'].update(cell_address, 
+                                                              form_loc,
+                                                              row_dofs=dofs_tst,
+                                                              col_dofs=dofs_trl)
+                                                            
+                        #self.af[i_problem]['bilinear']['row_dofs'].append(dofs_tst)
+                        #self.af[i_problem]['bilinear']['col_dofs'].append(dofs_trl)
+                        #self.af[i_problem]['bilinear']['vals'].append(form_loc)
         #
         # Post-process assembled forms
-        #  
-        if consolidate:
-            self.consolidate_assembly()
+        # 
+        for i_problem in range(len(self.problems)):
+            for form_type in self.af[i_problem].keys():
+                #
+                # Iterate over assembled forms
+                # 
+                af = self.af[i_problem][form_type]
+                
+                #
+                # Consolidate assembly
+                ## 
+                af.consolidate(clear_cell_data=clear_cell_data)
+                
+        
         '''   
         #
         # Assemble forms over boundary edges 
@@ -4947,6 +4911,8 @@ class Assembler(object):
         Constant form:
         
             vals: (n_samples, ) array of integral values.
+            
+        TODO: Delete!
         """
         
         for i_problem in range(len(self.problems)):
@@ -5245,7 +5211,7 @@ class Assembler(object):
             
         Output:
         
-            n_samples: int, number of samples associated with the given
+            n_samples: int (or None), number of samples associated with the given
                 form type of the given problem
         """ 
         n_samples = None   
@@ -5669,41 +5635,535 @@ class Assembler(object):
             return R
         else:
             return R.dot(u_fine)
+
+class AssembledForm(object):
+    """
+    bilinear, linear, or constant form
+    """   
+    def __init__(self, form, n_samples=None):
+        """
+        Constructor
+        
+        Inputs: 
+        
+            form: Form object (constant, linear,
+                or bilinear) to be assembled.
+        """ 
+        #
+        # Check that input is a Form
+        # 
+        assert isinstance(form, Form), 'Input "form_list" should consist'+\
+            ' only of Forms of the same type.'    
+        
+        # Record form type    
+        self.type = form.type
+        
+        if self.type == 'constant':
+            #
+            # Constant form
+            # 
+            # Cell address 
+            self.cell_address = []
+                        
+            # Values
+            self.cell_vals = []
+        
+        elif self.type == 'linear':
+            #
+            # Linear form
+            # 
+            # Cell address 
+            self.cell_address = []
+            
+            # Degrees of freedom
+            self.cell_row_dofs = []
+            
+            # Values
+            self.cell_vals = []
+            
+            # Element type (test function)
+            self.test_etype = form.test.element.element_type()
+            
+        elif self.type == 'bilinear':
+            #
+            # Bilinear form
+            # 
+            # Cell address 
+            self.cell_address = []
+            
+            # Degrees of freedom
+            self.cell_row_dofs = []
+            self.cell_col_dofs = []
+            
+            # Values
+            self.cell_vals = []
+            
+            # Element types (test and trial)
+            self.test_etype = form.test.element.element_type()
+            self.trial_etype = form.trial.element.element_type()
+            
+        #
+        # Record the sample size for the assembled form, ensuring that 
+        # it is compatible with that of the form   
+        # 
+        fn_samples = form.kernel.n_samples
+        if n_samples is None:
+            #
+            # No sample size provided, use sample that of form
+            # 
+            self.n_samples = fn_samples
+        elif n_samples==1:
+            #
+            # Update sample size only if form's sample size > 1
+            # 
+            if fn_samples is not None and fn_samples > 1:
+                self.n_samples = fn_samples
+            else:
+                self.n_samples = n_samples
+        elif n_samples > 1:
+            #
+            # Check that number of samples is compatible
+            # 
+            if fn_samples is not None:
+                if fn_samples > 1:
+                    assert n_samples == fn_samples, 'Input "n_samples" is '+\
+                        'incompatible with sample size of form.'
+            self.n_samples = n_samples
+        
+        #
+        # Initialize subsample       
+        # 
+        self.subsample = None
+        
+            
+    def check_compatibility(self, form):
+        """
+        Determine whether the input "form" is consistent with the assembled 
+        form. In particular, they should be of the same type ('constant',
+        'bilinear', or 'linear') and their test/trial functions should have
+        the same element type.
+        
+        Input:
+        
+            form: Form, to be checked.
+            
+            update_sample_size: bool, if assembled form has sample size 1 or 
+                None and form has a sample size greater than 
+        """
+        assert isinstance(form, Form), 'Input "form" must be a "Form" object.'
+        assert self.type == form.type, 'Input "form" should have the same '+\
+            'type as AssembledForm.'
+        if self.type == 'linear':
+            assert self.test_etype == form.test.element.element_type(),\
+                'Test element types not compatible.'
+        elif self.type == 'bilinear':
+            assert self.test_etype == form.test.element.element_type(),\
+                'Test element types not compatible.'
+            assert self.trial_etype == form.trial.element.element_type(),\
+                'Trial element types not compatible.'
+        
+        #
+        # Check sample size
+        # 
+        sample_error = 'Sample size incompatible with that of form.'
+        fn_samples = form.kernel.n_samples
+        n_samples = self.n_samples
+        if n_samples is None:
+            assert fn_samples is None, sample_error
+        elif n_samples == 1:
+            assert fn_samples is None or fn_samples == 1, sample_error
+        elif n_samples > 1:
+            assert fn_samples is None or fn_samples == n_samples, sample_error
+            
+
+    def update(self, address, vals, row_dofs=None, col_dofs=None):
+        """
+        Update assembled form
+        
+        Inputs:
+        
+            address: int tuple, representing the cell's address within the mesh 
+            
+            vals: double, (array of) local form values 
+            
+            row_dofs: int, array of row dofs associated with current values
+            
+            col_dofs: int, array of column dofs associated with current values
+        """
+        #
+        # Update cell address
+        # 
+        self.cell_address.append(address)
+        
+        #
+        # Update form values
+        # 
+        self.cell_vals.append(vals)
+        
+        if self.type=='linear':
+            #
+            # Update row dofs
+            # 
+            assert row_dofs is not None, 'Linear forms should contain row dofs'
+            self.cell_row_dofs.append(row_dofs)
+        elif self.type == 'bilinear':
+            #
+            # Update row dofs 
+            # 
+            assert row_dofs is not None, 'Bilinear forms should contain'+\
+                'row dofs.'
+            self.cell_row_dofs.append(row_dofs)
+            
+            #
+            # Update column dofs
+            # 
+            assert col_dofs is not None, 'Bilinear forms should containt'+\
+                'column dofs.'
+            self.cell_col_dofs.append(col_dofs)
+    
+    
+    
+    def consolidate(self, clear_cell_data=True):
+        """
+        Postprocess assembled form to make it amenable to linear algebra 
+        operations. This includes renumbering equations that involve only a 
+        subset of the degreees of freedom.
+        
+        Input:
+        
+            clear_cell_data: bool, specify whether to delete cellwise specific
+                data (such as dofs and vals).
+        
+        Bilinear Form:
+        
+            row_dofs: (n_row_dofs, ) ordered numpy array of mesh dofs 
+                corresponding to test functions.
+                
+            col_dofs: (n_col_dofs, ) ordered numpy array of unique mesh dofs
+                corresponding to trial space
+            
+            rows: (n_nonzero,) row indices (renumbered)
+            
+            cols: (n_nonzero,) column indices (renumbered). 
+            
+            vals: (n_nonzero, n_samples) numpy array of matrix values
+                corresponding to each row-column pair
+            
+            
+        Linear Form:
+        
+            row_dofs: (n_row_dofs,) order array of mesh dofs corresponding
+                to row dofs
+            
+            vals: (n_row_dofs, n_samples) array of vector values for each dof.  
         
         
+        Constant form:
         
+            vals: (n_samples, ) array of integral values.
+        
+        """ 
+        n_samples = self.n_samples
+        if self.type=='bilinear':
+            # =========================================================
+            # Bilinear Form
+            # =========================================================
+            #
+            # Parse row and column dofs
+            # 
+            # Flatten
+            rows = []
+            cols = []
+            vals = []
+            rcv = (self.cell_row_dofs, self.cell_col_dofs, self.cell_vals)
+            for rdof, cdof, val in zip(*rcv):
+                #
+                # Store global dofs in vectors
+                #
+                R,C = np.meshgrid(rdof,cdof)
+                rows.append(R.ravel())
+                cols.append(C.ravel())
+                
+                #
+                # Store values
+                # 
+                n_entries = len(rdof)*len(cdof) 
+                if n_samples is None:
+                    #
+                    # Deterministic form
+                    # 
+                    vals.append(val.reshape(n_entries, order='F'))
+                else:
+                    #
+                    # Sampled form
+                    # 
+                    v = val.reshape((n_entries,n_samples), order='F')
+                    vals.append(v)
+            
+            # Store data in numpy arrays
+            rows = np.concatenate(rows, axis=0)
+            cols = np.concatenate(cols, axis=0)
+            vals = np.concatenate(vals, axis=0)
+               
+            #
+            # Renumber dofs from 0 ... n_dofs
+            # 
+            # Extract sorted list of unique dofs for rows and columns
+            unique_rdofs = list(set(list(rows)))
+            unique_cdofs = list(set(list(cols)))
+            
+            # Dof to index mapping for rows
+            map_rows = np.zeros(unique_rdofs[-1]+1, dtype=np.int)
+            map_rows[unique_rdofs] = np.arange(len(unique_rdofs))
+            
+            # Dof-to-index mapping for cols
+            map_cols = np.zeros(unique_cdofs[-1]+1, dtype=np.int)
+            map_cols[unique_cdofs] = np.arange(len(unique_cdofs))
+            
+            # Transform from dofs to indices
+            rows = map_rows[rows]
+            cols = map_cols[cols]
+            
+            # Store row and column information
+            self.row_dofs = np.array(unique_rdofs)
+            self.col_dofs = np.array(unique_cdofs)
+            self.rows = rows
+            self.cols = cols
+            self.vals = vals
+            
+            if clear_cell_data:
+                #
+                # Delete local data
+                #  
+                self.cell_vals = []
+                self.cell_row_dofs = []
+                self.cell_col_dofs = []
+                self.cell_address = []
+            
+        elif self.type=='linear':
+            # =========================================================
+            # Linear Form 
+            # =========================================================
+            #
+            # Parse row dofs
+            # 
+            # Flatten list of lists
+            rows = [item for sublist in self.cell_row_dofs for item in sublist]
+            
+            # Extract sorted list of unique dofs for rows and columns
+            unique_rdofs = list(set(rows))
+            n_dofs = len(unique_rdofs)
+            
+            # Convert rows into numpy array
+            rows = np.array(rows) 
+            
+            # Dof-to-index mapping for rows
+            map_rows = np.zeros(unique_rdofs[-1]+1, dtype=np.int)
+            map_rows[unique_rdofs] = np.arange(n_dofs)
+            
+            # Transform from dofs to indices
+            rows = map_rows[rows]
+            
+            # Concatenate all function values in a vector
+            vals = np.concatenate(self.cell_vals)
+            if n_samples is None:
+                # 
+                # Deterministic problem
+                # 
+                b = np.zeros(n_dofs)
+                for i in range(n_dofs):
+                    b[i] = vals[rows==unique_rdofs[i]].sum()
+            else:
+                #
+                # Sampled linear form
+                # 
+                b = np.zeros((n_dofs,n_samples))
+                for i in range(n_dofs):
+                    b[i,:] = vals[rows==unique_rdofs[i],:].sum(axis=0)
+
+            # Store arrays
+            self.row_dofs = np.array(unique_rdofs)        
+            self.vals = b
+            
+            #
+            # Clear cellwise data
+            # 
+            if clear_cell_data:
+                self.cell_row_dofs = []
+                self.cell_vals = []
+                self.cell_address = []
+                
+        elif self.type=='constant':
+            # =================================================================
+            # Constant form
+            # =================================================================
+            if n_samples is None:
+                #
+                # Deterministic constant form - a number  
+                # 
+                self.vals = 0
+            else:
+                #
+                # Sampled constant form - a vector
+                # 
+                self.vals = np.zeros(n_samples)
+            #
+            # Aggregate cellwise values
+            # 
+            for cell_val in self.cell_vals:
+                self.vals += cell_val
+                
+            #
+            # Clear cell
+            # 
+            if clear_cell_data:
+                self.cell_vals = []
+                self.cell_address = []
+    
+                
+    def set_subsample(self, subsample):
+        """
+        Set subset of realizations. This information is used
+        
+        Input: 
+        
+            samples: int, numpy array containing integers below self.n_sample
+        """
+        #
+        # Check that input "samples" is compatible
+        # 
+        n_samples = self.n_samples
+        assert n_samples is not None, 'AssembledForm is not sampled.'
+    
+        assert all([s < n_samples for s in subsample]),\
+            'Some subsamples entries exceed total number of samples.'
+    
+        #
+        # Record subsample
+        #
+        self.sub_sample = subsample
+    
+    
+    def clear_subsample(self):
+        """
+        Remove restriction on samples
+        """   
+        self.subsample = None
+        
+    
+    def n_subsamples(self):
+        """
+        Returns the size of the subsample (or n_samples) 
+        """
+        if self.subsample is None:
+            #
+            # No subsample specified -> return sample size
+            # 
+            return self.n_samples
+        else:
+            #
+            # Return number of entries in subsample vector
+            # 
+            return len(self.subsample)
+     
+                
+    def get_matrix(self):
+        """
+        Returns the linear algebra object associated with the AssembledForm. In
+        particular: 
+        
+        Bilinear: An (n_sample, ) list of sparse matri(ces) 
+        
+        Linear: An (n_dofs, n_samples) matrix whose columns correspond to the 
+            realizations of the linear form.
+        
+        Constant: An (n_samples, ) array whose entries coresponds to the
+            realizations of the constant form.
+    
+        """
+        if self.type == 'bilinear':
+            #
+            # Bilinear Form
+            # 
+            if self.n_samples is None:
+                #
+                # Single sample -> deterministic form
+                # 
+                A = sparse.coo_matrix((self.vals, (self.rows, self.cols)))
+                return A.tocsr()
+            else:
+                #
+                # Multiple samples -> list of deterministic forms
+                # 
+                if self.sub_sample is None:
+                    #
+                    # Entire sample
+                    #
+                    matrix_list = []
+                    for w in range(self.n_samples):
+                        A = sparse.coo_matrix((self.vals[:,w], \
+                                               (self.rows, self.cols)))
+                        matrix_list.append(A.tocsr())
+                    return matrix_list
+                else: 
+                    #
+                    # Sub-sample
+                    # 
+                    matrix_list = []
+                    for w in self.sub_sample:
+                        A = sparse.coo_matrix((self.vals[:,w], \
+                                              (self.rows, self.cols)))
+                        matrix_list.append(A.tocsr())
+                    return matrix_list
+        elif self.type == 'linear':
+            #
+            # Linear Form
+            #
+            if self.n_samples is None:
+                #
+                # Single sample, deterministic form
+                # 
+                return sparse.csr_matrix(self.vals).T
+                
+            else:
+                if self.subsample is None:
+                    #
+                    # Entire sample as matrix
+                    # 
+                    return sparse.csc_matrix(self.vals)
+                else:
+                    #
+                    # Sub-sample
+                    # 
+                    return sparse.csc_matrix(self.vals[:,self.subsample])
+        elif self.type == 'constant':
+            #
+            # Constant form
+            #
+            if self.n_samples is None:
+                #
+                # Single sample, a number
+                #  
+                return self.vals
+            else:
+                if self.subsample is None:
+                    #
+                    # Return entire sample
+                    #
+                    return self.vals
+                else:
+                    #
+                    # Return sub-sample
+                    # 
+                    return self.vals[self.subsample]
+                    
+            
 class LinearSystem(object):
     """
-    Linear system object consisting of a single coefficient matrix and right 
-    hand side vector, together with the associated dof information.
-    
-    Attributes:
-    
-        __A
-        
-        assembler
-        
-        __b
-        
-        __compressed
-        
-        __dirichlet
-        
-        __dofs
-        
-        __etype
-        
-        __hanging_nodes: dict, {i_hn:[is_1,...,is_k], [cs_1,...,cs_k]}
-            i_hn: hanging node index
-            is_j: index of jth supporting node
-            cs_j: coefficient of jth supporting basis function, i.e.
+    Linear system object consisting of a single coefficient matrix and possibly
+    a right hand side vector, or matrix, together with the associated dof 
+    information.
             
-            phi_{i_hn} = cs_1*phi_{is_1} + ... + cs_k*phi_{is_k}
-                 
-        __i_problem
-        
-    
-        
         
     Methods:
     
@@ -5733,66 +6193,81 @@ class LinearSystem(object):
         interpolate
      
     """
-    def __init__(self, assembler, i_problem=0, i_sample=(0,0)):
+    def __init__(self, assembler, problem_index=None, \
+                 bilinear_form=None, linear_form=None):
         """
         Constructor
         
         
         Inputs:
         
-            assembler: Assembler, 
+            assembler: Assembler, containing the dof information and possibly
+                storing the bilinear and linear forms. 
             
-            i_problem: int (default 0), problem index
+            problem_index: int, index to locate problem containing bilinear
+                form.
             
-            i_sample: int, tuple (i_bilinear_sample, i_linear_sample), 
-                specifying the index of the assembled bilinear and 
-                linear forms to be used to construct the system.
-                
-            compressed: bool (default=False), indicating whether unknowns
-                which can be determined by Dirichlet boundary conditions
-                or hanging node interpolation relations, should be removed
-                from the linear system Ax=b.
-                
+            bilinear_form: AssembledForm, assembled bilinear form
+            
+            linear_form: AssembledForm, assembled linear form
+            
         """
         self.assembler = assembler
-        self.__i_problem = i_problem
         
         #
-        # Extract forms
-        # 
-        problem = assembler.af[i_problem]
-        bilinear_form = problem['bilinear']
-        linear_form = problem['linear']
-        
+        # Parse bilinear/linear forms
+        #
+        if problem_index is None:
+            #
+            # No problem specified -> bilinear form must be specified directly
+            #
+            assert bilinear_form is not None, \
+                'Must specify bilinear form or problem_index.'
+            
+        else:
+            #
+            # Problem number given -> check that there's a bilinear form
+            # 
+            assert 'bilinear' in assembler.af[problem_index], \
+                'Problem must have a bilinear form.'
+            
+            bilinear_form = assembler.af[problem_index]['bilinear']
+            
+            if 'linear' in assembler.af[problem_index]:
+                #
+                # Linear form appears in problem
+                # 
+                linear_form = assembler.af[problem_index]['linear']
+                
+            else:
+                #
+                # No linear form appears in problem it may be specified explicitly
+                # 
+                linear_form = linear_form
+                
         #
         # Determine element type  
         # 
-        etype = bilinear_form['trial_etype'] 
+        etype = bilinear_form.trial_etype 
 
         #
         # Check that the element type is consistent 
         #  
-        assert etype==bilinear_form['test_etype'], \
+        assert etype==bilinear_form.test_etype, \
         'Trial and test spaces must have the same element type.'
         
-        assert etype==linear_form['test_etype'],\
-        'Test and trial spaces must have same element type.'
-
         self.__etype = etype
         
         
         #
         # Determine system dofs   
         # 
-        dofs = bilinear_form['row_dofs']
+        dofs = bilinear_form.row_dofs
         
         #
         # Check that dofs are consistent (should be if element type is)
         # 
-        assert np.allclose(dofs, bilinear_form['col_dofs']), \
-        'Test and trial dofs should be the same.'
-        
-        assert np.allclose(dofs, linear_form['row_dofs']), \
+        assert np.allclose(dofs, bilinear_form.col_dofs), \
         'Test and trial dofs should be the same.'
         
         self.__dofs = dofs
@@ -5805,56 +6280,52 @@ class LinearSystem(object):
         dof2eqn = np.zeros(dofs[-1]+1, dtype=np.int)
         dof2eqn[dofs] = np.arange(n_dofs, dtype=np.int)
         
-        # Store mapping 
+        #
+        # Store Dof-to-Equation mapping 
+        #
         self.__dof2eqn = dof2eqn
         
-        #
-        # Form system matrix
         # 
-        rows = bilinear_form['rows'] 
-        cols = bilinear_form['cols']
-        vals = bilinear_form['vals']
+        # Store Bilinear Form
+        # 
+        self.set_matrix(bilinear_form)
         
         #
-        # Check sample index
+        # Store Linear Form
         # 
-        i_bilinear_sample = i_sample[0]
-        if len(vals.shape)>1 and vals.shape[1]>1:
-            #
-            # Multiple bilinear forms, extract sample
-            #  
-            assert i_bilinear_sample < vals.shape[1],\
-            'Sample index exceeds sample size.'
-            
-            vals = bilinear_form['vals'][i_bilinear_sample]
-        #
-        # Store as sparse matrix 
-        # 
-        A = sparse.coo_matrix((vals,(rows,cols)))
-        self.__A = A.tocsr()
-    
-        #
-        # Form right hand side
-        #
-        linear_form = problem['linear']
-        vals = linear_form['vals']
-        i_linear_sample = i_sample[1]
-        if len(vals.shape)>1 and vals.shape[1]>1:
-            #
-            #  Multiple linear forms, extract sample
-            # 
-            assert i_linear_sample < vals.shape[1],\
-            'Sample index %d exceeds sample size %d.'\
-            %(i_linear_sample, vals.shape[1])
-            
-            vals = linear_form['vals'][i_linear_sample]
-
-        self.__b = sparse.csr_matrix(vals).T
+        self.set_rhs(linear_form)
         
+        #
+        # Initialize constraint matrix
+        # 
+        self.__C = None
+        self.__d = None
+        
+        """
         #
         # Initialize solution vector
-        #  
-        self.__u = np.zeros(n_dofs)      
+        #
+        if self.__b is not None:
+            #
+            # Solution vector
+            # 
+            n_samples = self.n_samples
+            if self.n_samples is None:
+                #
+                # Sample size is None
+                # 
+                self.__u = np.zeros(n_dofs)
+            else:
+                #
+                # Sample size is given
+                # 
+                self.__u = np.zeros((n_dofs,n_samples))
+        else:
+            #
+            # No solution vector 
+            #
+            self.__u = None
+        """                
             
         #
         # List of Hanging nodes 
@@ -5890,20 +6361,6 @@ class LinearSystem(object):
         """
         return self.__etype
 
-
-    def A(self):
-        """
-        Return system matrix 
-        """
-        return self.__A 
-    
-    
-    def b(self):
-        """
-        Return right hand side
-        """
-        return self.__b
-        
     
     def C(self):
         """
@@ -5919,26 +6376,8 @@ class LinearSystem(object):
         return self.__d
      
         
-    def sol(self, as_function=False):
-        """
-        Returns the solution of the linear system 
-        """
-        if not as_function:
-            #
-            # Return solution vector
-            # 
-            return self.__u
-        else: 
-            #
-            # Return solution as nodal function
-            # 
-            u = Function(self.__u, 'nodal', mesh=self.assembler.mesh, \
-                         dofhandler=self.dofhandler(), \
-                         subforest_flag=self.assembler.subforest_flag)
-            return u
-       
-    
-    def add_dirichlet_constraint(self, bnd_marker, dirichlet_function=0, on_boundary=True):
+    def add_dirichlet_constraint(self, bnd_marker, dirichlet_function=0, 
+                                 on_boundary=True):
         """
         Modify an assembled bilinear/linear pair to account for Dirichlet 
         boundary conditions. The system matrix is modified "in place", 
@@ -5950,30 +6389,26 @@ class LinearSystem(object):
             a41 a42 a43 a44   u4     b4
             
         Suppose Dirichlet conditions u2=g2 and u4=g4 are prescribed. 
-        If compressed=False, the system is converted to
+        The system is converted to
         
             a11  0  a13  0   u1     b1 - a12*g2 - a14*g4
-             0   1   0   0   u2  =  g2   
+             0   1   0   0   u2  =  0   
             a31  0  a33  0   u3     b3 - a32*g2 - a34*g4
-             0   0   0   1   u4     g4 
-        
-        If compressed=True, the system is converted to
-        
-            a11 a13  u1  = b1 - a12*g2 - a14*g4
-            a31 a33  u3    b3 - a32*g2 - a34*g3
+             0   0   0   1   u4     0 
         
         The solution [u1,u3]^T of this system is then enlarged with the 
-        dirichlet boundary values g2 and g4 by invoking 'resolve_dirichlet_nodes' 
+        dirichlet boundary values g2 and g4 by invoking 'resolve_constraints' 
         
     
         Inputs:
         
             bnd_marker: str/int flag to identify boundary
             
-            i_problem: int, problem index (default = 0)
-            
             dirichlet_function: Function, defining the Dirichlet boundary 
                 conditions.
+            
+            on_boundary: bool, True if function values are prescribed on
+                boundary.
             
             
         Notes:
@@ -5982,8 +6417,8 @@ class LinearSystem(object):
         spaces must be the same, i.e. it must be a Galerkin approximation. 
         
         Specifying the Dirichlet conditions this way is necessary if there
-        are hanging nodes (uncompressed), since a Dirichlet node may be a
-        supporting node for one of the hanging nodes.  
+        are hanging nodes, since a Dirichlet node may be a supporting node for
+        one of the hanging nodes.  
                 
                 
         Inputs:
@@ -6241,10 +6676,33 @@ class LinearSystem(object):
                 pass
             pass
         """
-   
-    
+        """
+        # Initialize solution vector
+        #
+        if self.__b is not None:
+            #
+            # Solution vector
+            # 
+            n_samples = self.n_samples
+            if self.n_samples is None:
+                #
+                # Sample size is None
+                # 
+                self.__u = np.zeros(n_dofs)
+            else:
+                #
+                # Sample size is given
+                # 
+                self.__u = np.zeros((n_dofs,n_samples))
+        else:
+            #
+            # No solution vector 
+            #
+            self.__u = None
+        """
       
-    def set_constraint_matrix(self):
+      
+    def set_constraint_relation(self):
         """
         Define the constraint matrix C and affine term d so that 
         
@@ -6300,7 +6758,67 @@ class LinearSystem(object):
         self.__d = d
     
     
-    def incorporate_constraints(self):
+    def set_matrix(self, bilinear_form):
+        """
+        Store system matrix
+        
+        Inputs:
+        
+            bilinear_form: AssembledForm, bilinear assembled form
+        """
+        #
+        # Ensure that there is only one bilinear form
+        # 
+        multiple_bfs_error = 'Only single bilinear form allowed.'
+        bf_nsamples = bilinear_form.n_samples
+        if bf_nsamples is not None:
+            #
+            # Sampled bilinear form 
+            # 
+            if bf_nsamples == 1:
+                #
+                # Only one sample
+                # 
+                A = bilinear_form.get_matrix()[0]
+            elif bf_nsamples > 1:
+                #
+                # Multiple samples check that subsamples
+                #   
+                if len(bilinear_form.sub_samples)==1:
+                    #
+                    # Only one subsample good
+                    # 
+                    A = bilinear_form.get_matrix()[0]
+                else:
+                    #
+                    # Multiple bilinear forms
+                    #
+                    raise Exception(multiple_bfs_error)
+            else:
+                #
+                # Multiple bilinear forms
+                #  
+                raise Exception(multiple_bfs_error)
+        else:
+            #
+            #  Deterministic bf
+            # 
+            A = bilinear_form.get_matrix()
+        
+        self.__A = A                
+        self.__A_is_factored = False
+        self.__A_is_constrained = False
+    
+    
+    
+    def get_matrix(self):
+        """
+        Returns system matrix 
+        """
+        return self.__A
+    
+        
+    def constrain_matrix(self):
         """
         Incorporate constraints due to (i) boundary conditions, (ii) hanging 
         nodes, and/or other linear compatibility conditions. Constraints are 
@@ -6327,8 +6845,16 @@ class LinearSystem(object):
         dofs = self.dofs()
         n_dofs = len(dofs)
         
-        A, b = self.A(), self.b()
-        C, d = self.C(), self.d()
+        A = self.get_matrix()
+        C = self.C()
+        """
+        d = self.d()
+        """
+        
+        #
+        # List within which to record modifications
+        #
+        self.column_records = []
         
         constraints = self.dofhandler().constraints
         c_dofs = constraints['constrained_dofs']
@@ -6353,11 +6879,20 @@ class LinearSystem(object):
             #
             A += ak.dot(ck)
             
+            """
             #
             # Modify b's rows
             #
-            b -= d[k]*ak
+            if self.has_rhs:
+                one = sparse.csc_matrix(np.ones(b.shape[1]))
+                b -= d[k]*ak.dot(one)
+            """
             
+            #
+            # Record columns of A
+            #  
+            self.column_records.append(ak.copy())
+                
             #
             # Remove Column k
             #
@@ -6365,7 +6900,7 @@ class LinearSystem(object):
             one[k] = 0
             Imk = sparse.dia_matrix((one,0),shape=(n_dofs,n_dofs))
             A = A.dot(Imk)
-
+                        
             #
             # Distribute constrained equation among supporting rows
             # 
@@ -6376,17 +6911,21 @@ class LinearSystem(object):
             ak = A.getrow(k)            
             A += ck.T.dot(ak)
             
+            """            
             #
             # Modify b's rows
             # 
-            bk = b[k].toarray()[0,0]
-            b += bk*ck.T
+            if self.has_rhs:
+                bk = b.getrow(k)
+                #bk = b[k].toarray()[0,0]
+                b += ck.T.dot(bk)
+            """
                         
             #
             # Zero out row k 
             # 
             A = Imk.dot(A)
-            
+                        
             #
             # Add diagonal row
             # 
@@ -6395,6 +6934,7 @@ class LinearSystem(object):
             Ik  = sparse.dia_matrix((zero,0), shape=(n_dofs,n_dofs))
             A += Ik
         
+            
         #
         # Set diagonal entries of constrained nodes equal to mean(A[k,k]) 
         # 
@@ -6405,24 +6945,55 @@ class LinearSystem(object):
             #
             # If there are unconstrained dofs, use average diagonal to scale 
             # 
-            ave_vec[c_dofs] = (np.sum(a_diag)-n_cdofs)/(n_dofs-n_cdofs)
+            c_eqns = self.dof2eqn(c_dofs)
+            ave_vec[c_eqns] = (np.sum(a_diag)-n_cdofs)/(n_dofs-n_cdofs)
         I_ave = sparse.dia_matrix((ave_vec,0), shape=(n_dofs,n_dofs))
         A = A.dot(I_ave)
-          
+        
+        """  
         #
         # Set b = 0 at constraints 
         # 
-        zc = np.ones(n_dofs)
-        zc[c_dofs] = 0
-        Izc = sparse.dia_matrix((zc,0),shape=(n_dofs,n_dofs)) 
-        b = Izc.dot(b)
-        
+        if self.has_rhs:
+            zc = np.ones(n_dofs)
+            zc[c_dofs] = 0
+            Izc = sparse.dia_matrix((zc,0),shape=(n_dofs,n_dofs)) 
+            b = Izc.dot(b)
+         """       
         
         self.__A = A
-        self.__b = b
+        self.__A_is_constrained = True
         
-   
-    def solve(self):
+        """
+        if self.has_rhs:
+            self.__b = b
+        """
+        
+    
+    def factor_matrix(self):
+        """
+        Factor system matrix
+        """
+        A = self.get_matrix()
+        self.__invA = sparse.linalg.splu(A.tocsc())
+        self.__A_is_factored = True
+        
+    
+    def matrix_is_factored(self):
+        """
+        Determine whether the matrix has been factored
+        """       
+        return self.__A_is_factored
+    
+    
+    def matrix_is_constrained(self):
+        """
+        Determine whether the system matrix has been constrained
+        """
+        self.__A_is_constrained
+        
+        
+    def invert_matrix(self, b=None):
         """
         Returns the solution (in vector form) of a problem
         
@@ -6442,11 +7013,177 @@ class LinearSystem(object):
                 Function, representing the finite element solution
             
         """ 
-        A = self.A()
-        b = self.b()
-
-        self.__u = sparse.linalg.spsolve(A,b)    
+        
+        A = self.get_matrix()
+        
+        if b is None:
+            #
+            # Use stored b
+            # 
+            assert self.has_rhs(), 'Specify right hand side'
+        else:
+            #
+            # New b
+            # 
+            self.set_rhs(b)
+            self.constrain_rhs()
+                 
+        b = self.get_rhs()
+                
+        #
+        # Solve the linear system
+        #
     
+        # Convert to sparse column format
+        A = A.tocsc()
+        b = b.tocsc()
+        self.__u = self.__invA.solve(b.toarray())    
+            
+        if self.n_samples is None:
+            self.__u = self.__u.ravel()
+            
+            
+    def set_rhs(self, rhs):
+        """
+        Store right hand side
+        
+        Inputs:
+        
+            rhs: AssembledForm, numpy array, or sparse array
+        """
+        dofs_error = 'Right hand side incompatible with system shape'
+        if rhs is None:
+            #
+            # Rhs is not specified
+            #
+            b = rhs
+            n_samples = None        
+        elif isinstance(rhs, AssembledForm):
+            #
+            # Rhs given as linear form
+            #
+            assert rhs.type == 'linear', \
+            'Right hand side must be linear form'
+            
+            assert np.allclose(self.dofs(), rhs.row_dofs), \
+            'Test and trial dofs should be the same.'
+                
+            assert self.etype()==rhs.test_etype,\
+           'Test and trial spaces must have same element type.'
+            
+            b = rhs.get_matrix()    
+            n_samples = rhs.n_samples
+                   
+        elif type(rhs) is np.ndarray:
+            #
+            # Rhs given as (full) array
+            #
+            assert b.shape[0] == len(self.dofs()), dofs_error
+            
+            b = rhs
+            
+            if len(rhs.shape)==1:
+                #
+                # One dimensional array
+                #
+                n_samples = None
+            elif len(rhs.shape)==2:
+                #
+                # Two dimensional array
+                #
+                n_samples = rhs.shape[1]
+                
+        elif sparse.issparse(b):
+            #
+            # Rhs is a sparse matrix   
+            # 
+            assert b.shape[0] == len(self.dofs()), dofs_error
+            
+            b = rhs
+            n_samples = rhs.shape[1]
+        
+        #
+        # Store information
+        #  
+        self.__b = b
+        self.n_samples = n_samples 
+        self.__b_is_constrained = False
+        
+    
+    def get_rhs(self):
+        """
+        Return right hand side
+        """
+        return self.__b
+    
+    
+    def has_rhs(self):
+        """
+        Check whether rhs has been specified
+        """
+        return self.__b is not None
+    
+    
+    def constrain_rhs(self):
+        """
+        Modify right hand side to incorporate constraints.
+        """
+        #
+        # Check that system has rhs
+        # 
+        assert self.has_rhs(), 'Specify rhs, using "set_rhs".'
+        
+        #
+        # Check that rhs not constrained 
+        # 
+        if self.rhs_is_constrained():
+            return
+        
+        b = self.get_rhs()
+        n_dofs = len(self.dofs())
+            
+        constraints = self.dofhandler().constraints
+        c_dofs = constraints['constrained_dofs']
+        C = self.C()
+        d = self.d()
+        i = 0
+        
+        for c_dof in c_dofs:
+            k = self.dof2eqn(c_dof)
+            
+            ck = C.getrow(k)
+            ak = self.column_records[i]
+            
+            #
+            # Modify columns
+            # 
+            one = sparse.csc_matrix(np.ones(self.n_samples))
+            b -= d[k]*ak.dot(one)
+            
+            #
+            # Modify b's rows
+            # 
+            bk = b.getrow(k)
+            b += ck.T.dot(bk)
+            
+            #
+            # Set b=0 at the constraints
+            # 
+            zc = np.ones(n_dofs)
+            zc[c_dofs] = 0
+            Izc = sparse.dia_matrix((zc,0),shape=(n_dofs,n_dofs)) 
+            b = Izc.dot(b)
+            
+            i += 1
+        self.__b = b
+           
+    
+    def rhs_is_constrained(self):
+        """
+        Check whether the rhs has been constrained.
+        """
+        return self.__b_is_constrained
+                 
     
     def resolve_constraints(self, x=None):
         """
@@ -6462,17 +7199,49 @@ class LinearSystem(object):
         # 
         C, d = self.C(), self.d()
         
+        n_samples = self.n_samples
+        if n_samples is not None:
+            #
+            # Sampled right hand side
+            # 
+            drep = np.tile(d[:, np.newaxis], (1,n_samples))
+        
         #
         # Modify dofs that don't depend on others
         # 
         n_dofs = self.dofhandler().n_dofs()
-        ec_dofs = [i for i in range(n_dofs) if C.getrow(i).nnz==0]
-        u[ec_dofs] = d[ec_dofs]
-        
+        ec_dofs = [i for i in range(n_dofs) if C.getrow(i).nnz==0]        
+        n_samples = self.n_samples
+        if n_samples is None:
+            #
+            # Deterministic
+            # 
+            u[ec_dofs] = d[ec_dofs]
+        else:
+            # 
+            # Sampled
+            #
+            if type(u) is not np.ndarray:
+                #
+                # Convert to ndarray if necessary
+                # 
+                u = u.toarray()
+            u[ec_dofs,:] = drep[ec_dofs,:]
+                
         #
         # Modify other dofs
         # 
-        u = C.dot(u) + d
+        if n_samples is None:
+            #
+            # Deterministic
+            # 
+            u = C.dot(u) + d
+        else:
+            #
+            # Sampled
+            # 
+            u = C.dot(u) + drep
+              
         
         #
         # Store or return result       
@@ -6481,7 +7250,92 @@ class LinearSystem(object):
             self.__u = u
         else:
             return u
+           
+    
+    def solve_system(self, b=None):
+        """
+        Compute the solution of the linear system 
         
+            Ax = b, subject to constraints "x=Cx+d"
+        
+        This method combines
+        
+            set_constraint_relation
+            constrain_matrix
+            constrain_rhs
+            factor_matrix
+            invert_matrix
+            resolve_constraints
+        """
+        #
+        # Parse right hand side
+        # 
+        if b is None:
+            #
+            # No b specified
+            # 
+            assert self.get_rhs() is not None, 'No right hand side specified.'
+        else:
+            #
+            # New b
+            # 
+            self.set_rhs(b)            
+            
+        #
+        # Define constraint system
+        # 
+        if self.C() is None:
+            self.set_constraint_relation()
+            
+        #
+        # Apply constraints to A
+        # 
+        if not self.matrix_is_constrained():
+            self.constrain_matrix()
+            
+        #
+        # Apply constraints to b
+        # 
+        if not self.rhs_is_constrained():
+            self.constrain_rhs()
+            
+        #
+        # Factor matrix
+        # 
+        if not self.matrix_is_factored():
+            self.factor_matrix()
+            
+        #
+        # Solve the system
+        # 
+        self.invert_matrix()
+        
+        
+        #
+        # Resolve constraints
+        #
+        self.resolve_constraints()
+        
+    
+    def get_solution(self, as_function=True):
+        """
+        Returns the solution of the linear system 
+        """
+        if not as_function:
+            #
+            # Return solution vector
+            # 
+            return self.__u
+        else: 
+            #
+            # Return solution as nodal function
+            # 
+            u = Function(self.__u, 'nodal', mesh=self.assembler.mesh, \
+                         dofhandler=self.dofhandler(), \
+                         subforest_flag=self.assembler.subforest_flag)
+            return u
+       
+            
     '''
     def extract_hanging_nodes(self):
         """
