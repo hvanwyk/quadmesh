@@ -11,71 +11,30 @@ from fem import LinearSystem
 from plot import Plot
 import numpy as np
 
+
 #
 # Define mesh
 # 
-mesh = Mesh1D(resolution=(10,))
+mesh = Mesh1D(resolution=(2,))
+element = QuadFE(1,'Q1')
 
-for etype in ['Q1','Q2','Q3']:
-    element = QuadFE(1,etype)
+u = Function(np.array([1,2,1]), 'nodal', mesh=mesh, element=element)
+plot = Plot(3)
+plot.line(u)
 
-    #
-    # Exact solution 
-    # 
-    ue = Function(lambda x: x, 'nodal', mesh=mesh, element=element) 
-    
-    #
-    # Define Basis functions 
-    #  
-    u = Basis(element, 'u')
-    ux = Basis(element, 'ux')
-    
-    #
-    # Define bilinear form
-    #
-    one = Function(1, 'constant')
-    zero = Function(0, 'constant')
-    a = Form(kernel=Kernel(one), trial=ux, test=ux)
-    L = Form(kernel=Kernel(zero), test=u)
-    problem = [a,L]
-    
-    #
-    # Assemble 
-    # 
-    assembler = Assembler(problem, mesh)
-    assembler.assemble()
-    
-    #
-    # Form linear system
-    # 
-    system = LinearSystem(assembler, 0)
-    
-    #
-    # Dirichlet conditions 
-    # 
-    
-    # Boundary functions 
-    bm_left = lambda x: np.abs(x)<1e-9
-    bm_rght = lambda x: np.abs(x-1)<1e-9
-    
-    # Mark boundary regions
-    mesh.mark_region('left', bm_left, on_boundary=True)
-    mesh.mark_region('right',bm_rght, on_boundary=True)
-    
-    # Add Dirichlet constraints
-    system.add_dirichlet_constraint('left', ue)
-    system.add_dirichlet_constraint('right', ue)
-    
-    #
-    # Solve system
-    # 
-    system.solve_system()
-    
-    #
-    # Return solution
-    # 
-    ua = system.get_solution()
-    
-    # Compare with exact solution
-    assert np.allclose(ua.fn(), ue.fn()), 'not close'
-    
+kernel = Kernel([u], dfdx=['fx'], F=lambda u: np.abs(u))
+form = Form(kernel=kernel)
+assembler = Assembler(form, mesh)
+assembler.assemble()
+cf = assembler.af[0]['constant']
+#print(cf.get_matrix())
+
+
+for cell in mesh.cells.get_leaves():
+    for pivot in cell.get_vertices():
+        nb = cell.get_neighbor(pivot)
+        if nb is not None:
+            print('pivot=',pivot.coordinates())
+            print(u.eval(pivot, cell=cell))
+            print(u.eval(pivot, cell=nb))
+            

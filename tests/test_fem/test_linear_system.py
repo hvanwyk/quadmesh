@@ -10,7 +10,7 @@ from fem import Kernel
 from fem import Assembler
 from fem import QuadFE
 from fem import LinearSystem
-from plot import Plot
+#from plot import Plot
 
 
 class TestLinearSystem(unittest.TestCase):

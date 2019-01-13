@@ -1,5 +1,5 @@
 import unittest
-from mesh import QuadMesh, Mesh1D, convert_to_array
+from mesh import QuadMesh, Mesh1D
 from fem import QuadFE, Assembler, Function, DofHandler, Form, Basis, Kernel
 import numpy as np
 import scipy.sparse as sp
@@ -425,7 +425,8 @@ class TestAssembler(unittest.TestCase):
         # Test 6: Working with submeshes
         # =====================================================================
         mesh = Mesh1D(resolution=(2,))
-        mesh.cells.record((0,1))
+        
+    
     
         
     def test_assemble_2d(self):

@@ -2432,7 +2432,7 @@ class Interval(HalfEdge):
         
         Input:
         
-            pivot: int, 0 (=left) or 1 (=right)
+            pivot: int, 0 (=left) or 1 (=right) or Vertex
             
             subforest_flag (optional): marker to specify submesh
             
