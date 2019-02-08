@@ -1120,7 +1120,7 @@ class Forest(object):
             return [leaf for leaf in leaves if leaf.is_marked(flag)]
            
         
-    def make_forest_of_rooted_subtrees(self, flag):
+    def root_subtrees(self, flag):
         """
         Mark all ancestors of flagged node with same flag, to turn flag into
         a subtree marker. 
@@ -1153,7 +1153,7 @@ class Forest(object):
                             child.mark(flag)
           
     
-    def is_forest_of_rooted_subtree(self, flag):
+    def subtrees_rooted(self, flag):
         """
         Determine whether a given flag defines a rooted subtree
         
@@ -1327,7 +1327,7 @@ class Forest(object):
         # Ensure the subforest is rooted
         #
         if subforest_flag is not None:
-            self.make_forest_of_rooted_subtrees(subforest_flag)
+            self.root_subtrees(subforest_flag)
         
         
         for tree in self.get_children():
@@ -1521,7 +1521,7 @@ class Forest(object):
         # Apply new label to coarsened submesh if necessary
         # 
         if new_label is not None:
-            self.make_forest_of_rooted_subtrees(new_label)
+            self.root_subtrees(new_label)
         """ 
     
     def refine(self, subforest_flag=None, refinement_flag=None, new_label=None, 
@@ -1546,7 +1546,7 @@ class Forest(object):
         # Ensure that the subforest is rooted
         # 
         if subforest_flag is not None:
-            self.make_forest_of_rooted_subtrees(subforest_flag)
+            self.root_subtrees(subforest_flag)
         #
         # Look for marked leaves within the submesh
         # 
@@ -1596,7 +1596,7 @@ class Forest(object):
         # Label ancestors of newly labeled children
         # 
         if new_label is not None:
-            self.make_forest_of_rooted_subtrees(new_label)
+            self.root_subtrees(new_label)
  
         
 class Vertex(object):
@@ -1649,10 +1649,7 @@ class Vertex(object):
         """
         Return coordinates tuple
         """
-        if self.__dim == 1:
-            return self.__coordinate
-        else:
-            return self.__coordinate
+        return self.__coordinate
     
     
     def dim(self):
@@ -1882,10 +1879,7 @@ class HalfEdge(Tree):
         #
         # Assign head and base
         # 
-        assert isinstance(base, Vertex) and isinstance(head, Vertex),\
-            'Inputs "base" and "head" should be Vertex objects.'
-        self.__base = base
-        self.__head = head
+        self.set_vertices(base, head)
         
         #
         # Check parent
@@ -2001,6 +1995,16 @@ class HalfEdge(Tree):
         return [self.__base, self.__head]
     
     
+    def set_vertices(self, base, head):
+        """
+        Define base and head vertices
+        """
+        assert isinstance(base, Vertex) and isinstance(head, Vertex),\
+            'Inputs "base" and "head" should be Vertex objects.'
+        self.__base = base
+        self.__head = head
+    
+    
     def cell(self):
         """
         Returns the cell containing half-edge
@@ -2030,6 +2034,13 @@ class HalfEdge(Tree):
             assert self.base()==twin.head() and self.head()==twin.base(),\
                 'Own head vertex should be equal to twin base vertex & vice versa.'
         self.__twin = twin
+    
+    
+    def delete_twin(self):
+        """
+        Deletes half-edge's twin
+        """    
+        self.__twin = None
         
     
     def make_twin(self):
@@ -2181,34 +2192,63 @@ class HalfEdge(Tree):
     def contains_points(self, points):
         """
         Determine whether points lie on a HalfEdge
-        """
+        
+        Inputs:
+        
+            points: double, 
+        """        
+        tol = 1e-10
         x0 = convert_to_array(self.base().coordinates())
         v = self.to_vector()
         dim = x0.shape[1]
         p = convert_to_array(points, dim)
         n_points = p.shape[0]
         in_half_edge = np.ones(n_points, dtype=np.bool)
-        for i in range(dim):
-            t = (p[:,i]-x0[:,i])/v[i]
-            if i==0:
-                s = t
-            else:
-                #
-                # Discard points where the t's differ for different components
-                # 
-                in_half_edge[np.abs(t-s)>1e-9] = False
+        if np.abs(v[0])<tol:
             #
-            # Discard points where t not in [0,1]
+            # Vertical line
             # 
+            assert np.abs(v[1])>tol, 'Half-edge is too short'
+            
+            # Locate y-coordinate along segment
+            t = (p[:,1]-x0[:,1])/v[1]
+                        
+            # Discard points whose location parameter t is not in [0,1]
             in_half_edge[np.abs(t-0.5)>0.5] = False
-        
-        return in_half_edge
-        """
-        if n_points==1:
-            return in_half_edge[0]
+            
+            # Discard points whose x-values don't lie on Edge
+            in_half_edge[np.abs(p[:,0]-x0[0,0])>tol] = False
+            
+        elif dim==1 or np.abs(v[1]<1e-14):
+            #
+            # Horizontal line
+            # 
+            assert np.abs(v[0])>tol, 'Half-edge is too short'
+            
+            # Locate x-coordinate along line
+            t = (p[:,0]-x0[:,0])/v[0]
+            
+            # Check that t in [0,1]
+            in_half_edge[np.abs(t-0.5)>0.5] = False
+            
+            if dim > 1:
+                # Check distance between y-values
+                in_half_edge[np.abs(p[:,1]-x0[0,1])>tol] = False            
         else:
-            return in_half_edge
-        """
+            #
+            # Skew line
+            # 
+            s = (p[:,0]-x0[:,0])/v[0]
+            t = (p[:,1]-x0[:,1])/v[1]
+            
+            # Check coordinates have same location parameters 
+            in_half_edge[np.abs(t-s)>tol] = False
+            
+            # Check that location parameter lies in [0,1]
+            in_half_edge[np.abs(t-0.5)>0.5] = False
+            
+        return in_half_edge
+        
         
     
     def intersects_line_segment(self, line):
@@ -2659,7 +2699,7 @@ class Interval(HalfEdge):
                 child.assign_previous(self.get_child(i-1))
                     
     
-    def locate_point(self, point, flag=None):
+    def locate_point(self, point, subforest_flag=None):
         """
         Returns the smallest subinterval that contains a given point
         
@@ -2669,20 +2709,20 @@ class Interval(HalfEdge):
         #
         # Check that self contains the point
         #
-        if flag is not None:
-            if not self.is_marked(flag):
+        if subforest_flag is not None:
+            if not self.is_marked(subforest_flag):
                 return None  
         if self.contains_points(point):
             #
             # Look for child that contains the point
             #  
-            if self.has_children(flag=flag):
-                for child in self.get_children(flag=flag):
+            if self.has_children(flag=subforest_flag):
+                for child in self.get_children(flag=subforest_flag):
                     if child.contains_points(point):
                         #
                         # Recursion
                         # 
-                        return child.locate_point(point, flag=flag)  
+                        return child.locate_point(point, subforest_flag=subforest_flag)  
             else:
                 #
                 # Current cell is the smallest that contains point
@@ -2694,6 +2734,35 @@ class Interval(HalfEdge):
             # 
             return None        
     
+    
+    def contains_points(self, points):
+        """
+        Determine which of the points in x are contained in the interval. 
+        
+        
+        Inputs: 
+        
+            points: double, collection of 1D points
+            
+            
+        Outputs:
+        
+            in_cell: bool, (n_points,) array whose ith entry is True if point i
+                is contained in interval, False otherwise. 
+        """
+        # Get interval enpoints
+        x0, = self.base().coordinates()
+        x1, = self.head().coordinates()
+        
+        # Convert points to (n_points,1) array
+        x = convert_to_array(points,1)
+        
+        in_cell = np.ones(x.shape, dtype=bool)
+        in_cell[x<x0] = False
+        in_cell[x>x1] = False
+        
+        return in_cell.ravel()
+        
         
     def reference_map(self, x, jacobian=False, hessian=False, mapsto='physical'):
         """
@@ -6017,9 +6086,9 @@ class Mesh1D(Mesh):
                 if flag is not None:
                     if not interval.is_marked(flag):
                         return None
-                    else: return interval.locate_point(point, flag=flag)
+                    else: return interval.locate_point(point, subforest_flag=flag)
                 else:
-                    return interval.locate_point(point, flag=flag)
+                    return interval.locate_point(point, subforest_flag=flag)
                 
     
     def get_boundary_vertices(self):
@@ -6769,6 +6838,44 @@ class Mesh2D(Mesh):
                         #
                         cell.mark(flag)
                             
+        
+    def tear_region(self, flag, subforest_flag=None):
+        """
+        Tear the domain along an interior half-edge region. 
+            As a consequence,
+        
+            - Vertices on either side of the half-edge are separate
+                (although they still have the same coordinates).
+                
+            - Adjoining half-edges along the region will no longer be
+                neighbors of each other.
+                
+        Inputs:
+        
+            flag: str/int/tuple, flag specifying the region of half-edges
+            
+            subforest_flag: str/int/tuple, flag specifying the submesh
+            
+        """
+        #
+        # Iterate over half-edges along region
+        # 
+        for he in self.get_region(flag=flag, entity_type='half_edge', 
+                                  subforest_flag=subforest_flag):
+            #
+            # Assign New Vertices to half-edge
+            #
+            base = Vertex(he.base().coordinates())
+            head = Vertex(he.head().coordinates())
+            he.set_vertices(base, head)
+            
+            #
+            # Disassociate from neighboring half-edge
+            #
+            twin = he.twin()
+            twin.delete_twin()  
+            he.delete_twin()
+    
     
     def get_region(self, flag=None, entity_type='vertex', on_boundary=False, 
                    subforest_flag=None, return_cells=False):
@@ -6943,7 +7050,7 @@ class Mesh2D(Mesh):
         xy = convert_to_array(self.vertices, dim=2)
         x0, x1 = xy[:,0].min(), xy[:,0].max()
         y0, y1 = xy[:,1].min(), xy[:,1].max()
-        return x0, x1, y0, y1
+        return x0, x1, y0, y1    
     
     
     def record(self, subforest_flag):
@@ -7058,7 +7165,7 @@ class QuadMesh(Mesh2D):
         """
         Ensure that subcells of current cell conform to the 2:1 rule
         """
-        assert self.cells.is_forest_of_rooted_subtree(subforest_flag)
+        assert self.cells.subtrees_rooted(subforest_flag)
         #
         # Get all LEAF cells
         # 

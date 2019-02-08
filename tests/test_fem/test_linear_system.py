@@ -236,7 +236,7 @@ class TestLinearSystem(unittest.TestCase):
         a = Form(kernel=Kernel(Function(1,'constant')), trial=ux, test=ux)
         
         # Linear form
-        f = Function(lambda x: 4*np.pi**2*np.sin(2*np.pi*x), 'explicit')
+        f = Function(lambda x: 4*np.pi**2*np.sin(2*np.pi*x), 'explicit', dim=1)
         L = Form(kernel=Kernel(f), test=u)
         
         #

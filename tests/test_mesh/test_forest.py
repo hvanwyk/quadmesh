@@ -217,7 +217,7 @@ class TestForest(unittest.TestCase):
             
         node.get_child(1).mark(1, recursive=True)
         node.get_child(3).mark(1)
-        forest.make_forest_of_rooted_subtrees(1)
+        forest.root_subtrees(1)
         leaves = forest.get_leaves(subforest_flag=1)
         self.assertEqual(len(leaves), 7, 
                          'This tree has 7 flagged LEAF nodes.')
@@ -362,7 +362,7 @@ class TestForest(unittest.TestCase):
         
         # Make a subforest 0, 00, 01, 1  
         forest.get_child(0).get_child(0).mark(2)
-        forest.make_forest_of_rooted_subtrees(2)
+        forest.root_subtrees(2)
         
         count = 0
         for node in forest.traverse(flag=2):
@@ -386,7 +386,7 @@ class TestForest(unittest.TestCase):
         
         # New subforest: 0, 00, 01, 1
         forest.get_child(0).get_child(0).mark(2)
-        forest.make_forest_of_rooted_subtrees(2)
+        forest.root_subtrees(2)
         
         # Count subforest nodes
         count = 0
@@ -428,7 +428,7 @@ class TestForest(unittest.TestCase):
         
         # Subforest is: 0, 00, 01, 1
         forest.get_child(0).get_child(0).mark(2)
-        forest.make_forest_of_rooted_subtrees(2)
+        forest.root_subtrees(2)
         
         # Mark [0,0] with coarsening flag
         forest.get_child(0).mark(1)
@@ -523,7 +523,7 @@ class TestForest(unittest.TestCase):
         
         # Define subforest
         forest.get_child(0).get_child(0).mark(1)
-        forest.make_forest_of_rooted_subtrees(1)
+        forest.root_subtrees(1)
         
         # Check node count
         count = 0
@@ -567,7 +567,7 @@ class TestForest(unittest.TestCase):
         
         # Define subforest
         forest.get_child(0).get_child(0).mark(1)
-        forest.make_forest_of_rooted_subtrees(1)
+        forest.root_subtrees(1)
         
         # Check node count
         count = 0

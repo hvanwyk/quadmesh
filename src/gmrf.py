@@ -3,15 +3,24 @@ Created on Feb 8, 2017
 
 @author: hans-werner
 '''
-from fem import Assembler, QuadFE, DofHandler, GaussRule, Function
+from fem import Assembler
+from fem import FiniteElement
+from fem import DofHandler
+from fem import GaussRule
+from fem import Function
+from fem import Assembler
 from mesh import Mesh
+from mesh import Mesh1D
+from mesh import QuadMesh
+
 from numbers import Number, Real
-import scipy.sparse as sp
-from sksparse.cholmod import cholesky, cholesky_AAt, Factor  # @UnresolvedImport
+import numpy as np
 from scipy import linalg
 from scipy.special import kv, gamma
+import scipy.sparse as sp
 from scipy.sparse import linalg as spla
-import numpy as np
+from sksparse.cholmod import cholesky, cholesky_AAt, Factor  # @UnresolvedImport
+
 
 # =============================================================================
 # Covariance Functions
@@ -22,311 +31,401 @@ Commonly used covariance functions
 For each function, we assume the input is given by two d-dimensional
 vectors of length n. 
 """
+def distance(x, y, M=None, periodic=False, box=None):
+    """
+    Compute the Euclidean distance vector between rows in x and rows in y
+    
+    Inputs: 
+    
+        x,y: (n,dim) column vectors
+        
+        M: double, positive semidefinite anistropy coefficient 
+        
+        periodic: bool [False], indicates a toroidal domain
+        
+        box: double, tuple representing the bounding box, i.e. 
+            1D: box = (x_min, x_max)
+            2D: box = (x_min, x_max, y_min, y_max) 
+            If periodic is True, then box should be specified.
+        
+    Outputs: 
+    
+        d: double, (n,1) vector ||x[i]-y[i]||_M of (M-weighted) 
+            Euclidean distances
+         
+    """
+    # Check wether x and y have the same dimensions 
+    assert x.shape == y.shape, 'Vectors x and y have incompatible shapes.'
+    
+    if len(x.shape) == 1:
+        #
+        # 1D
+        #
+        # Periodicity
+        if periodic:
+            assert box is not None, \
+            'If periodic, bounding box must be specified.'
+            
+            x_min, x_max = box
+            w  = x_max - x_min
+            dx = np.min(np.array([np.abs(x-y), w - np.abs(x-y)]),axis=0)
+        else:
+            dx = np.abs(x-y)
+        # "Anisotropy"    
+        if M is None:
+            return dx
+        else:
+            assert isinstance(M, Real) and M>=0, \
+            'For one dimensional covariance, input "M" '+\
+            'is a positive number.'
+            return np.sqrt(M)*dx
+    elif len(x.shape) == 2 and x.shape[1]==2:
+        #
+        # 2D
+        #   
+        dx = np.abs(x[:,0]-y[:,0])
+        dy = np.abs(x[:,1]-y[:,1])
+        if periodic:
+            assert box is not None, \
+            'If periodic, bounding box must be specified.'
+            x_min, x_max, y_min, y_max = box
+            dx = np.min(np.array([dx,(x_max-x_min)-dx]),axis=0)
+            dy = np.min(np.array([dy,(y_max-y_min)-dy]),axis=0)
+        
+        if M is None:
+            return np.sqrt(dx**2 + dy**2)
+        else:
+            assert all(np.linalg.eigvals(M)>=0) and \
+                   np.allclose(M,M.transpose()),\
+                   'M should be symmetric positive definite.'
+            
+            ddx = np.array([dx,dy])
+            Mddx = np.dot(M, ddx).T
+            return np.sqrt(np.sum(ddx.T*Mddx, axis=1))
 
-         
-# =============================================================================
-# Gaussian Markov Random Field Class
-# =============================================================================
-class Gmrf(object):
+
+def constant(x,y,sgm=1):
     """
-    Gaussian Markov Random Field
+    Constant covariance kernel
     
-    Inputs (or important information) may be: 
-        covariance/precision
-        sparse/full
-        full rank/degenerate
-        finite difference / finite element
-                   
-    Modes:  
+        C(x,y) = sgm
+    
+    Inputs: 
+    
+        x,y: double, two (n,d) arrays
         
-        Cholesky:
-            Exploits sparsity
+        sgm: double >0, standard deviation
             
-        
-        Singular value decomposition (KL)
-            Computationally expensive
-            Conditioning is easy
-            
-    Wishlist: 
+    Outputs:
     
-        - Estimate the precision matrix from the covariance (Quic)
-        - Log likelihood evaluation
-        
-               
-    NOTES: 
+        double, (n,) array of covariances  
+    """
+    assert x.shape == y.shape, \
+    'Input arrays have incompatible shapes.'
     
-    TODO: In what format should the sparse matrices be stored? consistency 
-    TODO: Check: For sparse matrix A, Ax is computed by A.dot(x), not np.dot(A,x) 
+    return sgm*np.ones(x.shape[0])
+
+    
+def linear(x,y,sgm=1, M=None):
+    """
+    Linear covariance
+    
+        C(x,y) = sgm^2 + <x,My>  (Euclidean inner product)
+        
+    Inputs: 
+    
+        x,y: double, (n,dim) np.array of points
+        
+        sgm: double >0, standard deviation
+        
+        M: double, positive definite anisotropy tensor 
+     
+    """
+    if len(x.shape) == 1:
+        #
+        # 1D
+        # 
+        if M is None:
+            print('M is None')
+            sgm**2 + x*y
+            return sgm**2 + x*y
+        else:
+            assert isinstance(M,Real), 'Input "M" should be a scalar.'
+            return x*M*y
+        
+    elif len(x.shape) == 2 and x.shape[1]==2:
+        #
+        # 2D
+        #  
+        if M is None:
+            return sgm**2 + np.sum(x*y, axis=1)
+        else:
+            assert M.shape == (2,2), 'Input "M" should be a 2x2 matrix.'
+            My = np.dot(M, y.T).T
+            return sgm**2 + np.sum(x*My, axis=1)
+    else: 
+        raise Exception('Only 1D and 2D supported.')
+
+
+def gaussian(x, y, sgm=1, l=1, M=None, periodic=False):
+    """
+    Squared exponential covariance function
+    
+        C(x,y) = exp(-|x-y|^2/(2l^2))
     
     """
-    @staticmethod
-    def constant_cov(x,y,sgm=1, M=None, periodic=False):
-        """
-        Constant covariance kernel
-        
-            C(x,y) = sgm
-        
-        Inputs: 
-        
-            x,y: double, two (n,d) arrays
-            
-            sgm: double >0, standard deviation
-                
-        Outputs:
-        
-            double, (n,) array of covariances  
-        """
-        assert x.shape == y.shape, \
-        'Input arrays have incompatible shapes.'
-        
-        return sgm*np.ones(x.shape[0])
- 
+    d = distance(x, y, M, periodic=periodic)
+    return sgm**2*np.exp(-d**2/(2*l**2))
+
+
+def exponential(x, y, sgm=1, l=0.1, M=None, periodic=False):
+    """
+    Exponential covariance function
     
-    @staticmethod
-    def linear_cov(x,y,sgm=1, M=None, periodic=False):
-        """
-        Linear covariance
+        C(x,y) = exp(-|x-y|/l)
         
-            C(x,y) = sgm^2 + <x,My>  (Euclidean inner product)
-            
-        Inputs: 
+    Inputs: 
+    
+        x,y: np.array, spatial points
         
-            x,y: double, np.array
-            
-            sgm: double >0, standard deviation
-            
-            M: double, positive definite anisotropy tensor 
+        l: range parameter
+    """
+    d = distance(x, y, M, periodic=periodic)
+    return sgm**2*np.exp(-d/l)
+
+
+def matern(x, y, sgm, nu, l, M=None, periodic=False):
+    """
+    Matern covariance function
+    
+    Inputs:
+    
+        x,y: np.array, spatial points
+        
+        sgm: variance
+        
+        nu: shape parameter (k times differentiable if nu > k)
+        
+        l: range parameter 
+        
+    Source: 
+    """
+    d = distance(x, y, M, periodic=periodic)
+    K = sgm**2*2**(1-nu)/gamma(nu)*(np.sqrt(2*nu)*d/l)**nu*\
+        kv(nu,np.sqrt(2*nu)*d/l)
+    #
+    # Modified Bessel function undefined at d=0, covariance should be 1
+    #
+    K[np.isnan(K)] = 1
+    return K
+    
+    
+def rational(x, y, a, M=None, periodic=False):
+    """
+    Rational covariance
+    
+        C(x,y) = 1/(1 + |x-y|^2)^a
          
+    """
+    d = distance(x, y, M, periodic=periodic)
+    return (1/(1+d**2))**a   
+
+
+class CovKernel(object):
+    """
+    Covariance kernel
+    """
+    def __init__(self, name, parameters):
         """
-        if len(x.shape) == 1:
-            #
-            # 1D
-            # 
-            if M is None:
-                return sgm**2 + np.sum(x*y)
-            else:
-                assert isinstance(M,Real), 'Input "M" should be a scalar.'
-                My = M*y
-                return x*My
-        elif len(x.shape) == 2 and x.shape[1]==2:
-            #
-            # 2D
-            #  
-            if M is None:
-                return sgm**2 + np.sum(x*y, axis=1)
-            else:
-                assert M.shape == (2,2), 'Input "M" should be a 2x2 matrix.'
-                My = np.dot(M, y.T).T
-                return sgm**2 + np.sum(x*My, axis=1)
-        else: 
-            raise Exception('Only 1D and 2D supported.')
-    
-    
-    @staticmethod
-    def gaussian_cov(x, y, sgm=1, l=1, M=None, periodic=False):
-        """
-        Squared exponential covariance function
-        
-            C(x,y) = exp(-|x-y|^2/(2l^2))
-        
-        """
-        d = Gmrf.distance(x, y, M, periodic=periodic)
-        return sgm**2*np.exp(-d**2/(2*l**2))
- 
- 
-    @staticmethod
-    def exponential_cov(x, y, sgm=1, l=0.1, M=None, periodic=False):
-        """
-        Exponential covariance function
-        
-            C(x,y) = exp(-|x-y|/l)
-            
-        Inputs: 
-        
-            x,y: np.array, spatial points
-            
-            l: range parameter
-        """
-        d = Gmrf.distance(x, y, M, periodic=periodic)
-        return sgm**2*np.exp(-d/l)
-    
-    
-    @staticmethod    
-    def matern_cov(x, y, sgm, nu, l, M=None, periodic=False):
-        """
-        Matern covariance function
+        Constructor
         
         Inputs:
         
-            x,y: np.array, spatial points
+            name: str, name of covariance kernel 
+                'constant', 'linear', 'gaussian', 'exponential', 'matern', 
+                or 'rational'
             
-            sgm: variance
-            
-            nu: shape parameter (k times differentiable if nu > k)
-            
-            l: range parameter 
-            
-        Source: 
+            parameters: dict, parameter name/value pairs (see functions for
+                allowable parameters.
+        
         """
-        d = Gmrf.distance(x, y, M, periodic=periodic)
-        K = sgm**2*2**(1-nu)/gamma(nu)*(np.sqrt(2*nu)*d/l)**nu*\
-            kv(nu,np.sqrt(2*nu)*d/l)
         #
-        # Modified Bessel function undefined at d=0, covariance should be 1
-        #
-        K[np.isnan(K)] = 1
-        return K
-        
-        
-    @staticmethod    
-    def rational_cov(x, y, a, M, periodic=False):
-        """
-        Rational covariance
-        
-            C(x,y) = 1/(1 + |x-y|^2)^a
-             
-        """
-        d = Gmrf.distance(x, y, M, periodic=periodic)
-        return (1/(1+d**2))**a   
-    
-    
-    @staticmethod
-    def distance(x, y, M=None, periodic=False, box=None):
-        """
-        Compute the Euclidean distance vector between rows in x and rows in y
-        
-        Inputs: 
-        
-            x,y: (n,dim) column vectors
-            
-            M: double, positive semidefinite anistropy coefficient 
-            
-            periodic: bool [False], indicates a toroidal domain
-            
-            box: double, tuple representing the bounding box, i.e. 
-                1D: box = (x_min, x_max)
-                2D: box = (x_min, x_max, y_min, y_max) 
-                If periodic is True, then box should be specified.
-            
-        Outputs: 
-        
-            d: double, (n,1) vector ||x[i]-y[i]||_M of (M-weighted) 
-                Euclidean distances
-             
-        """
-        # Check wether x and y have the same dimensions 
-        assert x.shape == y.shape, 'Vectors x and y have incompatible shapes.'
-        
-        if len(x.shape) == 1:
+        # Determine covariance kernel
+        # 
+        if name == 'constant':
             #
-            # 1D
+            # k(x,y) = sigma
+            # 
+            cov_fn = constant
+        elif name == 'linear':
             #
-            # Periodicity
-            if periodic:
-                assert box is not None, \
-                'If periodic, bounding box must be specified.'
+            # k(x,y) = sigma + <x,My>
+            # 
+            cov_fn = linear
+        elif name == 'gaussian':
+            #
+            # k(x,y) = sigma*exp(-0.5(|x-y|_M/l)^2)
+            # 
+            cov_fn = gaussian
+        elif name == 'exponential':
+            #
+            # k(x,y) = sigma*exo(-0.5|x-y|_M/l)
+            # 
+            cov_fn = exponential
+        elif name == 'matern':
+            #
+            # k(x,y) = 
+            # 
+            cov_fn = matern
+        elif name == 'rational':
+            #
+            # k(x,y) = 1/(1 + |x-y|^2)^a
+            # 
+            cov_fn = rational
+        
+        # Store results
+        self.__fn = cov_fn
+        self.__parameters = parameters
+        
+    
+    def eval(self,x,y):
+        """
+        Evaluate kernel at the points x and y
+        
+        Inputs:
+        
+            x,y: (n_points, dim) array of spatial points
+            
                 
-                x_min, x_max = box
-                w  = x_max - x_min
-                dx = np.min(np.array([np.abs(x-y), w - np.abs(x-y)]),axis=0)
-            else:
-                dx = np.abs(x-y)
-            # "Anisotropy"    
-            if M is None:
-                return dx
-            else:
-                assert isinstance(M, Real) and M>=0, \
-                'For one dimensional covariance, input "M" '+\
-                'is a positive number.'
-                return np.sqrt(M)*dx
-        elif len(x.shape) == 2 and x.shape[1]==2:
+        Output:
+        
+            k: double, (n_points,) kernel value, at points 
+        """
+        return self.__fn(x,y, **self.__parameters)
+    
+    
+    def slice(self, x, pos):
+        """
+        Evaluate kernel only in one argument
+        
+        
+        Inputs:
+        
+            x: double, (n_points,dim) array of spatial points
+            
+            pos: int, variable position at which kernel is evaluated
+            
+            
+        Output:
+        
+            slice: list, of n_points functions, each of which corresponds to
+                an entry of the array x.
+            
+        """
+        n_points = x.shape[0]
+        kernel_slice = []
+        for i in range(n_points):
+            if pos==0:
+                #
+                # Resolve kernel in first argument
+                # 
+                f = lambda y: self.eval(np.repeat(x[i,:],n_points),y)
+            elif pos==1:
+                #
+                # Resolve kernel in second argument
+                # 
+                f = lambda x: self.eval(x, np.repeat(x[i,:],n_points))
             #
-            # 2D
-            #   
-            dx = np.abs(x[:,0]-y[:,0])
-            dy = np.abs(x[:,1]-y[:,1])
-            if periodic:
-                assert box is not None, \
-                'If periodic, bounding box must be specified.'
-                x_min, x_max, y_min, y_max = box
-                dx = np.min(np.array([dx,(x_max-x_min)-dx]),axis=0)
-                dy = np.min(np.array([dy,(y_max-y_min)-dy]),axis=0)
-            
-            if M is None:
-                return np.sqrt(dx**2 + dy**2)
-            else:
-                assert all(np.linalg.eigvals(M)>=0) and \
-                       np.allclose(M,M.transpose()),\
-                       'M should be symmetric positive definite.'
-                
-                ddx = np.array([dx,dy])
-                Mddx = np.dot(M, ddx).T
-                return np.sqrt(np.sum(ddx.T*Mddx, axis=1))
-            
+            # Add function to list
+            # 
+            kernel_slice.append(f)
+        return kernel_slice
+              
+'''   
+class Covariance(object):
+    """
+    Covariance kernel for Gaussian random fields
+    """        
     
     
-    @staticmethod
-    def covariance_matrix(cov_name, cov_par, mesh, element=None, M=None, 
-                          assembly_type='finite_differences', n_gauss=9, 
-                          lumped=False, periodic=False):
+            
+    def __init__(self, name, parameters, mesh, element, n_gauss=9, 
+                 assembly_type='projection', subforest_flag=None, lumped=False):
         """
         Construct a covariance matrix from the specified covariance kernel
         
         Inputs: 
         
-            cov_name: str, name of covariance kernel 
-                'constant', 'linear', 'gaussian', 
-                'exponential', 'matern', or 'rational'
             
-            cov_par: dict, parameter name/value pairs 
             
             mesh: Mesh, object denoting physical mesh
             
-            element: [optional] QuadFE, finite element
-                necessary if assembly_type='finite_elements'
+            etype: str, finite element space (see FiniteElement for
+                supported spaces).
                 
-            assembly_type: str, specifies type of approximation
-                [finite_differences] or finite_elements
+            assembly_type: str, specifies type of approximation,
+                projection, or collocation
                 
-            n_gauss [9]: int, number of gauss quadrature points.
-                (only relevant for assembly_type='finite_elements')
-                
-            lumped [False]: bool, should the mass matrix be lumped? 
-                (applies only to assembly_type='finite_elements')
             
-            periodic [False]: Is the domain a torus? Currently only
-                implemented for assembly_type='finite_differences'
-                         
+
         """
-        #
-        # Determine covariance kernel
-        # 
-        if cov_name == 'constant':
-            cov_fn = Gmrf.constant_cov
-        elif cov_name == 'linear':
-            cov_fn = Gmrf.linear_cov
-        elif cov_name == 'gaussian':
-            cov_fn = Gmrf.gaussian_cov
-        elif cov_name == 'exponential':
-            cov_fn = Gmrf.exponential_cov
-        elif cov_name == 'matern':
-            cov_fn = Gmrf.matern_cov
-        elif cov_name == 'rational':
-            cov_fn = Gmrf.rational_cov
         
-        
-        if assembly_type=='finite_elements':
-            #
-            # Finite element discretization of the kernel
-            #
-            assert element is not None, \
-            'Specify "element" if "assembly_type" is '+\
-            '"finite_elements" is used.'
+        self.__kernel = CovKernel(name, parameters)
+        assert isinstance(element, FiniteElement), \
+        'Input "element" must be of type FiniteElement.'
             
-            dofhandler = DofHandler(mesh, element)
-            dofhandler.distribute_dofs()
-                 
+        dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+        
+        if assembly_type=='projection':
             #
+            # Approximate covariance kernel by its projection
+            #
+            self.assemble_projection()
+        elif assembly_type=='collocation':
+            #
+            # Approximate covariance kernel by collocation
+            #
+            self.assemble_collocation() 
+        else:
+            raise Exception('Use "projection" or "collocation" for'+\
+                            ' input "assembly_type"')
+        
+
+    def assemble_projection(self):
+        """
+        Compute the discretization (C,M) of the covariance operator
+        
+        Ku(x) = I_D c(x,y) u(y) dy
+        
+        within a finite element projection framework. In particular, 
+        compute the matrix pair (C,M), where 
+        
+            C = ((c(.,.)phi_i(x), phi_j(y))
+            
+            M = (phi_i(x), phi_j(x))
+            
+            So that K ~ M^{-1}C.
+            
+            
+        Inputs:
+        
+            kernel: bivariate function, c(x,y, pars)
+            
+        """
+        mesh = self.mesh
+        subforest_flag = self.subforest_flag
+        #
+        # Iterate over outer integral
+        # 
+        for cell01 in mesh.cells.get_leaves(subforest_flag=subforest_flag):
+            #
+            # Iterate over inner integral
+            # 
+            for cell02 in mesh.cells.get_leaves(subforest_flag=subforest_flag):
+                pass
+    
+          #
             # Assemble double integral
             #
             #  C(pi,pj) = II pi(xi) pj(xj) cov(xi,xj) dx 
@@ -412,34 +511,108 @@ class Gmrf(object):
             else:
                 return Sigma, M
             
+    
+    
+    def assemble_collocation(self):
+        """
+        Compute the discretization C of the covariance operator
+        
+        Ku(x) = I_D c(x,y) u(y) dy
+        
+        by collocation.
+        
+        Inputs:
+        
+            kernel
             
-        elif assembly_type=='finite_differences':
-            #
-            # Assemble by finite differences
-            # 
-            dim = mesh.dim()
-            element = QuadFE(dim, 'Q1')
-            dofhandler = DofHandler(mesh, element)
-            dofhandler.distribute_dofs()
-            x = dofhandler.dof_vertices()
-            n = dofhandler.n_dofs()
-            Sigma = np.empty((n,n))
-            i,j = np.triu_indices(n)
-            if dim == 1:
-                Sigma[i,j] = cov_fn(x[i],x[j], **cov_par, \
-                                    periodic=periodic, M=M)
-            if dim == 2:
-                Sigma[i,j] = cov_fn(x[i,:],x[j,:], **cov_par, \
-                                    periodic=periodic, M=M)
-            #
-            # Reflect upper triangular part onto lower triangular part
-            # 
-            i,j = np.tril_indices(n,-1)
-            Sigma[i,j] = Sigma[j,i]
-            return Sigma
-        else:
-            raise Exception('Use "finite_elements" or '+\
-                            ' "finite_differences" for input "assembly_type"')
+            pars
+            
+        
+        Outputs:
+            
+            None
+            
+        
+        Internal:
+        
+            self.__C
+            
+        """
+        #
+        # Interpolate the kernel at Dof-Vertices 
+        # 
+        
+        
+        u = Basis(element, 'u')
+        
+        assembler = Assembler()
+        #
+        # Assemble by finite differences
+        # 
+        dim = mesh.dim()
+        element = QuadFE(dim, 'Q1')
+        dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+        x = dofhandler.dof_vertices()
+        n = dofhandler.n_dofs()
+        Sigma = np.empty((n,n))
+        i,j = np.triu_indices(n)
+        if dim == 1:
+            Sigma[i,j] = cov_fn(x[i],x[j], **cov_par, \
+                                periodic=periodic, M=M)
+        if dim == 2:
+            Sigma[i,j] = cov_fn(x[i,:],x[j,:], **cov_par, \
+                                periodic=periodic, M=M)
+        #
+        # Reflect upper triangular part onto lower triangular part
+        # 
+        i,j = np.tril_indices(n,-1)
+        Sigma[i,j] = Sigma[j,i]
+        return Sigma      
+'''
+
+class Precision(object):
+    """
+    Precision Matrix for 
+    """
+    pass
+
+# =============================================================================
+# Gaussian Markov Random Field Class
+# =============================================================================
+class Gmrf(object):
+    """
+    Gaussian Markov Random Field
+    
+    Inputs (or important information) may be: 
+        covariance/precision
+        sparse/full
+        full rank/degenerate
+        finite difference / finite element
+                   
+    Modes:  
+        
+        Cholesky:
+            Exploits sparsity
+            
+        
+        Singular value decomposition (KL)
+            Computationally expensive
+            Conditioning is easy
+            
+    Wishlist: 
+    
+        - Estimate the precision matrix from the covariance (Quic)
+        - Log likelihood evaluation
+        
+               
+    NOTES: 
+    
+    TODO: In what format should the sparse matrices be stored? consistency 
+    TODO: Check: For sparse matrix A, Ax is computed by A.dot(x), not np.dot(A,x) 
+    
+    """
+
     
     
     @staticmethod
@@ -526,26 +699,22 @@ class Gmrf(object):
         return Q
  
  
-    def __init__(self, mu=None, precision=None, covariance=None, 
-                 mesh=None, element=None, discretization='finite_elements'):
+    def __init__(self, mesh, mu=None, kernel=None, precision=None, 
+                 covariance=None, element=None):
         """
         Constructor
         
         Inputs:
         
+            mesh: Mesh, Computational mesh
         
-            mu: double, (n,) vector of expectations (default=0)
+            mu: Function, random field expectation (default=0)
             
             precision: double, (n,n) sparse/full precision matrix
                     
             covariance: double, (n,n) sparse/full covariance matrix
-            
-            mesh: Mesh, quadtree mesh
-            
+                    
             element: QuadFE, finite element
-            
-            discretization: str, 'finite_elements' (default), or
-                'finite_differences'.
                 
             
         Attributes:
@@ -800,6 +969,9 @@ class Gmrf(object):
             
         Q = Gmrf.matern_precision(mesh, element, alpha, kappa, tau)
         return cls(precision=Q, mesh=mesh, element=element)
+    
+    
+    
     
     
     def Q(self):
@@ -1177,7 +1349,7 @@ class Gmrf(object):
                 # 
                 if z is None:
                     # Z is not specified -> generate samples
-                    z = self.iid_standard_normal(n_samples)
+                    z = self.iid_gauss(n_samples)
                 if mode == 'precision':
                     #
                     # Use precision matrix
@@ -1222,7 +1394,7 @@ class Gmrf(object):
                             ' "pointwise", "hard", or "soft"')
     
     
-    def iid_standard_normal(self, n_samples):
+    def iid_gauss(self, n_samples):
         """
         Returns a matrix whose columns are N(0,I) vectors of length n 
         """

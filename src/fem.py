@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import sparse, linalg
 import scipy.sparse.linalg as spla
+from inspect import signature
 import numbers
 from mesh import Vertex, HalfEdge, Mesh2D
 from mesh import Cell, QuadCell, Interval
@@ -1008,8 +1009,8 @@ class Function(object):
     """
     
     
-    def __init__(self, f, fn_type, mesh=None, element=None, \
-                 dofhandler=None, subforest_flag=None):
+    def __init__(self, f, fn_type, mesh=None, element=None, dofhandler=None,\
+                 subforest_flag=None, region_flag=None, dim=None):
         """
         Constructor:
         
@@ -1019,7 +1020,7 @@ class Function(object):
             f: function or vector whose length is consistent with the dofs 
                 required by the mesh/element/subforest or dofhandler/subforest.
                 f can also be passed as an (n_dofs, n_samples) array.  
-                
+                 
             fn_type: str, function type ('explicit', 'nodal', or 'constant')
             
             *mesh [None]: Mesh, on which the function will be defined
@@ -1029,126 +1030,322 @@ class Function(object):
             *dofhandler [None]: DofHandler, specifying the mesh and element on
                 which the function is defined.
             
-            *subforest_flag [None]: str/int, marker specifying submesh
-            
-            
+            *submesh_flag [None]: str/int, marker specifying submesh
+              
+            *subregion_flag [None]: str/int, marker specifying sub-region
+                    
         Note: We allow for the option of specifying multiple realizations 
             - If the function is not stochastic, the number of samples is None
             - If the function has multiple realizations, its function values 
                 are stored in an (n_dofs, n_samples) array. 
-    
         """ 
         #
-        # Construct DofHandler if possible
+        # Store sub-mesh and sub-region flags
         # 
-        if dofhandler is not None:
-            assert isinstance(dofhandler, DofHandler), 'Input dofhandler ' +\
-                'should be of type DofHandler.'
-        elif mesh is not None and element is not None:
-            dofhandler = DofHandler(mesh, element)
-        self.dofhandler = dofhandler
-        
-        # Distribute Dofs and store them
-        if self.dofhandler is not None:
-            self.dofhandler.distribute_dofs()
-            self.dofhandler.set_dof_vertices()
-            self.__global_dofs = \
-                self.dofhandler.get_region_dofs(subforest_flag=subforest_flag)
+        self.__subforest_flag = subforest_flag
+        self.__subregion_flag = region_flag
+        self.__dim = dim
         #
         # Store function type
         #
         assert fn_type in ['explicit', 'nodal','constant'], \
             'Input "fn_type" should be "explicit", "nodal", or "constant".'      
         self.__type = fn_type
+        
+        
+        # =====================================================================
+        # Parse DofHandler, Mesh, Element
+        # =====================================================================
+        #
+        # Define DofHandler
+        # 
+        if dofhandler is not None:
+            #
+            # Dofhandler passed explicitly
+            # 
+            assert isinstance(dofhandler, DofHandler), \
+            'Input "dofhandler" should be of type DofHandler.'
+            
+        elif mesh is not None and element is not None:
+            #
+            # DofHandler given in terms of mesh and element
+            # 
+            dofhandler = DofHandler(mesh, element)
+        
+        #
+        # Store dofhandler
+        # 
+        self.__dofhandler = dofhandler
+        
+        #
+        # Distribute dofs and dof-vertices
+        #
+        if self.dofhandler() is not None:
+            self.dofhandler().distribute_dofs()
+            self.dofhandler().set_dof_vertices()
+        else:
+            # 
+            # Store mesh
+            # 
+            self.__mesh = mesh
+            #
+            # Store element
+            # 
+            self.__element = element
+        
+        #
+        # Check that function has the minimum number of characterizing pars
+        # 
+        if self.fn_type() == 'nodal':
+            #
+            # Nodal functions require DofHandler
+            #
+            assert self.dofhandler() is not None,\
+            'Functions of type "nodal" require a DofHandler.'
+            
+        elif self.fn_type() == 'explicit':
+            #
+            # Explicit functions require a mesh
+            # 
+            assert self.mesh() is not None or dim is not None, \
+            'Functions of type "explicit" require a mesh or dim.'
+    
+        
+        #
+        # Set dimension
+        # 
+        if self.fn_type()=='explicit':
+            if self.mesh() is not None:
+                # Mesh given -> check consistency
+                assert dim is None or dim==self.mesh().dim(),\
+                'Mesh dimension incompatible with input "dim".'
+            else:
+                # No mesh given
+                assert dim is not None,'For explicit functions'+ \
+                ', specify either "mesh" (/"dofhandler") or "dim"'
+        elif self.fn_type()=='nodal':
+            if dim is not None:
+                assert self.mesh().dim()==dim,\
+                'Mesh dimension incompatible with input "dim".'
+            else:
+                dim = self.mesh().dim()
+        elif self.fn_type()=='constant':
+            assert dim is None, 'Constant functions have non-dimensional input'
+            
+        self.__dim = dim
+                
+  
+        # =====================================================================
+        # Store functions
+        # =====================================================================
+        self.__f = None
+        self.set_rules(f)
+        
+        
+    
+    def dofhandler(self):
+        """
+        Returns the function's dofhandler 
+        """
+        return self.__dofhandler
+        
+        
+    def mesh(self):
+        """
+        Returns the function's mesh
+        """
+        if self.__dofhandler is not None:
+            #
+            # Mesh attached to the dofhandler
+            # 
+            return self.dofhandler().mesh
+        else:
+            #
+            # Return mesh
+            #
+            return self.__mesh 
+       
+    
+    def dim(self):
+        """
+        Returns the dimension of the function's domain
+        """
+        return self.__dim
+    
+    
+    def n_samples(self):
+        """
+        Returns the number of realizations stored by the function, or 
+        None if not sampled.
+        """
+        if self.fn_type()=='explicit':
+            #
+            # Explicit functions (samples stored as lists)
+            # 
+            if type(self.__f) is list:
+                n_samples = len(self.__f)
+            else: 
+                n_samples = None
+        elif self.fn_type()=='nodal':
+            #
+            # Nodal functions (array dimensions reflect sample size)
+            # 
+            if len(self.__f.shape)==1:
+                #
+                # 1D array
+                # 
+                n_samples = None
+            else:
+                #
+                # 2D array
+                # 
+                n_samples = self.__f.shape[1]
+        elif self.fn_type()=='constant':
+            #
+            # Constant functions (sample size=length of vector)
+            # 
+            if isinstance(self.__f, np.ndarray):
+                n_samples = len(self.__f)
+            else:
+                n_samples = None
+        
+        return n_samples
+    
+        
+    def fn_type(self):
+        """
+        Returns function type
+        """
+        return self.__type
 
+    
+    def fn(self):
+        """
+        Return the function 'kernel'
+        """
+        return self.__f
+    
+    
+    def set_rules(self, f):
+        """
+        'Modifies existing function (replacing entries)
+        
+        Inputs:
+        
+            f: function, (see self.add for admissible input)
+            
+            pos: int, position(s) at which to modify function
+            
+            
+        Modifies: 
+        
+            self.__f
+            
+            
+        """
+        fn_type = self.fn_type()
         if fn_type == 'explicit':
             # 
             # Explicit function
             # 
-            dim = f.__code__.co_argcount
-            if mesh is not None:
-                assert dim == mesh.dim(), \
-                'Number of inputs and mesh dimension do not match.'
-            elif dofhandler is not None:
-                assert dim == dofhandler.mesh.dim(), \
-                'Number of inputs and mesh dimension do not match.'
-                  
-            n_samples = None               
-            fn = f
-            
+            if type(f) is list:
+                #
+                # List of functions
+                #
+                assert(all([callable(fi) for fi in f])), \
+                'For "explicit" type, input "f" should be callable.'
+            else:
+                #
+                # Single function
+                # 
+                assert callable(f), 'Input "f" should be callable.'    
         elif fn_type == 'nodal':
             # 
             # Nodal (finite element) function
             # 
             assert self.dofhandler is not None, \
-            'If function_type is "nodal", dofhandlercell '\
+            'If function_type is "nodal", dofhandler '\
             '(or mesh and element required).' 
             
+            #
+            # Get dof-verttices
+            # 
+            sf = self.subforest_flag()
+            x = self.dofhandler().get_dof_vertices(subforest_flag=sf)
+            n_dofs = self.dofhandler().n_dofs(subforest_flag=sf)
             
             if callable(f):
                 #
                 # Function passed explicitly
                 #
-                dim = f.__code__.co_argcount
-                assert dim == dofhandler.mesh.dim(), \
-                'Number of inputs and mesh dimension do not match.'
-                
-                x = dofhandler.get_dof_vertices(dofs=self.global_dofs())
-                nf = dofhandler.n_dofs(subforest_flag=subforest_flag)
-                n_samples = None
-                if dim == 1:
-                    fn = f(x[:,0])
-                elif dim == 2: 
-                    fn = f(x[:,0],x[:,1])
+                if self.dim() == 1:
+                    #
+                    # 1D function
+                    # 
+                    f = f(x[:,0]) 
+                elif self.dim() == 2:
+                    #
+                    # 2D function
+                    # 
+                    f = f(x[:,0],x[:,1])
                     
+            elif type(f) is list:
+                #
+                # Functions passed as list       
+                # 
+                if self.dim() == 1:
+                    #
+                    # 1D functions 
+                    # 
+                    f = np.array([fi(x[:,0]) for fi in f]) 
+                elif self.dim()==2:
+                    #
+                    # 
+                    # 
+                    f = np.array([fi(x[:,0],x[:,1]) for fi in f])
+            
             elif type(f) is np.ndarray:
                 # 
                 # Function passed as an array
-                # 
-                # Determine number of samples
-                if len(f.shape)==1:
-                    n_samples = None
-                    nf = f.shape[0]
-                    fn = f
-                else:
-                    nf, n_samples = f.shape
-                    fn = f
-                n_dofs = self.dofhandler.n_dofs(subforest_flag=subforest_flag)
-                
-                assert nf == n_dofs,\
-                    'The number of entries of f %d does not equal'+\
-                    ' the number of dofs %d.'%(nf, n_dofs) 
-                dim = self.dofhandler.mesh.dim() 
-            
+                #
+                assert n_dofs == f.shape[0], 'The number of rows %d ' + \
+                'in f does not match the number of dofs %d'%(f.shape[0],n_dofs)
+                  
                 
         elif fn_type == 'constant':
             # 
             # Constant function
             # 
-            dim = None
-            # Determine number of samples
             if type(f) is np.ndarray:
+                #
+                # Array of numbers 
+                # 
                 assert len(f.shape)==1, 'Constant functions are passed '+\
                 'as scalars or vectors.'
-                n_samples = len(f)
-                fn = f
-            elif isinstance(f, numbers.Real):
-                n_samples = None
-                fn = f
             elif type(f) is list:
-                n_samples = len(f)
-                fn = np.array(f)
+                #
+                # Function passed as list of numbers
+                # 
+                assert all([isinstance(fi, numbers.Real) for fi in f]),\
+                'For "constant" functions, input list must contain scalars.'
+                
+                f = np.array(f)
+            else:
+                assert isinstance(f, numbers.Real)
                  
         else:
+            #
+            # Type not recognized
+            # 
             raise Exception('Variable function_type should be: '+\
-                            ' "explicit", "nodal", or "constant".')        
-        
-        self.__dim = dim       
-        self.__f = fn
-        self.__flag = subforest_flag 
-        self.__n_samples = n_samples
-        
- 
+                            ' "explicit", "nodal", or "constant".')            
+    
+        #
+        # Store function
+        # 
+        self.__f = f
+     
+    
     def assign(self, v, pos=None):
         """
         Assign function values to the function in the specified sample position
@@ -1158,7 +1355,8 @@ class Function(object):
             v: double, array 
             
             pos: int, array or constant (indicating position)
-            
+        
+        TODO: Replace   
         """
         assert self.fn_type() != 'explicit', \
         'Only nodal or constant Functions can be assigned function values'
@@ -1202,7 +1400,7 @@ class Function(object):
             else:
                 self.__f = v
                                           
-     
+    
     def mesh_compatible(self, mesh, subforest_flag=None):                          
         """
         Determine whether the function is a nodal function defined on the 
@@ -1211,62 +1409,32 @@ class Function(object):
         local assembly. 
         """
         if self.fn_type()=='nodal' \
-        and self.dofhandler.mesh==mesh \
-        and self.flag()==subforest_flag:
+        and self.mesh()==mesh \
+        and self.subforest_flag()==subforest_flag:
             return True
         else:
             return False
- 
-         
-    def global_dofs(self):
-        """
-        Returns the global dofs associated with the function values. 
-        (Only appropriate for nodal type functions).
-        """    
-        if self.fn_type() == 'nodal':
-            return self.__global_dofs
-        else:
-            raise Exception('Function must be of type "nodal".')
-    
-    
-    def flag(self):
-        """
-        Returns the flag used to define the mesh restriction on which 
-        the function is defined
-        """    
-        return self.__flag
-    
         
-    def input_dim(self):
+    
+    def subforest_flag(self):
         """
-        Returns the dimension of the function's domain
-        """
-        return self.__dim
+        Returns the submesh flag
+        """    
+        return self.__subforest_flag
     
     
-    def n_samples(self):
+    def region_flag(self):
         """
-        Returns the number of realizations stored by the function
+        Returns the subregion flag
         """
-        return self.__n_samples
+        return self.__subregion_flag
     
-        
-    def fn_type(self):
-        """
-        Returns function type
-        """
-        return self.__type
-
     
-    def fn(self):
-        """
-        Return the function 'kernel'
-        """
-        return self.__f
+    
     
     
     def eval(self, x=None, cell=None, phi=None, dofs=None, \
-             derivative=(0,), samples='all'):
+             derivative=(0,), samples='all', args={}):
         """
         Evaluate function at an array of points x
         
@@ -1317,8 +1485,8 @@ class Function(object):
                 (n_points, n_samples) numpy array of outputs
             
         """
-        flag = self.__flag
-        dim = self.__dim
+        flag = self.subforest_flag()
+        dim = self.dim()
         
         # =====================================================================
         # Parse x
@@ -1385,6 +1553,15 @@ class Function(object):
                 raise Exception('Only 1D and 2D inputs supported.')
     
         elif self.fn_type() == 'nodal':
+            #
+            # Nodal functions 
+            # 
+            
+            # Get dof information
+            sf, rf = self.subforest_flag(), self.region_flag()
+            dh = self.dofhandler()
+            mesh = dh.mesh
+            gdofs = dh.get_region_dofs(subforest_flag=sf, entity_flag=rf)
             
             if phi is not None:
                 # =============================================================
@@ -1396,10 +1573,8 @@ class Function(object):
                 assert dofs is not None, \
                     'When shape function provided, require input "dofs".'
                 
-                if not all([dof in self.__global_dofs for dof in dofs]):
-                    print(dofs)
-                    print(self.__global_dofs)
-                assert all([dof in self.__global_dofs for dof in dofs]),\
+                
+                assert all([dof in gdofs for dof in dofs]),\
                     'Nodal function not defined at given dofs.' 
                 
                 assert len(dofs)==phi.shape[1], \
@@ -1408,7 +1583,7 @@ class Function(object):
                 #
                 # Evaluate function at local dofs 
                 # 
-                idx_cell = [self.__global_dofs.index(i) for i in dofs]
+                idx_cell = [gdofs.index(i) for i in dofs]
     
                 if self.n_samples() is None:
                     f_loc = self.__f[idx_cell]
@@ -1447,7 +1622,7 @@ class Function(object):
                     #
                     # Cell not specified
                     # 
-                    cell_list = self.dofhandler.mesh.cells.get_leaves(subforest_flag=flag)
+                    cell_list = mesh.cells.get_leaves(subforest_flag=sf)
                 else:
                     #
                     # Cell given
@@ -1455,21 +1630,21 @@ class Function(object):
                     assert all(cell.contains_points(x)), \
                     'Cell specified, but not all points contained in cell.'
                     
-                    if flag is not None:
+                    if sf is not None:
                         #
                         # Function is defined on a flagged submesh
                         # 
-                        if not cell.is_marked(flag):
+                        if not cell.is_marked(sf):
                             #
                             # Function defined on a coarser mesh
                             #
-                            while not cell.is_marked(flag):
+                            while not cell.is_marked(sf):
                                 # 
                                 # Get smallest cell in function mesh that contains cell 
                                 # 
                                 cell = cell.get_parent()
                             cell_list = [cell]
-                        elif cell.has_children(flag=flag):
+                        elif cell.has_children(flag=sf):
                             #
                             # Function defined on a finer mesh
                             #
@@ -1489,8 +1664,8 @@ class Function(object):
                     #
                     # Evaluate function at local dofs 
                     # 
-                    idx_cell = [self.__global_dofs.index(i) for i in \
-                                self.dofhandler.get_cell_dofs(cell)]  
+                    idx_cell = [gdofs.index(i) for i in \
+                                self.dofhandler().get_cell_dofs(cell)]  
                     if self.n_samples() is None:
                         f_loc = self.__f[idx_cell]
                     elif samples is 'all':
@@ -1503,8 +1678,8 @@ class Function(object):
                     #    
                     in_cell = cell.contains_points(x)
                     x_loc = x[in_cell,:]
-                    phi = self.dofhandler.element.shape(x_loc, cell=cell, \
-                                                        derivatives=derivative)
+                    phi = self.dofhandler().element.shape(x_loc, cell=cell, \
+                                                          derivatives=derivative)
                     #
                     # Update output vector
                     # 
@@ -1593,9 +1768,9 @@ class Function(object):
             df^p/dx^qdy^{p-q}: Function, derivative of current function on the
                 same mesh/element.
         """
-        flag = self.__flag
-        dim = self.__dim  
-        mesh, element = self.dofhandler.mesh, self.dofhandler.element
+        sf = self.subforest_flag()
+        dim = self.dim()  
+        mesh, element = self.mesh(), self.dofhandler().element
         
         #
         # Tear element if necessary 
@@ -1613,7 +1788,7 @@ class Function(object):
         #
         # Determine dof vertices
         #
-        dofs = dofhandler.get_region_dofs(subforest_flag=flag)
+        dofs = dofhandler.get_region_dofs(subforest_flag=sf)
         x = dofhandler.get_dof_vertices(dofs)       
         #
         # Evaluate function at dof vertices
@@ -1623,7 +1798,7 @@ class Function(object):
         # Define new function
         #
         return Function(fv, 'nodal', dofhandler=dofhandler, \
-                        subforest_flag=flag) 
+                        subforest_flag=sf) 
     
     
     def times(self, g):
@@ -3623,7 +3798,7 @@ class Kernel(object):
         self.n_samples = n_samples
                         
     
-    def eval(self, x=None, cell=None, phi=None, dofs=None, 
+    def eval(self, x=None, cell=None, phi=None, dofs=None, region=None,
              compatible_functions=set()):
         """
         Evaluate the kernel at the points stored in x 
@@ -3640,6 +3815,8 @@ class Kernel(object):
             *dofs: list of (n_dofs,) degrees of freedom associated with shape
                  functions
                  
+            *region: region on which kernel is to be evaluated 
+                   
             *compatible_functions: set of functions determined (a priori) to
                 be compatible with the current mesh. These functions can 
         """
@@ -3656,7 +3833,8 @@ class Kernel(object):
         f_vals = []
         for f, dfdx in zip(self.f, self.dfdx):
             if f in compatible_functions: 
-                etype = f.dofhandler.element.element_type()
+                #if False:
+                etype = f.dofhandler().element.element_type()
                 #
                 # f may be evaluated through shape functions
                 # 
@@ -3763,8 +3941,22 @@ class Form(object):
             #
             # Check that kernel is the right type
             # 
-            assert isinstance(kernel, Kernel), \
-            'Input "kernel" must be of class "Kernel".'
+            if isinstance(kernel, Function):
+                #
+                # Kernel entered as Function
+                #  
+                kernel = Kernel(kernel)
+            elif isinstance(kernel, numbers.Real):
+                #
+                # Kernel entered as real number
+                # 
+                kernel = Kernel(Function(kernel, 'constant'))
+            else:
+                #
+                # Otherwise, kernel must be of type Kernel
+                # 
+                assert isinstance(kernel, Kernel), \
+                'Input "kernel" must be of class "Kernel".'
         else:
             #
             # Default Kernel
@@ -3854,12 +4046,12 @@ class Form(object):
                     # 
                     # function is compatible with mesh
                     # 
-                    etype = f.dofhandler.element.element_type()
+                    etype = f.dofhandler().element.element_type()
                     if etype not in info:
                         #
                         # Add element type of kernel function
                         # 
-                        info[etype] = {'element': f.dofhandler.element,
+                        info[etype] = {'element': f.dofhandler().element,
                                        'derivatives': set()}
                     info[etype]['derivatives'].add(dfdx)
         return info
@@ -3952,7 +4144,8 @@ class Form(object):
             # Compute kernel, weight by quadrature weights    
             #
             kernel = self.kernel
-            Ker = kernel.eval(x=xg[region], cell=cell, phi=phi[region], dofs=dofs,\
+            Ker = kernel.eval(x=xg[region], cell=cell, phi=phi[region], \
+                              dofs=dofs, region=region,\
                               compatible_functions=compatible_functions)
             
             wKer = (wg[region]*Ker.T).T        
@@ -4426,14 +4619,14 @@ class Assembler(object):
                         # Function is nodal and defined over submesh
                         # 
                         compatible_functions.add(f)
-                        element = f.dofhandler.element 
+                        element = f.dofhandler().element 
                         elements.add(element)
                         etype = element.element_type()
                         if etype not in dofhandlers:
                             #
                             # Add existing dofhandler to list of dofhandlers
                             # 
-                            dofhandlers[etype] = f.dofhandler
+                            dofhandlers[etype] = f.dofhandler()
         #
         # Store the set of functions that are compatible with the mesh/subforest
         #  
@@ -4878,7 +5071,8 @@ class Assembler(object):
                 B = l2g_tst.dot(form_loc).dot(l2g_trl.T)
             return B, dofs_tst, dofs_trl
     '''   
-                                 
+    
+    '''                             
     def consolidate_assembly(self):
         """
         Postprocess assembled forms to make them amenable to linear algebra 
@@ -5036,7 +5230,7 @@ class Assembler(object):
                     # Constant form
                     # 
                     pass
-            
+    '''        
         
     
     def get_assembled_form(self, form_type, i_problem=0, i_sample=None):

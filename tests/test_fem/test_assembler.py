@@ -119,7 +119,7 @@ class TestAssembler(unittest.TestCase):
         etypes = ['Q1','Q2','Q3']
         for etype in etypes:
             self.assertTrue(etype in system.dofhandlers)
-            self.assertEqual(system.dofhandlers['Q1'], f.dofhandler)
+            self.assertEqual(system.dofhandlers['Q1'], f.dofhandler())
         
     def test_shape_info(self):
         """
@@ -266,7 +266,7 @@ class TestAssembler(unittest.TestCase):
         mesh = Mesh1D(resolution=(2,))
         
         # Explicit function
-        f = Function(lambda x: x, 'explicit')
+        f = Function(lambda x: x, 'explicit', dim=1)
         kernel = Kernel(f=f)
         
         # Test function

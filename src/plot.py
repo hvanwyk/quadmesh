@@ -6,6 +6,7 @@ Created on Feb 8, 2017
 
 import matplotlib.pyplot as plt
 from mesh import QuadCell
+from matplotlib import colors as clrs
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
@@ -26,10 +27,77 @@ class Plot(object):
         """
         self.__quickview = quickview
         self.__time= time
+        self.__color_cycle = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
+                              '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
+                              '#bcbd22', '#17becf']
+    
+    def check_axis(self, axis, plot_dim=2):
+        """
+        Check whether axis is specified or else if quickview is turned on
+        
+        Input:
+        
+            axis: Axes (or None), current axes
+        """
+        if axis is None:
+            #
+            # No axis specified: Quickview mode
+            # 
+            assert self.__quickview, 'No axis specified.'
+            fig = plt.figure()
+            if plot_dim==2:
+                #
+                # 2D plot
+                # 
+                axis = fig.add_subplot(111)
+            elif plot_dim==3:
+                #
+                # 3D plot
+                # 
+                axis = fig.add_subplot(111, projection="3d")
+        #
+        # Return axis
+        #
+        return axis
+    
+    
+    def set_bounding_box(self, axis, mesh):
+        """
+        Determine the axis limits
+        
+        Inputs:
+        
+            axis: Axes, current axes
             
+            mesh: Mesh, defining the computational domain
+        """
+        if mesh.dim()==1:
+            #
+            # 1D Mesh
+            #
+            x0, x1 = mesh.bounding_box()
+            l = x1 - x0
+            axis.set_xlim([x0-0.1*l, x1+0.1*l])
+            axis.set_ylim([-0.1,0.1])
+        elif mesh.dim()==2:
+            #
+            # 2D Mesh
+            # 
+            x0, x1, y0, y1 = mesh.bounding_box()    
+            hx = x1 - x0
+            hy = y1 - y0
+            axis.set_xlim(x0-0.1*hx, x1+0.1*hx)
+            axis.set_ylim(y0-0.1*hy, y1+0.1*hy)
+        else:
+            raise Exception('Only 1D and 2D meshes supported.')
+          
+        return axis
+    
+    
     def mesh(self, mesh, axis=None, dofhandler=None, show_axis=False, 
-             color_marked=None, vertex_numbers=False, edge_numbers=False, 
-             cell_numbers=False, dofs=False, mesh_flag=None):
+             regions=None, vertex_numbers=False, 
+             edge_numbers=False, cell_numbers=False, dofs=False, doflabels=False,
+             subforest_flag=None):
         """
         Plot computational mesh
         
@@ -43,7 +111,10 @@ class Plot(object):
             
             *show_axis: boolean, set axis on or off
             
-            *color_marked: list of flags for cells that must be colored
+            *regions: list of tuples consisting of (flag, entity_type), where 
+                flag specifies the region to be plotted, and entity_type
+                specifies whether the entity is a 'vertex', 'half_edge', or
+                'cell'   
             
             *vertex/edge/cell_numbers: bool, display vertex/edge/cell numbers.
             
@@ -57,29 +128,112 @@ class Plot(object):
             ax: axis, 
             
         """
-        if self.__quickview:
-            fig = plt.figure()
-            axis = fig.add_subplot(111)
-        else:
-            assert axis is not None, 'Axis not specified.'
         #
-        # Two dimensional mesh
+        # Check axis
+        # 
+        axis = self.check_axis(axis)
+        
         #
-        if mesh.dim() == 2:
+        # Set axis limits
+        # 
+        axis = self.set_bounding_box(axis, mesh)
+        
+        #
+        # Format background
+        #
+        if mesh.dim()==1:
             #
-            # Set bounding box
+            # 1D Mesh
             # 
-            x0, x1, y0, y1 = mesh.bounding_box()    
-            hx = x1 - x0
-            hy = y1 - y0
-            axis.set_xlim(x0-0.1*hx, x1+0.1*hx)
-            axis.set_ylim(y0-0.1*hy, y1+0.1*hy) 
+            axis.get_yaxis().set_ticks([])
+        if mesh.dim() == 2:     
             #
-            # Plot background rectangle
+            # 2D Mesh: Plot background rectangle
             # 
+            x0, x1, y0, y1 = mesh.bounding_box()
             points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
             rect = plt.Polygon(points, fc='darkgrey', edgecolor='k', alpha=0.1)
             axis.add_patch(rect)
+        
+        #
+        # Plot mesh cells
+        # 
+        axis = self.cells(axis, mesh, subforest_flag=subforest_flag)
+        
+        #
+        # Plot regions
+        # 
+        if regions is not None:
+            # 
+            # Plot additional regions
+            # 
+            assert type(regions) is list, 'Regions should be passed as list'
+            colors = self.__color_cycle[:len(regions)]
+            
+            for region, color in zip(regions,colors):
+                flag, entity_type = region
+                                
+                #
+                # Cycle over regions
+                # 
+                if entity_type=='vertex':
+                    #
+                    # Plot vertices
+                    # 
+                    axis = self.vertices(axis, mesh, 
+                                         subforest_flag=subforest_flag, 
+                                         vertex_flag=flag, color=color)
+                    
+                elif entity_type=='half_edge':
+                    #
+                    # Plot half-edges
+                    # 
+                    axis = self.half_edges(axis, mesh, 
+                                           subforest_flag=subforest_flag,
+                                           half_edge_flag=flag, color=color)
+                    
+                elif entity_type=='edge':
+                    #
+                    # Plot edges
+                    # 
+                    axis = self.edges(axis, mesh, subforest_flag=subforest_flag,
+                                      edge_flag=flag, color=color)
+                    
+                elif entity_type=='cell':
+                    #
+                    # Plot cells
+                    # 
+                    axis = self.cells(axis, mesh, 
+                                      subforest_flag=subforest_flag,
+                                      cell_flag=flag, color=color, 
+                                      alpha=0.3)
+        #
+        # Plot Dofs  
+        # 
+        if dofs:
+            assert dofhandler is not None, 'Plotting Dofs requires dofhandler.'
+            
+            axis = self.dofs(axis, dofhandler)
+    
+        
+        if not show_axis:
+            axis.axis('off')
+        
+        #    
+        # Plot immediately and/or save
+        # 
+        if self.__quickview:
+            if False:
+                plt.show()
+            else:
+                plt.show(block=False)
+                plt.pause(self.__time)
+                plt.close()
+        else:  
+            return axis
+             
+        """
+        elif mesh.dim()==1
             #
             # Plot Cells
             # 
@@ -103,19 +257,14 @@ class Plot(object):
                 #
                 # Plot vertices
                 # 
-                for v in vertices:
-                    axis.plot(*v, '.k')
+                if False:
+                    for v in vertices:
+                        axis.plot(*v, '.k')
                         
-                    
+            
         elif mesh.dim()==1:
-            #
-            # Bounding box
-            # 
-            x0, x1 = mesh.bounding_box()
-            l = x1 - x0
-            axis.set_xlim([x0-0.1*l, x1+0.1*l])
-            axis.set_ylim([-0.1,0.1])
-            axis.get_yaxis().set_ticks([])
+            
+            
             for interval in mesh.cells.get_leaves(flag=mesh_flag):
                 a, = interval.base().coordinates()
                 b, = interval.head().coordinates()
@@ -128,23 +277,11 @@ class Plot(object):
         if dofs:
             self.dofs(axis, dofhandler)
         
-        if not show_axis:
-            axis.axis('off')
-
-        #    
-        # Plot immediately and/or save
-        # 
-        if self.__quickview:
-            if False:
-                plt.show()
-            else:
-                plt.show(block=False)
-                plt.pause(self.__time)
-                plt.close()
-        else:  
-            return axis
         
 
+        
+        
+        """
          
         """
         
@@ -224,12 +361,20 @@ class Plot(object):
             fig = plt.figure()
             ax = fig.add_subplot(111)
         
-    def dofs(self, ax, dofhandler, subforest_flag=None):
+        
+    def dofs(self, axis, dofhandler, doflabels=False, subforest_flag=None):
         """
         Plot a mesh's dofs
+        
+        Inputs:
+        
+            axis: Axes, 
+            
+            dofhandler: DofHandler object used to store 
         """
         assert dofhandler is not None, \
             'Require dofhandler information to plot dofs'
+            
         element = dofhandler.element
         mesh = dofhandler.mesh
         x_ref = element.reference_nodes()
@@ -247,14 +392,183 @@ class Plot(object):
                         elif mesh.dim()==2:
                             xx, yy = x[i,0], x[i,1]
                         
-                        ax.text(xx,yy,\
-                                str(cell_dofs[i]), size = '12',\
-                                horizontalalignment='center',
-                                verticalalignment='center',
-                                backgroundcolor='w')   
+                        if doflabels:
+                            #
+                            # Print the Doflabels
+                            #
+                            axis.text(xx,yy,\
+                                    str(cell_dofs[i]), size = '12',\
+                                    horizontalalignment='center',
+                                    verticalalignment='center',
+                                    backgroundcolor='w')
+                        else:
+                            #
+                            #  Plot dof locations     
+                            # 
+                            axis.plot(xx,yy,'.k')
+        return axis
+    
+    def vertices(self, axis, mesh, subforest_flag=None, 
+                 vertex_flag=None, color='k'):
+        """
+        Plot (selected) vertices in a mesh
         
-                    
+        Inputs:
+        
+            axis: Axes, current axes
+            
+            mesh: Mesh, whose vertices are being plotted
+            
+            subforest_flag: str/int/tuple specifying submesh
+            
+            cell_flag: str/int/tuple specifying vertices 
+            
+            color: str, vertex color
+        """
+        #
+        # Iterate over region vertices
+        # 
+        for vertex in mesh.get_region(flag=vertex_flag, entity_type='vertex', 
+                                      subforest_flag=subforest_flag):
+            #
+            # Determine the dimension
+            # 
+            if mesh.dim()==1:
+                #
+                # 1D Mesh
+                # 
+                x, = vertex.coordinates()
+                axis.plot(x,0, '.', color=color)
+            elif mesh.dim()==2:
+                #
+                # 2D Mesh
+                # 
+                x,y = vertex.coordinates()
+                axis.plot(x,y,'.', color=color)
+        return axis
+    
+    
+    def half_edges(self, axis, mesh, subforest_flag=None, 
+                   half_edge_flag=None, color='k'):
+        """
+        Plot (selected) half-edges in a mesh. Half-edges are drawn with arrows.
+        (Also see self.edges)
+        
+        Inputs:
+        
+            axis: Axes, current axes
+            
+            mesh: Mesh, whose half-edges are to be plotted
+            
+            subforest_flag: str/int/tuple, submesh flag
+            
+            half_edge_flag: str/int/tuple, flag specifying subset of half-edges
+            
+            color: str, color of half-edges
+        """ 
+        assert mesh.dim()==2, 'Can only plot half-edges in a 2D mesh.'
+        for he in mesh.get_region(flag=half_edge_flag, entity_type='half_edge',
+                                  subforest_flag=subforest_flag):
+            #
+            # Draw arrow
+            # 
+            axis.annotate(s='', xy=he.head().coordinates(), \
+                          xytext=he.base().coordinates(),\
+                          color = color, \
+                          arrowprops=dict(arrowstyle="->", \
+                                          connectionstyle="arc3" ))
+        return axis
 
+
+    def edges(self, axis, mesh, subforest_flag=None, 
+               edge_flag=None, color='k'):
+        """
+        Plot (selected) edges in a mesh. 
+        
+        Note: Edges are simply lines (See also self.half_edges)
+        
+        Inputs:
+        
+            axis: Axes, current axes
+            
+            mesh: Mesh, whose half-edges are to be plotted
+            
+            subforest_flag: str/int/tuple, submesh flag
+            
+            half_edge_flag: str/int/tuple, flag specifying subset of half-edges
+            
+            color: str, color of half-edges
+            
+        Output:
+        
+            axis: Axes, current axis
+        
+        """
+        assert mesh.dim()==2, 'Can only plot half-edges in a 2D mesh.'
+        for he in mesh.get_region(flag=edge_flag, entity_type='half_edge',
+                                  subforest_flag=subforest_flag):
+            #
+            # Draw line
+            #
+            x0, y0 = he.base().coordinates()
+            x1, y1 = he.head().coordinates()
+             
+            axis.plot([x0,x1],[y0,y1], linewidth=2, color=color)
+            
+        return axis
+
+    
+           
+    def cells(self, axis, mesh, subforest_flag=None, 
+              cell_flag=None, color='w', alpha=1):
+        """
+        Plot (selected) cells in a mesh
+        
+        Inputs:
+        
+            axis: Axes, current axes
+            
+            mesh: Mesh, whose cells are to be plotted
+            
+            subforest_flag: str/int/tuple, submesh flag
+            
+            cell_flag: str/int/tuple, subregion flag
+            
+            color: str, cell color
+            
+        
+        Outputs:
+        
+            axis: Axes, current axes
+        """
+        #
+        # Iterate over cells
+        # 
+        for cell in mesh.get_region(flag=cell_flag, entity_type='cell', 
+                                    subforest_flag=subforest_flag):
+            dim = mesh.dim()
+            if dim == 1:
+                #
+                # 1D Mesh
+                # 
+                a, = cell.base().coordinates()
+                b, = cell.head().coordinates()
+                axis.plot([a,b], [0,0], '-|k')
+            elif dim == 2:
+                #
+                # 2D Mesh 
+                #
+                # 
+                vertices = [v.coordinates() for v in cell.get_vertices()]
+                poly = plt.Polygon(vertices, 
+                                   fc=clrs.to_rgba(color,alpha=alpha),
+                                   edgecolor=(0,0,0,0.4))
+                axis.add_patch(poly) 
+            else: 
+                raise Exception('Only 1D and 2D meshes supported.')
+        return axis
+    
+    
     def contour(self, f, mesh=None, derivative=(0,),
                 colorbar=True, resolution=(100,100), 
                 axis=None):
@@ -527,6 +841,7 @@ class Plot(object):
         #
         # Evaluate function
         # 
+        z0, z1 = None, None
         for cell in mesh.cells.get_leaves(subforest_flag=f.flag()):
             x = []
             y = []
@@ -549,6 +864,29 @@ class Plot(object):
             poly = Poly3DCollection(verts, edgecolor="black", linewidth=0.5,
                                     facecolor="white")
             axis.add_collection3d(poly, zs='z')
+            
+            # 
+            # Update minimum function value
+            # 
+            if z0 is None:
+                z0 = min(z)
+            else:
+                z0 = min(z0, min(z))
+                
+            #
+            # Update maximum function value
+            # 
+            if z1 is None:
+                z1 = max(z)
+            else:
+                z1 = max(z1, max(z))
+            
+        #
+        # Set z limits
+        #         
+        hz = z1 - z0
+        axis.set_zlim(z0-0.1*hz, z1+0.1*hz)
+        
         #    
         # Plot immediately and/or save
         # 
@@ -580,7 +918,7 @@ class Plot(object):
             assert mesh is not None, \
             'For "explicit" or "constant" functions, mesh must be specified.'  
         else:
-            mesh = f.dofhandler.mesh
+            mesh = f.dofhandler().mesh
             
         assert mesh.dim()==1, 'Line plots are for 1D functions'
         
@@ -599,7 +937,7 @@ class Plot(object):
         # 
         x = []
         fx = []
-        for interval in mesh.cells.get_leaves(subforest_flag=f.flag()):
+        for interval in mesh.cells.get_leaves(subforest_flag=f.subforest_flag()):
             #
             # Form grid on local interval
             # 
@@ -622,7 +960,7 @@ class Plot(object):
             # For discontinous elements, add a np.nan value
             # 
             if f.fn_type()=='nodal':
-                if f.dofhandler.element.torn_element():
+                if f.dofhandler().element.torn_element():
                     x.append(x1)
                     fx.append(np.nan)
         

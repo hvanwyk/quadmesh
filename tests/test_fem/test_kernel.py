@@ -27,7 +27,7 @@ class TestKernel(unittest.TestCase):
         # Kernel consists of a single explicit Function: 
         # 
         f1 = lambda x: x+2
-        f = Function(f1, 'explicit')
+        f = Function(f1, 'explicit', dim=1)
         k = Kernel(f)
         x = np.linspace(0,1,100)
         n_points = len(x)
@@ -41,8 +41,8 @@ class TestKernel(unittest.TestCase):
         #
         # Kernel consists of a combination of two explicit functions
         # 
-        f1 = Function(lambda x: x+2, 'explicit')
-        f2 = Function(lambda x: x**2 + 1, 'explicit')
+        f1 = Function(lambda x: x+2, 'explicit',dim=1)
+        f2 = Function(lambda x: x**2 + 1, 'explicit',dim=1)
         F = lambda f1, f2: f1**2 + f2
         f_t = lambda x: (x+2)**2 + x**2 + 1
         k = Kernel([f1,f2], F=F)
@@ -81,7 +81,7 @@ class TestKernel(unittest.TestCase):
         # Sampling 
         #
         one = Function(1, 'constant')
-        f1 = Function(lambda x: x**2 + 1, 'explicit')
+        f1 = Function(lambda x: x**2 + 1, 'explicit',dim=1)
         
         # Sampled function
         a = np.linspace(0,1,11)
@@ -117,7 +117,7 @@ class TestKernel(unittest.TestCase):
         # Sample multiple constant functions
         # 
         f1 = Function(a, 'constant')
-        f2 = Function(lambda x: 1 + x**2, 'explicit')
+        f2 = Function(lambda x: 1 + x**2, 'explicit', dim=1)
         f3 = Function(f2_m[:,-1], 'nodal', dofhandler=dh)
         
         F = lambda f1, f2, f3: f1 + f2 + f3

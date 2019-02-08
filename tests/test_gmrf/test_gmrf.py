@@ -41,10 +41,10 @@ class TestGmrf(unittest.TestCase):
         box = (0,1)
         x = np.array([0.5,0.75])
         y = np.array([0.25,0.125])
-        d_xy = Gmrf.distance(x,y)
-        d_xMy = Gmrf.distance(x,y,M=M)
-        d_xy_tau = Gmrf.distance(x,y, periodic=True, box=box)
-        d_xMy_tau = Gmrf.distance(x, y, M=M, periodic=True, box=box)
+        d_xy = distance(x,y)
+        d_xMy = distance(x,y,M=M)
+        d_xy_tau = distance(x,y, periodic=True, box=box)
+        d_xMy_tau = distance(x, y, M=M, periodic=True, box=box)
         self.assertTrue(np.allclose(d_xy, np.array([0.25,0.625])),\
                         'Unweighted distance incorrect.')
         self.assertTrue(np.allclose(d_xMy, np.sqrt(2)*np.array([0.25,0.625])),\
@@ -60,10 +60,10 @@ class TestGmrf(unittest.TestCase):
         box = (0,1,0,1)
         x = np.array([[0.5,0.5],[0.75, 0.75]])
         y = np.array([[0.25,0.25],[0.125,0.5]])
-        d_xy = Gmrf.distance(x, y)
-        d_xMy = Gmrf.distance(x, y, M=M)
-        d_xy_tau = Gmrf.distance(x, y, periodic=True, box=box)
-        d_xMy_tau = Gmrf.distance(x, y, M=M, periodic=True, box=box)
+        d_xy = distance(x, y)
+        d_xMy = distance(x, y, M=M)
+        d_xy_tau = distance(x, y, periodic=True, box=box)
+        d_xMy_tau = distance(x, y, M=M, periodic=True, box=box)
         self.assertTrue(np.allclose(d_xy, \
                         np.array([np.sqrt(2)/4, np.sqrt(29)/8])), \
                         'Distance incorrect')

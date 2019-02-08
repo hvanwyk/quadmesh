@@ -52,7 +52,9 @@ class TestFunction(unittest.TestCase):
         #
         # Test interpolant and eval
         #
-        fn = Function(f,'explicit')
+        fn = Function(f,'explicit', dim=2)
+        
+        
         ax = fig.add_subplot(3,4,1, projection='3d')
         #for node in mesh.root_node().get_leaves():
         #    cell = node.cell()
@@ -118,7 +120,6 @@ class TestFunction(unittest.TestCase):
             ax.set_title(etype)
         
         plt.tight_layout(pad=1, w_pad=2, h_pad=2)
-            
         #
         # Function defined on meshes of various resolution, evaluated on 
         # the same cell.
@@ -226,7 +227,7 @@ class TestFunction(unittest.TestCase):
         self.assertTrue(f1.mesh_compatible(mesh))
         
         # Explicit function: incompatible with mesh
-        f2 = Function(lambda x,y: x*y, 'explicit')
+        f2 = Function(lambda x,y: x*y, 'explicit', dofhandler=dofhandler)
         self.assertFalse(f2.mesh_compatible(mesh))
         
         # Hierarchical mesh
@@ -309,27 +310,6 @@ class TestFunction(unittest.TestCase):
                                     np.arange(1,5)),\
                         'Function value assignment incorrect.')
         
-
-    def test_global_dofs(self):
-        #
-        # Check that global dofs are returned
-        # 
-        # Define mesh
-        mesh = QuadMesh()
-        mesh.cells.refine()
-        element = QuadFE(2,'Q1')
-        
-        # Initialize nodal function
-        vf = np.empty(9,)
-        f = Function(vf, 'nodal', mesh=mesh, element=element)
-        self.assertTrue(np.allclose(f.global_dofs(), np.arange(9)), \
-                        'Incorrect global dofs returned')
-    
-        # Initialize explicit function
-        vf = lambda x,y: x+y
-        f = Function(vf, 'explicit', mesh=mesh, element=element)
-        self.assertRaises(Exception, f.global_dofs, f)
-    
     
     def test_dictionary(self):
         mesh = QuadMesh(resolution=(1,1))
@@ -351,17 +331,17 @@ class TestFunction(unittest.TestCase):
         element = QuadFE(2,'Q1')
         fn = lambda x,y: x+y
         f = Function(fn, 'nodal', mesh=mesh, element=element, subforest_flag='1')
-        self.assertEqual(f.flag(),'1', 'Flag incorrect.')
+        self.assertEqual(f.subforest_flag(),'1', 'Flag incorrect.')
     
     
     def test_input_dim(self):
         # Explicit
-        f = Function(lambda x:x**2, 'explicit')
-        self.assertEqual(f.input_dim(), 1, \
+        f = Function(lambda x:x**2, 'explicit', dim=1)
+        self.assertEqual(f.dim(), 1, \
                          'The function should have one input.')
         
-        f = Function(lambda x,y: x+y, 'explicit')
-        self.assertEqual(f.input_dim(), 2, \
+        f = Function(lambda x,y: x+y, 'explicit', dim=2)
+        self.assertEqual(f.dim(), 2, \
                          'The function should have two inputs.')
         
         # Nodal 
@@ -371,10 +351,9 @@ class TestFunction(unittest.TestCase):
         element = QuadFE(2,'Q1')
         vf = np.empty(9,)
         f = Function(vf, 'nodal', mesh=mesh, element=element)
-        self.assertEqual(f.input_dim(),2,\
+        self.assertEqual(f.dim(),2,\
                          'Function should have two inputs.')
         
-        # TODO: 1D
     
     def test_n_samples(self): 
         mesh = QuadMesh()

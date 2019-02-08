@@ -6,7 +6,7 @@ Created on Feb 24, 2017
 
 import unittest
 from plot import Plot
-from mesh import Mesh, DCEL
+from mesh import Mesh, DCEL, QuadMesh
 from fem import Assembler, QuadFE
 import matplotlib.pyplot as plt
 #from mpl_toolkits.mplot3d import *  # @UnresolvedImport
@@ -82,7 +82,7 @@ class TestPlot(unittest.TestCase):
         
         fig, ax = plt.subplots(3,3)
         plot = Plot()
-        mesh = Mesh(grid=DCEL(resolution=(5,5)))
+        mesh = QuadMesh(resolution=(5,5))
         mesh.refine()
         
         #
