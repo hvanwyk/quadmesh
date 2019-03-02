@@ -1,5 +1,5 @@
 from fem import DofHandler, QuadFE
-from mesh import convert_to_array, Vertex
+from mesh import convert_to_array, Vertex, Mesh
 import numbers
 import numpy as np
 
@@ -11,23 +11,14 @@ class Map(object):
     
     TODO: Rename to Function later
     """
-    def __init__(self, f=None, parameters=None, data=None, mesh=None, \
-                 element=None, dofhandler=None, subforest_flag=None, \
-                 subregion_flag=None, dim=None, n_variables=1):
+    def __init__(self, mesh=None, element=None, dofhandler=None, \
+                 subforest_flag=None, subregion_flag=None, \
+                 dim=None, n_variables=1):
         """
         Constructor:
         
         
         Inputs:
-    
-            *f: function or vector whose length is consistent with the dofs 
-                required by the mesh/element/subforest or dofhandler/subforest.
-                f can also be passed as an (n_dofs, n_samples) array.  
-            
-            *parameters: (list of) dictionary(/ies) of keyword parameters
-            
-            *data [None]: array of function values at finite element dof 
-                vertices. 
                  
             *mesh [None]: Mesh, on which the function will be defined
             
@@ -62,6 +53,13 @@ class Map(object):
         # =====================================================================
         # Parse DofHandler, Mesh, Element
         # =====================================================================
+        #
+        # Check mesh
+        # 
+        if mesh is not None:
+            assert isinstance(mesh, Mesh), 'Input mesh should be "Mesh" class.'
+            
+        
         #
         # Define DofHandler
         # 
@@ -111,11 +109,12 @@ class Map(object):
                 dim = mesh.dim()
             elif dofhandler is not None:
                 dim = dofhandler.mesh.dim()
+            elif element is not None:
+                dim = element.dim()
         else:
             #
             # Dimension given -> check consistency
             # 
-            
             # Check format
             assert type(dim) is int, 'Input "dim" should be an integer.'
             assert 0<dim and dim <= 2, 'Input "dim" should be in {1,2}.'
@@ -129,23 +128,14 @@ class Map(object):
             if dofhandler is not None:
                 assert dim==dofhandler.mesh.dim(),\
                 'Mesh dimension incompatible with dofhandler dim.'
+             
+            # Check element compatibility
+            if element is not None:
+                assert dim==element.dim(), \
+                'Element dimension incompatible with input dim.'    
                 
         # Store dimension
         self.__dim = dim
-    
-        # =====================================================================
-        # Parse rules and data
-        # =====================================================================            
-        # 
-        # Store functions
-        # 
-        self.__f = None
-        self.set_rules(f, parameters)
-        
-        #
-        # Store nodal function values
-        #
-        self.set_data(data)
         
            
         #
@@ -154,6 +144,8 @@ class Map(object):
         # Check format
         assert type(n_variables) is int, \
             'Input "n_variables" should be an integer.'
+            
+        assert n_variables <= 2, 'Only one or two variables supported.'
         self.__n_variables = n_variables
     
     
@@ -168,7 +160,7 @@ class Map(object):
         """
         Return the number of samples 
         """
-        return self.__n_samples
+        pass
     
     
     def dim(self):
@@ -213,30 +205,15 @@ class Map(object):
         Returns the subregion flag
         """
         return self.__subregion_flag
-    
-    
-    def rules(self):
-        """
-        Returns the rule 
-        """
-        return self.__f
 
-    
-    
-    def data(self):
+
+    def eval(self):
         """
-        Return function (usu. interpolation) data array
-        """
-        return self.__data
-    
-    
-    def set_data(self, data):
-        """
-        Store function data 
+        Container function for subclasses
         """
         pass
         
-    
+            
     def interpolant(self, mesh=None, element=None, dofhandler=None, \
                     subforest_flag=None):
         """
@@ -1286,21 +1263,30 @@ class Explicit(Map):
     """
     Explicit function
     """
-    def __init__(self, f=None, parameters=None, mesh=None, element=None, \
+    def __init__(self, f, parameters={}, mesh=None, element=None, \
                  dofhandler=None, subforest_flag=None, subregion_flag=None, \
-                 dim=None, n_variables=1):
+                 dim=None, n_variables=1, symmetric=False):
         """
         Constructor
         
         Inputs:
         
-            See "Function" class
+            *f: (list of) function(s) of the form 
+                fi = f(x1,..,xn_vars, **parameters) for i=1,...,n_samples 
+                Each variable xi will be an (n_points, dim) array.
             
+            *parameters: (list of) dictionary(/ies) of keyword parameters
+            
+            For other input parameters, see Map class
+            
+        TODO: subregion flag doesn't do anything (plays a role in eval).
         """
-        Map.__init__(self, f=f, parameters=parameters, data=None, mesh=mesh, \
-                     element=element, dofhandler=dofhandler, \
+        Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, \
                      subforest_flag=subforest_flag, subregion_flag=subregion_flag, \
                      dim=dim, n_variables=n_variables)
+        
+        # Define rules
+        self.set_rules(f, parameters)
         
         #
         # Checks
@@ -1311,110 +1297,198 @@ class Explicit(Map):
             'The dimension of the domain should be specified.'
         
         # Number of inputs should be 1 or 2
-        assert self.n_inputs() in [1,2], \
+        assert self.n_variables() in [1,2], \
             'The number of inputs should be 1 or 2.'
+        
+        # If function is symmetric, it should have 2 variables
+        if symmetric:
+            assert self.n_variables()==2, \
+            'Symmetric functions should at least be bivariate'
+        
+        self.__symmetric = symmetric
         
 
     def n_samples(self):
         """
         Determine the number of samples
         """
-        pass
+        f = self.__f
+        if type(f) is list: 
+            return len(f)
+        else:
+            return None
     
     
-    def set_rules(self, f, parameters, pos=None):
+    def parameters(self):
+        """
+        Return function parameters 
+        """
+        return self.__parameters
+    
+    
+    def set_parameters(self, parameters, pos=None):
+        """
+        Modify function's parameters
+        """
+        assert type(parameters) is dict, 'Input parameters must be a dict.'
+        
+        if pos is None:
+            #
+            # No position specified, modify all parameters
+            # 
+            if type(self.parameters()) is dict:
+                self.__parameters = parameters
+            else: 
+                self.__parameters = [parameters for dummy in self.parameters()]
+        else:
+            #
+            # Position specified
+            # 
+            assert self.n_samples()>pos, 'Input "pos" out of bounds.'
+            self.__parameters[pos] = parameters
+    
+    
+    def rules(self):
+        """
+        Return functions
+        """
+        return self.__f
+    
+    
+    def set_rules(self, f, parameters={}, pos=None):
         """
         Set functions
-        """
-        if type(f) is list: 
-            #
-            # Function passed as list
-            #
+        
+        Inputs:
+        
+            f: (list of) functions, fi = f(x1,...,xnvars, **parameters)
+            
+            parameters: (list of) dictionaries of keyword arguments
+            
+            *pos [None]: int, position at which to set the function 
+        """            
+        #
+        # Check function inputs
+        # 
+        if type(f) is list:
+            assert all([callable(fi) for fi in f]), \
+            'Input "f" should be a (list of) functions.'
             
             # Check no position specified 
             assert pos is None, \
             'Can only add individual functions at specific positions.'
-            
-            # Check parameter format
-            assert type(parameters) is list, \
-            'Input "parameters" should be a list.' 
-                
+        else:
+            assert callable(f), 'Input "f" should be callable.'
+
+        # 
+        # Check parameters input
+        # 
+        if type(parameters) is list:
+            # Check that all parameters are dictionaries
             assert all([type(p) is dict for p in parameters]), \
             'Input "parameters" should be a list of dictionaries.'
-    
-            # Store functions and parameters
-            self.__f = f 
-            self.__parameters = parameters
+        else:
+            # Check that parameters are a dictionary
+            assert type(parameters) is dict, \
+            'Input "parameters" should be a dictionary.' 
+
+        #
+        # Parse f - parameter compatibility   
+        # 
+        is_list = True
+        if type(f) is list and type(parameters) is list:
+            #
+            # Both are lists
+            #
+            assert len(f)==len(parameters), \
+            'Inputs "f" and "parameters" should have the same length'
+        elif type(f) is list:
+            #
+            # f=list, parameter=dict
+            #
+            assert type(parameters) is dict, \
+            'Input "parameters" should be passed as dictionary'
+            
+            # Extend parameters
+            parameters = [parameters for dummy in f]
+            
+        elif type(parameters) is list:
+            #
+            # f=callable, parameters=list
+            # 
+            assert callable(f), 'Input "f" should be callable.'
+            
+            # Extend f
+            f = [f for dummy in parameters]
         else:
             #
-            # Single function
+            # f=callable, parameters=dict
             # 
             assert callable(f), 'Input "f" should be callable.'
             assert type(parameters) is dict, \
             'Input "parameters" should be a dictionary.'
+            is_list = False
+        
+        # 
+        # Store functions
+        #
+        if is_list or pos is None:
+            self.__f = f
+            self.__parameters = parameters
+        else:
+            #
+            # Insert function at pos in list
+            # 
+            n_samples = self.n_samples()
+            assert n_samples is not None and n_samples>pos, \
+            'Input "pos" out of bounds.'
             
-            # Store values
-            if pos is not None:
-                #
-                # Insert function at pos in list
-                # 
-                n_samples = self.n_samples()
-                assert n_samples is not None and n_samples>pos, \
-                'Input "pos" out of bounds.'
-                
-                # Store at specific position
-                self.__f[pos] = f
-                self.__parameters[pos] = parameters
-            else:
-                # Store single function
-                self.__f = f 
-                self.__parameters = parameters             
+            # Store at specific position
+            self.__f[pos] = f
+            self.__paramters[pos] = parameters
             
+                    
             
-    def add_rules(self, f, parameters={}):
+    def add_rule(self, f, parameters={}):
         """
         Add sample functions 
         
         Inputs: 
         
-            f: list of functions
+            f: function
             
-            parameters: list of dictionary parameters
-        """
+            parameters: dictionary parameter
             
-        self.__f = [self.__f, f]
-    
-    
-    def set_parameters(self, parameters, pos=None):
-        """
-        Modify function parameters
+        Note: 
         
-        Inputs:
-        
-            parameters: dict, dictionary of parameters
-            
-            pos: int, position of parameters to modify
-        """
-        # Check parameters are a dictionary
+            Can only add one rule at a time 
+        """ 
+        assert callable(f), 'Input "f" should be callable.'
         assert type(parameters) is dict, \
-        'Input "paramters" should be a dictionary.'
+            'Input "parameters" should be a dictionary.'
         
-        n_samples = self.n_samples()
-        if pos is None:
-            assert n_samples is None,\
-            'No samples. Input "pos" should be "None".'
-            
-            # Store parameters
-            self.__parameters = parameters
+        if self.n_samples() is None:
+            #
+            # Append single deterministic function
+            # 
+            self.__f = [self.__f, f]
+            self.__parameters = [self.__parameters, parameters]
         else:
-            assert n_samples > pos, \
-            'Input "pos" out of bounds.'
+            #
+            # Append to list
+            # 
+            self.__f.append(f)
+            self.__parameters.append(parameters)
             
-            # Store parameters 
-            self.__parameters[pos] = parameters
+        
+    def is_symmetric(self):
+        """
+        Returns true if the function bivariate and symmetric, false otherwise
+        """
+        return self.__symmetric
     
     
-    def eval(self, x, y=None, subsample=None):
+    def eval(self, x, subsample=None):
         """
         Evaluate function at point x
         
@@ -1422,9 +1496,7 @@ class Explicit(Map):
         
             x: (list of) tuple(s), Vertex, or number(s) or numpy array of input
                 variables.
-                
-            y: Second variable (if function takes two variables)
-            
+                            
             subsample: int (k,) array of subsample indices
     
             
@@ -1434,33 +1506,28 @@ class Explicit(Map):
                 f(x) is an (n_points, ) numpy array. Otherwise, f(x) is an 
                 (n_points, n_samples) numpy array of outputs   
         """ 
-        n_variables = self.n_variables()
         dim = self.dim()
-        # =====================================================================
-        # Parse x
-        # =====================================================================
-        if x is not None:
-            # Deal with singletons 
-            if type(x) is tuple \
-            or isinstance(x, Vertex) \
-            or isinstance(x, numbers.Real):
-                is_singleton = True
-                x = [x]
-            else:
-                is_singleton = False
-            
+        n_variables = self.n_variables()
+        if n_variables==1:
             #
-            # Convert input to array
+            # Univariate function
             # 
-            x = convert_to_array(x)
-            if dim is not None:
-                #
-                # Function defined for specific number of variables (not constant)
-                #
-                assert x.shape[1]==dim, \
-                'Input dimension incompatible with dimension of function.'
-            
+            x, is_singleton = convert_to_array(x, dim=dim, 
+                                               return_is_singleton=True)
             n_points = x.shape[0]
+            
+        elif n_variables==2:
+            # 
+            # Bivariate function
+            #
+             
+            # Two variables passed as tuple
+            x1, x2 = x
+            x1, is_singleton = convert_to_array(x1, dim=dim, 
+                                                return_is_singleton=True)
+            x2 = convert_to_array(x2, dim=dim)
+            
+            n_points = x1.shape[0]
                 
         # =====================================================================
         # Parse sample size
@@ -1488,9 +1555,11 @@ class Explicit(Map):
             # Subsample size       
             n_subsample = len(subsample)
         else:
-            n_subsample = None
-            
-            
+            n_subsample = 1
+        
+        # =====================================================================
+        # Evaluate function(s)
+        # =====================================================================
         if n_samples is None:
             #
             # Deterministic function
@@ -1499,50 +1568,80 @@ class Explicit(Map):
                 #
                 # 1 Variable (any dimension)
                 #   
-                f_vec = self.__f(x)
-            elif n_variables==2:
+                f_vec = self.__f(x, **self.__parameters)
+            else:
                 #
                 # 2 Variables (any dimension)
                 # 
-                f_vec = self.__f(x[:,0], x[:,1])
-                
+                f_vec = self.__f(x1, x2, **self.__parameters)
         else:
             #
             # Stochastic function
             # 
             f_vec = np.empty((n_points, n_subsample))
             for i in subsample:
+                fi, pi = self.__f[i], self.__parameters[i]
+                
                 if n_variables==1:
                     #
                     # 1 Variable (any dimension)
                     # 
-                    f_vec[:,i] = self.__f[i](x)
-                elif dim == 2:
+                    f_vec[:,i] = fi(x, **pi).ravel()
+                elif n_variables==2:
                     #
-                    # 2D 
+                    # 2 Variables (any dimension)
                     # 
-                    f_vec[:,i] = self.__f[i](x[:,0],x[:,1])
+                    f_vec[:,i] = fi(x1,x2, **pi).ravel()
+        
                         
-
+        if is_singleton:
+            #
+            # Singleton input
+            # 
+            if n_samples is None:
+                #
+                # Deterministic function
+                # 
+                return f_vec[0]
+            else:
+                #
+                # Sampled function
+                # 
+                return f_vec[0,:]
+        else:
+            #
+            # Vector input
+            # 
+            return f_vec
 
     
 class Nodal(Function):
     """
     Nodal functions
     """    
-    def __init__(self, f=None, values=None, mesh=None, element=None, \
-                 dofhandler=None, subforest_flag=None, subregion_flag=None, \
-                 dim=None, n_variables=1):
+    def __init__(self, f=None, parameters=None, data=None, mesh=None, \
+                 element=None, dofhandler=None, subforest_flag=None, \
+                 subregion_flag=None, dim=None, n_variables=1):
         """
         Constructor
         
         Inputs:
-        
-            See Map constructor
+          
+            *f: (list of) function(s) of the form 
+                fi = f(x1,..,xn_vars, **parameters) for i=1,...,n_samples 
+                Each variable xi will be an (n_points, dim) array.
+            
+            *parameters: (list of) dictionary(/ies) of keyword parameters
+                        
+            *data [None]: array of function values at finite element dof 
+                vertices. Size is consistent with the dofs 
+                required by the mesh/element/subforest or dofhandler/subforest.
+            
+            For other inputs, see Map constructor
         """
-        Map.__init__(self, f=f, values=values, mesh=mesh, element=element,\
-                     dofhandler=dofhandler, subforest_flag=subforest_flag, \
-                     subregion_flag=subregion_flag, dim=dim, n_variables=n_variables)
+        Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, \
+                     subforest_flag=subforest_flag, subregion_flag=subregion_flag, \
+                     dim=dim, n_variables=n_variables)
         # 
         # Checks
         # 
@@ -1562,10 +1661,10 @@ class Nodal(Function):
         #
         # Store nodal values
         # 
-        self.set_values(values=values, f=f)
+        self.set_data(data=data, f=f, parameters=parameters)
         
     
-    def set_values(self, values=None, f=None):
+    def set_data(self, data=None, f=None, parameters={}):
         """
         Set the function's nodal values.
         
@@ -1575,19 +1674,34 @@ class Nodal(Function):
             
             f: (list of) lambda function(s) 
         """
-        if values is not None:
+        if data is not None:
             #
             # Function determined by values
             # 
             # Check consistency with dofhandler
             sf = self.subforest_flag()
             n_dofs = self.dofhandler().n_dofs(subforest_flag=sf)
-            assert values.shape[0]==n_dofs, \
+            assert data.shape[0]==n_dofs, \
             'Shape of input "values" inconsistent with dofhandler.'
             
-            # Store values
-            self.__values = values
+            # Store data
+            self.__data = data
         
+    
+    def add_data(self, data=None, f=None, parameters=None):
+        """
+        Add new sample paths
+        
+        Inputs:
+        
+            data: (n_dofs, n_samples), array 
+            
+            f: (list of) functions, 
+            
+            parameters: (compatible list of) function parameters  
+        """
+        pass
+    
     
     def eval(self):
         """

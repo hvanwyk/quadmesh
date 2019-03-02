@@ -10,7 +10,7 @@ Created on Jun 29, 2016
 
 """
 
-def convert_to_array(x, dim=None):
+def convert_to_array(x, dim=None, return_is_singleton=False):
     """
     Convert point or list of points to a numpy array.
     
@@ -28,6 +28,9 @@ def convert_to_array(x, dim=None):
             
         dim: int, (1 or 2) optional number used to adjudicate ambiguous cases.  
         
+        return_is_singleton: bool, if True, return whether the input x is a
+            singleton.
+        
         
     Outputs:
     
@@ -39,6 +42,7 @@ def convert_to_array(x, dim=None):
             If x is two-dimensional (i.e. a list of 2d Vertices, 2-tupples, or
             a 2d array), return an (n,2) array.   
     """
+    is_singleton = False
     if type(x) is list:
         #
         # Points in list
@@ -74,10 +78,12 @@ def convert_to_array(x, dim=None):
         # A single vertex
         #    
         x = np.array([x.coordinates()])
+        is_singleton = True
     elif isinstance(x, numbers.Real):
         if dim is not None:
             assert dim==1, 'Dimension should be 1.'
         x = np.array([[x]]) 
+        is_singleton = True
     elif type(x) is tuple:
         #
         # A tuple
@@ -88,12 +94,14 @@ def convert_to_array(x, dim=None):
             #
             x, = x 
             x = np.array([[x]])
+            is_singleton = True
         elif len(x)==2:
             #
             # A tuple
             # 
             x,y = x
             x = np.array([[x,y]])
+            is_singleton = True
     elif type(x) is np.ndarray:
         #
         # Points in numpy array
@@ -133,7 +141,12 @@ def convert_to_array(x, dim=None):
             'Dimension of array should be at most 2'
         else:
             raise Exception('Only 1- or 2 dimensional arrays allowed.') 
-    return x
+        
+    if return_is_singleton:
+        # Specify whether x is a singleton
+        return x, is_singleton
+    else:
+        return x
 
 
 class Tree(object):

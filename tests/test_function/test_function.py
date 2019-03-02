@@ -21,11 +21,300 @@ from plot import Plot
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+class TestMap(unittest.TestCase):
+    """
+    Test the parent class
+    """
+    def test_constructor(self):
+        """
+        Test initialization
+        """
+        # Initialize empty map
+        f = Map()
+        self.assertTrue(isinstance(f, Map))
+        self.assertIsNone(f.dim())
+        
+        #
+        # Exceptions
+        # 
+        
+        # Too many variables
+        self.assertRaises(Exception, Map, **{'n_variables':3})
+
+        # Mesh dimension incompatible with specified dimension
+        mesh = Mesh1D()
+        self.assertRaises(Exception, Map, **{'dim':2, 'mesh':mesh})
+        
+        # Mesh dimension incompatible with element
+        element = QuadFE(2, 'DQ1')
+        self.assertRaises(Exception, Map, **{'mesh':mesh, 'element':element})
+
+        # Dofhandler incompatibility
+        element = QuadFE(1, 'Q1')
+        dofhandler = DofHandler(mesh, element)
+        self.assertRaises(Exception, Map, **{'dofhandler': dofhandler, 
+                                             'dim':2})
+        
+        # function returns the same mesh
+        f1 = Map(dofhandler=dofhandler)
+        f2 = Map(mesh=mesh)
+        self.assertEqual(f1.mesh(),f2.mesh())
+        
+        
+    def test_dim(self):
+        """
+        Test how the function parses dimension
+        """
+        # Dimension parsed via mesh
+        mesh = QuadMesh()
+        f = Map(mesh=mesh)
+        self.assertEqual(f.dim(), 2)
+        
+        # Dimension parsed via element
+        element = QuadFE(1,'Q1')
+        f = Map(element=element)
+        self.assertEqual(f.dim(),1)
+        
+        # Dimension parsed via dofhandler
+        element = QuadFE(2,'Q1')
+        dofhandler = DofHandler(mesh, element)
+        f = Map(dofhandler=dofhandler)
+        self.assertEqual(f.dim(),2)
+        
+    
+    def interpolate(self):
+        pass
+    
+    
+    
+class TestExplicit(unittest.TestCase):
+    """
+    Test explicit functions
+    """
+    def test_constructor(self):
+        """
+        Test initialization
+        """
+        f = Explicit(lambda x, a: a*x**2, parameters={'a':1}, 
+                     dim=1, n_variables=1)
+        self.assertAlmostEqual(f.eval(1),1)
+        
+        #
+        # Errors
+        #
+        self.assertRaises(Exception, Explicit)
+        
+        
+         
+    def test_set_rules(self):
+        
+        #
+        # Errors
+        # 
+        
+        # Number of parameter dicts differs from number of rules  
+        flist = [lambda x,a: a*x**2, lambda x: x]
+        plist = [{}, {}, {}]
+        self.assertRaises(Exception, Explicit, *(flist,), 
+                          **{'parameters':plist, 'dim':1})
+    
+        # Specify that function is symmetric, but n_variables=1
+        f = lambda x: x
+        self.assertRaises(Exception, Explicit, *(f,), **{'symmetric':True})
+        
+        
+        #
+        # Expected 
+        # 
+        
+        # Only one set of parameters multiple functions
+        f = Explicit(flist, parameters={}, dim=1)
+        self.assertEqual(len(f.parameters()),2)
+        
+        # Only one function multiple parameters
+        rule = lambda x,a: a*x**2
+        parameters = [{'a':1}, {'a': 2}]
+        f = Explicit(rule, parameters=parameters, dim=1)
+        self.assertEqual(len(f.rules()),2)
+        
+    
+    def test_add_rules(self):
+        # Define explicit function
+        rule = lambda x,a: a*x**2
+        parameters = [{'a':1}, {'a': 2}]
+        f = Explicit(rule, parameters=parameters, dim=1)
+        
+        
+        # Raises an error attempt to add multiple functions 
+        self.assertRaises(Exception, f.add_rule, *(lambda x: x,), 
+                          **{'parameters':[{},{}]})
+        
+        # Add a single rule and evaluate at a point
+        f.add_rule(lambda x: x)
+        x = 2
+        vals = [4, 8, 2]
+        
+        for i in range(3):
+            self.assertEqual(f.eval(x)[i],vals[i])
+        
+        
+    def test_set_parameters(self):
+        # Define explicit function 
+        rule = lambda x, a: a*x[:,0]-x[:,1]
+        parms = [{'a':1}, {'a':2}]
+        f = Explicit(rule, parameters=parms, dim=2)
+        
+        x = (1,2)
+        self.assertTrue( np.allclose(f.eval(x), np.array([-1,0])) )
+    
+        # Modify parameter
+        f.set_parameters({'a':2}, pos=0)
+        self.assertTrue( np.allclose(f.eval(x), np.array([0,0])) )
+    
+    
+    
+    def test_eval(self):
+        
+        #
+        # Evaluate single univariate/bivariate functions in 1 or 2 dimensions
+        # 
+        fns = {1: {1: lambda x: x**2, 2: lambda x,y: x + y}, 
+               2: {1: lambda x: x[:,0]**2 + x[:,1]**2, 
+                   2: lambda x,y: x[:,0]*y[:,0] + x[:,1]*y[:,1]}}
+        
+        # Singletons
+        x  = {1: {1: 2,     2: (3,4)},
+              2: {1: (1,2), 2: ((1,2),(3,4))}}
+        
+        vals = {1: {1: 4, 2: 7}, 2: {1: 5, 2: 11}} 
+        
+        for dim in [1,2]:
+            #
+            # Iterate over dimension
+            # 
+            for n_variables in [1,2]:
+                #
+                # Iterate over number of variables
+                # 
+                fn = fns[dim][n_variables]
+                f = Explicit(fn, n_variables=n_variables, dim=dim)
+                
+                xn = x[dim][n_variables]
+                self.assertEqual(f.eval(xn),vals[dim][n_variables])
+        
+        #
+        # Evaluate sampled functions
+        # 
+        fns = {1: {1: lambda x,a: a*x**2, 
+                   2: lambda x,y,a: a*(x + y)}, 
+               2: {1: lambda x,a: a*(x[:,0]**2 + x[:,1]**2), 
+                   2: lambda x,y,a: a*(x[:,0]*y[:,0] + x[:,1]*y[:,1])}}
+        
+        pars = [{'a': 1}, {'a':2}]
+        
+        # Singletons
+        x  = {1: {1: 2,     2: (3,4)},
+              2: {1: (1,2), 2: ((1,2),(3,4))}}
+        
+        vals = {1: {1: 4, 2: 7}, 2: {1: 5, 2: 11}} 
+        
+        for dim in [1,2]:
+            #
+            # Iterate over dimension
+            # 
+            for n_variables in [1,2]:
+                #
+                # Iterate over number of variables
+                # 
+                fn = fns[dim][n_variables]
+                f = Explicit(fn, parameters=pars, 
+                             n_variables=n_variables, dim=dim)
+                
+                xn = x[dim][n_variables]
+                self.assertEqual(f.eval(xn)[0],vals[dim][n_variables])
+                self.assertEqual(f.eval(xn)[1],2*vals[dim][n_variables])
+        
+        #
+        # Check output dimensions
+        # 
+        n_points = 2
+        x  = {1: {1: [(2,),(2,)],     
+                  2: ([(3,),(3,)],[(4,),(4,)])},
+              2: {1: [(1,2),(1,2)], 
+                  2: ([(1,2),(1,2)],[(3,4),(3,4)])}}
+        for dim in [1,2]:
+            #
+            # Iterate over dimension
+            # 
+            for n_variables in [1,2]:
+                #
+                # Iterate over number of variables
+                # 
+                fn = fns[dim][n_variables]
+                f = Explicit(fn, parameters=pars, 
+                             n_variables=n_variables, dim=dim)
+                
+                xn = x[dim][n_variables]
+                self.assertEqual(f.eval(xn).shape[0],n_points)
+                self.assertEqual(f.eval(xn).shape[1],f.n_samples())
+                
+                for i in range(f.n_samples()):
+                    for j in range(2):
+                        val = pars[i]['a']*vals[dim][n_variables]
+                        self.assertEqual(f.eval(xn)[j,i], val)
+        
+
+class TestNodal(unittest.TestCase):
+    """
+    Test Nodal test functions
+    """ 
+    def test_constructor(self):
+        pass
+    
+    
+    def test_set_data(self):
+        pass
+    
+    
+    def test_add_data(self):
+        pass
+    
+    
+    def test_n_samples(self):
+        pass
+    
+    
+    def test_mesh_compatible(self):
+        pass
+    
+    
+    def test_derivative(self):
+        pass
+    
+    
+    
+class TestConstant(unittest.TestCase):
+    """
+    Test Constant function
+    """
+    def test_constructor(self):
+        pass
+    
+    
+    def test_set_data(self):
+        pass
+    
+    
+    def test_eval(self):
+        pass
+    
+        
+        
 class TestFunction(unittest.TestCase):
     """
     Test Function class
     
-    TODO:
     
     a. Define function on a submesh, refine it
     """
@@ -38,8 +327,7 @@ class TestFunction(unittest.TestCase):
         mesh.cells.refine(new_label=1)
         mesh.cells.refine(new_label=2)
         
-        
-        
+              
         f = lambda x,y: np.sin(np.pi*x)*np.cos(2*np.pi*y) + np.cos(np.pi*y)
         
         fig = plt.figure()
@@ -127,6 +415,8 @@ class TestFunction(unittest.TestCase):
             ax.set_title(etype)
         
         plt.tight_layout(pad=1, w_pad=2, h_pad=2)
+        #plt.show()
+        
         #
         # Function defined on meshes of various resolution, evaluated on 
         # the same cell.
@@ -316,16 +606,6 @@ class TestFunction(unittest.TestCase):
         self.assertTrue(np.allclose(f.eval(x_mpt, samples=0).ravel(),\
                                     np.arange(1,5)),\
                         'Function value assignment incorrect.')
-        
-    
-    def test_dictionary(self):
-        mesh = QuadMesh(resolution=(1,1))
-        element_1 = QuadFE(2,'Q1')
-        element_2 = QuadFE(2,'Q2')
-        dofhandler = {}
-        dofhandler['Q1'] = DofHandler(mesh, element_1)
-        dofhandler['Q2'] = DofHandler(mesh, element_2)
-        
         
     
     def test_flag(self):
