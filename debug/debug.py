@@ -85,9 +85,9 @@ i.e. I n.A*grad(u) ds or
 # Define mesh
 # 
 mesh = QuadMesh(resolution=(20,20))
-element = QuadFE(2,'DQ2')
+element = QuadFE(2,'DQ1')
 
-u = Function(lambda x,y: -1+x**5 + y, 'nodal', mesh=mesh, element=element)
+u = Function(lambda x,y: -1+x**5 + y**8, 'nodal', mesh=mesh, element=element)
 print(u.fn())
 plot = Plot(3)
 plot.wire(u)

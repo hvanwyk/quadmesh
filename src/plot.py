@@ -12,8 +12,10 @@ from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mpl_toolkits.mplot3d import Axes3D 
+import time
 import numpy as np
-from fem import Assembler, Function
+from assembler import Assembler
+from function import Function
 
 
 class Plot(object):
@@ -569,7 +571,7 @@ class Plot(object):
         return axis
     
     
-    def contour(self, f, mesh=None, derivative=(0,),
+    def contour(self, f, derivative=(0,),
                 colorbar=True, resolution=(100,100), 
                 axis=None):
         """
@@ -581,9 +583,7 @@ class Plot(object):
             ax: Axis, current axes
                         
             f: Function, function to be plotted
-            
-            mesh: Mesh, computational mesh
-                        
+                                    
             *derivative [(0,)]: int, tuple specifying the function's derivative
             
             *colorbar [True]: bool, add a colorbar?
@@ -603,28 +603,30 @@ class Plot(object):
         # 
         assert isinstance(f, Function), 'Can only plot "Function" objects.'
         
-        #
-        # Initialize Axes
-        # 
-        if self.__quickview:
-            fig = plt.figure()
-            axis = fig.gca()
-        else:
-            assert axis is not None, 'Axis not specified.'
-            assert axis.name=="2d", 'Axis required to be 2D.'
         
-        assert isinstance(f,Function)    
+        #
+        # Check axis
+        # 
+        axis = self.check_axis(axis)
+        
+        #
+        # Set axis limits
+        # 
+        axis = self.set_bounding_box(axis, f.mesh())
+        
         #
         # Initialize grid
         # 
-        x0,x1,y0,y1 = f.dofhandler.mesh.bounding_box()
+        x0,x1,y0,y1 = f.mesh().bounding_box()
         nx, ny = resolution 
         x,y = np.meshgrid(np.linspace(x0,x1,nx),np.linspace(y0,y1,ny))
-        xy = np.array([x.ravel(), y.ravel()]).T
-        ff = f.eval(xy, derivative=derivative)
-        z  = ff.reshape(x.shape)
         
-        cm = axis.contourf(x,y,z,30)
+        #xy = np.array([x.ravel(), y.ravel()]).T
+        
+        #ff = f.eval(xy, derivative=derivative)
+        #z  = ff.reshape(x.shape)
+        
+        #cm = axis.contourf(x,y,z,30)
         
         if callable(f):
             #
@@ -633,12 +635,13 @@ class Plot(object):
             z = f(x,y)  
             cm = axis.contourf(x,y,z.reshape(ny,nx),100)
         elif isinstance(f, Function):
+            t = time.time()
             xy = [(xi,yi) for xi,yi in zip(x.ravel(),y.ravel())]
             z = f.eval(xy)
             cm = axis.contourf(x,y,z.reshape(ny,nx),100)
         
         if colorbar:
-            fig.colorbar(cm, ax=axis, format='%g')
+            plt.colorbar(cm, ax=axis, format='%g')
             
         #    
         # Plot immediately and/or save
@@ -817,7 +820,7 @@ class Plot(object):
             assert mesh is not None, \
             'For "explicit" or "constant" functions, mesh must be given.'
         else:
-            mesh = f.dofhandler.mesh    
+            mesh = f.mesh()    
         
         #
         # Check axis
@@ -842,7 +845,7 @@ class Plot(object):
         # Evaluate function
         # 
         z0, z1 = None, None
-        for cell in mesh.cells.get_leaves(subforest_flag=f.flag()):
+        for cell in mesh.cells.get_leaves(subforest_flag=f.subforest_flag()):
             x = []
             y = []
             z = []
@@ -915,6 +918,10 @@ class Plot(object):
         # Ensure there's a mesh
         # 
         if f.fn_type() in ['explicit', 'constant']:
+            
+            if mesh is None:
+                mesh = f.mesh()
+            
             assert mesh is not None, \
             'For "explicit" or "constant" functions, mesh must be specified.'  
         else:
@@ -930,7 +937,6 @@ class Plot(object):
             axis = fig.gca()
         else:
             assert axis is not None, 'Axis not specified.'
-            assert axis.name=="2d", 'Axis required to be 2D.'
              
         #
         # Evaluate function

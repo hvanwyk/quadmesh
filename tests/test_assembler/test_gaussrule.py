@@ -1,5 +1,6 @@
 import unittest
-from fem import GaussRule, QuadFE
+from assembler import GaussRule
+from fem import  QuadFE
 from mesh import Cell, QuadCell, HalfEdge, Vertex, convert_to_array
 import numpy as np 
 

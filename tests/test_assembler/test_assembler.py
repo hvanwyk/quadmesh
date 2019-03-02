@@ -1,6 +1,9 @@
-import unittest
+from assembler import Assembler, Form, Kernel, IKernel, IForm
+from fem import QuadFE, DofHandler, Basis
+from function import Function
 from mesh import QuadMesh, Mesh1D
-from fem import QuadFE, Assembler, Function, DofHandler, Form, Basis, Kernel
+
+import unittest
 import numpy as np
 import scipy.sparse as sp
 
@@ -428,6 +431,53 @@ class TestAssembler(unittest.TestCase):
         
     
     
+        # =====================================================================
+        # Test 7: Assemble Kernel
+        # =====================================================================
+        mesh = Mesh1D(resolution=(10,))
+        
+        Q1 = QuadFE(1,'DQ1')
+        dofhandler = DofHandler(mesh, Q1)
+        dofhandler.distribute_dofs()
+        
+        phi = Basis(Q1,'u')
+        
+        kernel = IKernel(lambda x,y:x*y,1,symmetric=True, dofhandler=dofhandler)
+        form = IForm(kernel, test=phi, trial=phi, form_type='projection')
+        
+        assembler = Assembler(form, mesh)
+        assembler.assemble()
+        
+        af = assembler.af[0]['bilinear']
+        M = af.get_matrix().toarray()
+        
+        
+        #plt.imshow(M)
+        #plt.show()
+        
+        u = Function(lambda x: x, 'nodal', dofhandler=dofhandler)
+        v = Function(lambda x: 1-x, 'nodal', dofhandler=dofhandler)
+        
+        u_vec = u.fn()
+        v_vec = v.fn()
+            
+        self.assertAlmostEqual(v_vec.dot(M.dot(u_vec)), 1/18)
+    
+        form = IForm(kernel, test=phi, trial=phi, \
+                     form_type='interpolation')
+        
+        assembler = Assembler(form, mesh)
+        assembler.assemble()
+        
+        Ku = Function(lambda x: 1/3*x, 'nodal', dofhandler=dofhandler)
+         
+         
+        af = assembler.af[0]['bilinear']
+        M = af.get_matrix().toarray()
+        
+        
+        self.assertTrue(np.allclose(M.dot(u_vec), Ku.fn()))
+        
         
     def test_assemble_2d(self):
         """

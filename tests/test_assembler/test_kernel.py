@@ -1,6 +1,12 @@
 import unittest
 from mesh import QuadMesh, Mesh1D, convert_to_array, Tree
-from fem import QuadFE, Assembler, Function, GaussRule, Form, Kernel, DofHandler
+from assembler import Assembler
+from assembler import GaussRule
+from assembler import Form
+from assembler import Kernel
+from assembler import IKernel
+from fem import QuadFE, DofHandler
+from function import Function
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -156,9 +162,61 @@ class TestKernel(unittest.TestCase):
          
         
     def test_n_samples(self):
-        pass
-    
+        # 
+        # 1D
+        #
+        
+        # Define mesh
+        mesh = Mesh1D(resolution=(10,))
+        
+        # Define function  
+        f = Function([lambda x: x, lambda x: -2+2*x**2], 'explicit', dim=1)
+        n_samples = f.n_samples()
+        
+        k = Kernel(f)
+        
+        n_points = 101
+        x0, x1 = mesh.bounding_box()
+        x = np.linspace(x0,x1,n_points)
+        
+        self.assertEqual(k.eval(x).shape, (n_points, n_samples))
+        self.assertTrue(np.allclose(k.eval(x)[:,0],x))
+        self.assertTrue(np.allclose(k.eval(x)[:,1], -2+2*x**2))
+                         
     def test_eval(self):
         pass
+    
+    
+class TestIKernel(unittest.TestCase):
+    """
+    Test Integral kernel
+    """
+    def test_eval(self):
+        #
+        # 1D 
+        # 
+        
+        # Define Kernel functoin
+        def k_fn(x,y,c = 2):
+            return x*y + c
+        
+        # Construct kernel, specifying parameter c
+        kernel = IKernel(k_fn, 1, {'c':1})
+        
+        # Evaluation points
+        x = np.ones(11)
+        y = np.linspace(0,1,11)
+        
+        # Check accuracy
+        self.assertTrue(np.allclose(kernel.eval(x,y), x*y+1))
+        
+        # Define kernel with default parameters
+        kernel = IKernel(k_fn, 1, None)
+        
+        # Check accuracy
+        self.assertTrue(np.allclose(kernel.eval(x,y), x*y+2))
+        
+    
+    
     
     

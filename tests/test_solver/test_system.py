@@ -1,5 +1,8 @@
 import unittest
-from fem import Assembler, QuadFE, DofHandler, GaussRule
+from assembler import Assembler
+from assembler import GaussRule
+from fem import QuadFE
+from fem import DofHandler
 from mesh import Mesh, DCEL, QuadMesh, Mesh2D
 import numpy as np
 import numpy.linalg as la

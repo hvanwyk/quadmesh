@@ -1,6 +1,6 @@
 from mesh import Vertex, HalfEdge, QuadCell
 from mesh import convert_to_array
-from fem import GaussRule
+from assembler import GaussRule
 import numpy as np
 import unittest
 

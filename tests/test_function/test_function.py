@@ -1,13 +1,20 @@
 import unittest
-from mesh import Mesh, convert_to_array
+from mesh import Mesh
+from mesh import convert_to_array
 from mesh import Mesh1D
 from mesh import Mesh2D
 from mesh import QuadMesh
 from mesh import DCEL
 
 from fem import QuadFE
-from fem import Function
 from fem import DofHandler
+
+from function import Function
+from function import Map
+from function import Constant
+from function import Explicit
+from function import Nodal
+
 
 from plot import Plot
 

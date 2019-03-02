@@ -4,14 +4,17 @@ Created on Feb 8, 2017
 @author: hans-werner
 '''
 from fem import Assembler
-from fem import FiniteElement
+from fem import Element
 from fem import DofHandler
+from fem import IKernel
 from fem import GaussRule
 from fem import Function
-from fem import Assembler
-from mesh import Mesh
+from fem import Form
+from fem import Basis
+from fem import Kernel
 from mesh import Mesh1D
 from mesh import QuadMesh
+
 
 from numbers import Number, Real
 import numpy as np
@@ -37,7 +40,7 @@ def distance(x, y, M=None, periodic=False, box=None):
     
     Inputs: 
     
-        x,y: (n,dim) column vectors
+        x,y: two (n,dim) arrays
         
         M: double, positive semidefinite anistropy coefficient 
         
@@ -146,7 +149,6 @@ def linear(x,y,sgm=1, M=None):
         # 1D
         # 
         if M is None:
-            print('M is None')
             sgm**2 + x*y
             return sgm**2 + x*y
         else:
@@ -231,11 +233,14 @@ def rational(x, y, a, M=None, periodic=False):
     return (1/(1+d**2))**a   
 
 
-class CovKernel(object):
+
+           
+    
+class CovKernel(IKernel):
     """
-    Covariance kernel
+    Integral kernel
     """
-    def __init__(self, name, parameters):
+    def __init__(self, name=None, parameters=None, dim=1, cov_fn=None):
         """
         Constructor
         
@@ -249,98 +254,287 @@ class CovKernel(object):
                 allowable parameters.
         
         """
-        #
-        # Determine covariance kernel
-        # 
-        if name == 'constant':
+        if cov_fn is None:
+            assert name is not None, \
+                'Covariance should either be specified '\
+                ' explicitly or by a string.'
             #
-            # k(x,y) = sigma
+            # Determine covariance kernel
             # 
-            cov_fn = constant
-        elif name == 'linear':
-            #
-            # k(x,y) = sigma + <x,My>
-            # 
-            cov_fn = linear
-        elif name == 'gaussian':
-            #
-            # k(x,y) = sigma*exp(-0.5(|x-y|_M/l)^2)
-            # 
-            cov_fn = gaussian
-        elif name == 'exponential':
-            #
-            # k(x,y) = sigma*exo(-0.5|x-y|_M/l)
-            # 
-            cov_fn = exponential
-        elif name == 'matern':
-            #
-            # k(x,y) = 
-            # 
-            cov_fn = matern
-        elif name == 'rational':
-            #
-            # k(x,y) = 1/(1 + |x-y|^2)^a
-            # 
-            cov_fn = rational
-        
+            if name == 'constant':
+                #
+                # k(x,y) = sigma
+                # 
+                cov_fn = constant
+            elif name == 'linear':
+                #
+                # k(x,y) = sigma + <x,My>
+                # 
+                cov_fn = linear
+            elif name == 'gaussian':
+                #
+                # k(x,y) = sigma*exp(-0.5(|x-y|_M/l)^2)
+                # 
+                cov_fn = gaussian
+            elif name == 'exponential':
+                #
+                # k(x,y) = sigma*exo(-0.5|x-y|_M/l)
+                # 
+                cov_fn = exponential
+            elif name == 'matern':
+                #
+                # k(x,y) = 
+                # 
+                cov_fn = matern
+            elif name == 'rational':
+                #
+                # k(x,y) = 1/(1 + |x-y|^2)^a
+                # 
+                cov_fn = rational
+ 
         # Store results
-        self.__fn = cov_fn
-        self.__parameters = parameters
+        IKernel.__init__(self, cov_fn, parameters, dim)
         
-    
-    def eval(self,x,y):
+
+class Covariance(object):
+    """
+    Covariance operator
+    """
+    def __init__(self, cov_kernel, dofhandler, 
+                 subforest_flag=None, method='interpolation'):
         """
-        Evaluate kernel at the points x and y
-        
-        Inputs:
-        
-            x,y: (n_points, dim) array of spatial points
-            
-                
-        Output:
-        
-            k: double, (n_points,) kernel value, at points 
+        Constructor
         """
-        return self.__fn(x,y, **self.__parameters)
-    
-    
-    def slice(self, x, pos):
-        """
-        Evaluate kernel only in one argument
+        # Store covariance kernel
+        self.__kernel = cov_kernel
+        
+        # Store dofhandler
+        dofhandler.distribute_dofs()
+        dofhandler.set_dof_vertices()
+        self.__dofhandler = dofhandler
         
         
-        Inputs:
+        # Element
+        element = dofhandler.element
         
-            x: double, (n_points,dim) array of spatial points
-            
-            pos: int, variable position at which kernel is evaluated
-            
-            
-        Output:
+        # Mesh 
+        mesh = dofhandler.mesh
         
-            slice: list, of n_points functions, each of which corresponds to
-                an entry of the array x.
-            
-        """
-        n_points = x.shape[0]
-        kernel_slice = []
-        for i in range(n_points):
-            if pos==0:
-                #
-                # Resolve kernel in first argument
-                # 
-                f = lambda y: self.eval(np.repeat(x[i,:],n_points),y)
-            elif pos==1:
-                #
-                # Resolve kernel in second argument
-                # 
-                f = lambda x: self.eval(x, np.repeat(x[i,:],n_points))
+        # Basis
+        u = Basis(element, 'u')
+        
+        # Mass matrix 
+        m = Form(trial=u, test=u)
+        
+        if method=='interpolation':
             #
-            # Add function to list
+            # Construct integral kernel from interpolants
+            #
+            
+            # Slice kernel at dof vertices
+            x = dofhandler.get_dof_vertices()
+            f = []
+            for i in range(dofhandler.n_dofs()):
+                f.append(cov_kernel.slice(x[i,:],pos=0))
+            fn = Function(f, 'explicit', mesh=mesh)
+            
+            # Bilinear form with given kernel
+            k = Form(Kernel(fn), trial=u, test=u)
+            
+            # Standard assembler
+            assembler = Assembler([[m],[k]], mesh, subforest_flag=subforest_flag)
+            
+        elif method=='projection':
+            #
+            # Simple assembler for the mass matrix
             # 
-            kernel_slice.append(f)
-        return kernel_slice
-              
+            assembler = Assembler([m], mesh, subforest_flag=subforest_flag)
+            
+        elif method=='nystroem':
+            pass
+        else:
+            raise Exception('Only "interpolation", "projection",'+\
+                            ' or "nystroem" supported for input "method"')
+        
+        self.assembler = assembler
+        self.subforest_flag = subforest_flag
+    
+    
+    def dim(self):
+        """
+        Returns the dimension of the underlying domain
+        """
+        return self.dofhandler.mesh.dim()
+    
+    
+    def kernel(self):
+        """
+        Returns the covariance kernel
+        """
+        return self.__kernel
+        
+        
+    def assemble(self, method):
+        """
+        Assemble the covariance matrix 
+        """
+        pass
+        """ 
+        assert method in ['projection','interpolation'], \
+            'Input "method" should be "projection" or "interpolation"'
+    
+    
+        if method=='projection':
+            #
+            # Approximate covariance operator by projection
+            # 
+            sf = self.subforest_flag
+            cells = self.assembler.mesh.cells.get_leaves(subforest_flag=sf)
+            
+            n_cells = len(cells)
+            for i in range(n_cells):
+                #
+                # Cells in outer integral
+                # 
+                for j in range(i,n_cells):
+                    #
+                    # Cells in inner integral
+                    # 
+                    
+                    # Cells
+                    ci, cj = cells[i], cells[j]
+                
+                    # Cell dofs
+                    ci_dofs, cj_dofs = self.cell_dofs(ci), self.cell_dofs(cj)
+                    
+                    # Cell addresses
+                    ci_addr, cj_addr = ci.get_node_address(), cj.get_node_address()
+                    
+                    # Shape info
+                    ci_info, cj_info = self.shape_info(ci), self.shape_info(cj)
+            
+                    # Gauss nodes and weights
+                    xi_g, wi_g = self.gauss_rules(ci_info)
+                    xj_g, wj_g = self.gauss_rules(cj_info)
+                    
+                    n_gauss = xi_g.shape[0]
+                    
+                    #  Evaluate shape functions at Gauss points
+                    phii = self.shape_eval(ci_info, xi_g, ci)
+                    phij = self.shape_eval(cj_info, xj_g, cj)
+                    
+                    
+                    #
+                    # Evaluate covariance function at the local Gauss points
+                    # 
+                    ii,jj = np.meshgrid(np.arange(n_gauss),np.arange(n_gauss))
+                    if self.dim() == 1:
+                        x1, x2 = xi_g[ii.ravel()], xj_g[jj.ravel()]
+                    elif self.dim() == 2:
+                        x1, x2 = xi_g[ii.ravel(),:],xj_g[jj.ravel(),:]
+            
+                    C_loc = self.kernel().eval(x1,x2,**self.cov_par)
+                    C_loc = C_loc.reshape(n_gauss,n_gauss)
+
+                    #
+                    # Compute local integral                   
+                    # 
+                    # Weight shape functions 
+                    Wphii = np.diag(wi_g).dot(phii)
+                    Wphij = np.diag(wj_g).dot(phij)
+                    
+                    # Combine
+                    CC_loc = np.dot(Wphii.T, C_loc.dot(Wphij))
+                    
+                    
+                    
+                    
+            #
+            # Assemble local forms and assign to global dofs
+            #
+            for problem in self.problems:
+                #
+                # Loop over problems
+                # 
+                i_problem = self.problems.index(problem)
+                for form in problem:
+                    #
+                    # Evaluate form
+                    # 
+                    form_loc = form.eval(cell, xg, wg, phi, cell_dofs, \
+                                         self.compatible_functions)                   
+                    
+                    if form.type=='constant':
+                        #
+                        # Constant form
+                        # 
+                        
+                        # Increment value
+                        self.af[i_problem]['constant'].update(cell_address, form_loc) 
+                    elif form.type=='linear':
+                        # 
+                        # Linear form
+                        # 
+                        
+                        # Extract test dof indices
+                        etype_tst = form.test.element.element_type()
+                        dofs_tst  = cell_dofs[etype_tst]
+                                
+                        # Store dofs and values in assembled_form
+                        self.af[i_problem]['linear'].update(cell_address, 
+                                                            form_loc, 
+                                                            row_dofs=dofs_tst)
+                        
+                        
+                    elif form.type=='bilinear':
+                        #
+                        # Bilinear Form
+                        # 
+                        
+                        # Test dof indices
+                        etype_tst = form.test.element.element_type()
+                        etype_trl = form.trial.element.element_type()
+                        
+                        # Trial dof indices
+                        dofs_tst = cell_dofs[etype_tst]
+                        dofs_trl = cell_dofs[etype_trl]    
+                        
+                        # Store dofs and values in assembled form 
+                        self.af[i_problem]['bilinear'].update(cell_address, 
+                                                              form_loc,
+                                                              row_dofs=dofs_tst,
+                                                              col_dofs=dofs_trl)
+                                                            
+        #
+        # Post-process assembled forms
+        # 
+        for i_problem in range(len(self.problems)):
+            for form_type in self.af[i_problem].keys():
+                #
+                # Iterate over assembled forms
+                # 
+                af = self.af[i_problem][form_type]
+                
+                #
+                # Consolidate assembly
+                ## 
+                af.consolidate(clear_cell_data=clear_cell_data)
+                
+                
+        elif method=='interpolation':
+            #
+            # Approximate covariance by interpolation
+            # 
+            self.assembler.assemble()
+        """    
+        
+    def factor(self, method):
+        """
+        Factor covariance matrix
+        """
+        pass
+    
+ 
 '''   
 class Covariance(object):
     """
@@ -360,7 +554,7 @@ class Covariance(object):
             
             mesh: Mesh, object denoting physical mesh
             
-            etype: str, finite element space (see FiniteElement for
+            etype: str, finite element space (see Element for
                 supported spaces).
                 
             assembly_type: str, specifies type of approximation,
@@ -371,8 +565,8 @@ class Covariance(object):
         """
         
         self.__kernel = CovKernel(name, parameters)
-        assert isinstance(element, FiniteElement), \
-        'Input "element" must be of type FiniteElement.'
+        assert isinstance(element, Element), \
+        'Input "element" must be of type Element.'
             
         dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs()
@@ -570,7 +764,8 @@ class Covariance(object):
         Sigma[i,j] = Sigma[j,i]
         return Sigma      
 '''
-
+  
+    
 class Precision(object):
     """
     Precision Matrix for 

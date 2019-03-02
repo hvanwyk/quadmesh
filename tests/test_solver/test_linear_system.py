@@ -3,13 +3,13 @@ import numpy as np
 from mesh import Mesh1D
 from mesh import QuadMesh
 from fem import DofHandler
-from fem import Function
+from function import Function
 from fem import Basis
-from fem import Form
-from fem import Kernel
-from fem import Assembler
+from assembler import Form
+from assembler import Kernel
+from assembler import Assembler
 from fem import QuadFE
-from fem import LinearSystem
+from solver import LinearSystem
 #from plot import Plot
 
 
