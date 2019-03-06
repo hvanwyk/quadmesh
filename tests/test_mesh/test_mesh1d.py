@@ -76,7 +76,7 @@ class TestMesh1D(unittest.TestCase):
         self.assertEqual(x1,4)
         
         
-    def test_locate_point(self):
+    def test_bin_points(self):
         # =====================================================================
         # Straightforward
         # =====================================================================
@@ -85,7 +85,9 @@ class TestMesh1D(unittest.TestCase):
         mesh = Mesh1D(x=x)
         
         # Locate the interval containing pi
-        interval = mesh.locate_point(np.pi)
+        bins = mesh.bin_points(np.pi)
+        
+        interval, dummy = bins[0]
         
         # Check if its the right interval
         self.assertEqual(interval.get_node_position(),3)
@@ -109,11 +111,11 @@ class TestMesh1D(unittest.TestCase):
         mesh.cells.get_child(1).mark(1)
         
         # Consider only flagged submesh
-        self.assertEqual(mesh.locate_point(3.8, flag=1), 
+        self.assertEqual(mesh.bin_points(3.8, subforest_flag=1)[0][0], 
                          mesh.cells.get_child(-1))
         
         # Consider the entire mesh.
-        self.assertEqual(mesh.locate_point(3.9), 
+        self.assertEqual(mesh.bin_points(3.9)[0][0], 
                          mesh.cells.get_child(1).get_child(1))
         
     def test_mark_boundary(self):

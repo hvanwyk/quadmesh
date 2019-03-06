@@ -13,7 +13,8 @@ class Map(object):
     """
     def __init__(self, mesh=None, element=None, dofhandler=None, \
                  subforest_flag=None, subregion_flag=None, \
-                 dim=None, n_variables=1):
+                 dim=None, n_variables=1, symmetric=False, \
+                 subsample=None):
         """
         Constructor:
         
@@ -147,8 +148,19 @@ class Map(object):
             
         assert n_variables <= 2, 'Only one or two variables supported.'
         self.__n_variables = n_variables
+        
+        # If function is symmetric, it should have 2 variables
+        if symmetric:
+            assert self.n_variables()==2, \
+            'Symmetric functions should at least be bivariate'
+        self.__symmetric = symmetric
     
-    
+        # 
+        # Initialize subsample
+        # 
+        self.set_subsample(subsample) 
+        
+        
     def n_variables(self):
         """
         Return the number of input variables for the function
@@ -163,11 +175,61 @@ class Map(object):
         pass
     
     
+    def set_subsample(self, i=None):
+        """
+        Set subset of samples to be evaluated
+        """
+        if i is not None:
+            #
+            # Non-trivial subsample
+            # 
+            assert type(i) is np.ndarray, \
+            'subsample index set should be an array'
+        
+            assert self.n_samples() is not None,\
+            'Cannot sub-sample from a deterministic function'
+            
+            assert len(i.shape)==1, \
+            'Subsample index is a 1-dimensional integer array.'
+            
+            assert all([type(ii) is int for ii in i]), \
+            'Subsample should be an integer array.'
+            
+            assert i.max()<self.n_samples(), \
+            'Subsample index out of bounds.'
+        
+        self.__subsample = i
+    
+    
+    def subsample(self):
+        """
+        Returns the index set representing the subsample or else a list of
+        integers from 0 to n_samples-1.
+        """
+        if self.__subsample is None:
+            #
+            # No subsample specified -> return full sample
+            # 
+            return np.arange(self.n_samples())
+        else:
+            #
+            # Return subsample.
+            # 
+            return self.__subsample
+    
+    
     def dim(self):
         """
         Return the dimension of the underlying domain
         """
         return self.__dim
+    
+
+    def is_symmetric(self):
+        """
+        Returns true if the function is symmetric
+        """
+        return self.__symmetric
     
 
     def mesh(self):
@@ -184,6 +246,13 @@ class Map(object):
             # Return mesh
             #
             return self.__mesh 
+    
+    
+    def element(self):
+        """
+        Returns the function's element
+        """
+        return self.__element
     
     
     def dofhandler(self):
@@ -1283,7 +1352,7 @@ class Explicit(Map):
         """
         Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, \
                      subforest_flag=subforest_flag, subregion_flag=subregion_flag, \
-                     dim=dim, n_variables=n_variables)
+                     dim=dim, n_variables=n_variables, symmetric=symmetric)
         
         # Define rules
         self.set_rules(f, parameters)
@@ -1300,12 +1369,7 @@ class Explicit(Map):
         assert self.n_variables() in [1,2], \
             'The number of inputs should be 1 or 2.'
         
-        # If function is symmetric, it should have 2 variables
-        if symmetric:
-            assert self.n_variables()==2, \
-            'Symmetric functions should at least be bivariate'
         
-        self.__symmetric = symmetric
         
 
     def n_samples(self):
@@ -1479,16 +1543,10 @@ class Explicit(Map):
             # 
             self.__f.append(f)
             self.__parameters.append(parameters)
-            
-        
-    def is_symmetric(self):
-        """
-        Returns true if the function bivariate and symmetric, false otherwise
-        """
-        return self.__symmetric
+
     
     
-    def eval(self, x, subsample=None):
+    def eval(self, x):
         """
         Evaluate function at point x
         
@@ -1537,21 +1595,12 @@ class Explicit(Map):
             #
             # Only stochastic functions can be sampled
             # 
-            if subsample is None:
+            if self.subsample() is None:
                 subsample = np.array(range(n_samples))
             else:
-                if type(subsample) is int:
-                    subsample = np.array([subsample])
-                else:
-                    assert type(subsample) is np.ndarray, \
-                    'vector specifying samples should be an array'
-                    
-                    assert len(subsample.shape) == 1, \
-                    'sample indexing vector should have dimension 1'
-                    
-                    assert self.n_samples() > subsample.max(), \
-                    'Subsample index out of bounds.'
-            
+                subsample = self.subsample()
+                
+                
             # Subsample size       
             n_subsample = len(subsample)
         else:
@@ -1615,13 +1664,13 @@ class Explicit(Map):
             return f_vec
 
     
-class Nodal(Function):
+class Nodal(Map):
     """
     Nodal functions
     """    
-    def __init__(self, f=None, parameters=None, data=None, mesh=None, \
+    def __init__(self, f=None, parameters={}, data=None, mesh=None, \
                  element=None, dofhandler=None, subforest_flag=None, \
-                 subregion_flag=None, dim=None, n_variables=1):
+                 subregion_flag=None, dim=None, n_variables=1, symmetric=False):
         """
         Constructor
         
@@ -1641,7 +1690,7 @@ class Nodal(Function):
         """
         Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, \
                      subforest_flag=subforest_flag, subregion_flag=subregion_flag, \
-                     dim=dim, n_variables=n_variables)
+                     dim=dim, n_variables=n_variables, symmetric=symmetric)
         # 
         # Checks
         # 
@@ -1662,6 +1711,25 @@ class Nodal(Function):
         # Store nodal values
         # 
         self.set_data(data=data, f=f, parameters=parameters)
+        
+    
+    def n_samples(self):
+        """
+        Returns the number of samples 
+        """
+        if self.n_variables()==len(self.__data.shape):
+            # Determinimistic function
+            return None
+        else:
+            # Sampled function
+            return self.__data.shape[-1]
+    
+    
+    def data(self):
+        """
+        Returns the Nodal function's data array
+        """
+        return self.__data
         
     
     def set_data(self, data=None, f=None, parameters={}):
@@ -1686,7 +1754,62 @@ class Nodal(Function):
             
             # Store data
             self.__data = data
-        
+        elif f is not None:
+            #
+            # Function (or list of functions) given
+            # 
+            
+            # Define an explicit function with the properties 
+            fn = Explicit(f, parameters=parameters, dim=self.dim(), 
+                          n_variables=self.n_variables())
+            
+            #
+            # Get Dof-vertices
+            # 
+            dofhandler = self.dofhandler()
+            sf = self.subforest_flag()
+            dofs = dofhandler.get_region_dofs(subforest_flag=sf)
+            n_dofs = len(dofs)
+            x = dofhandler.get_dof_vertices(dofs) 
+            
+            n_variables = self.n_variables()
+            if n_variables==1:
+                #
+                # Univariate function
+                # 
+                data = fn.eval(x)
+            elif n_variables==2:
+                #
+                # Bivariate function
+                # 
+                cols, rows = np.mgrid[0:n_dofs,0:n_dofs]
+                x1,x2 = x[rows.ravel(),:], x[cols.ravel(),:]
+                
+                n_samples = fn.n_samples()
+                if n_samples is None:
+                    #
+                    # Deterministic
+                    # 
+                    data = fn.eval((x1,x2)).reshape((n_dofs,n_dofs))
+                else:
+                    #
+                    # Sampled function
+                    # 
+                    data = fn.eval((x1,x2)).reshape((n_dofs,n_dofs,n_samples))
+            self.__data = data    
+        else:
+            raise Exception('Specify either "data" or "f".')
+
+        # Check that dimensions are consistent
+        if self.n_samples() is None:
+            # Deterministic function
+            assert self.n_variables()==len(data.shape), \
+            'Deterministic function data dimension incorrect.'
+        else:
+            # Sampled function
+            assert self.n_variables()+1==len(data.shape), \
+            'Sampled function data dimension incorrect'
+    
     
     def add_data(self, data=None, f=None, parameters=None):
         """
@@ -1703,12 +1826,332 @@ class Nodal(Function):
         pass
     
     
-    def eval(self):
+    def eval(self, x=None, cell=None, phi=None, dofs=None, derivative=None):
         """
-        Evaluate Function
-        """ 
-        pass
+        Evaluate function at an array of points x
+        
+        The function can be evaluated by:
+        
+            1. Specifying the points x (in a compatible format).
+                - Search through mesh to find cells containing x's
+                - Get function values at local dofs  
+                - Evaluate shape functions for each cell
+                - fv = phi*f_loc
+        
+            2. Specifying points and cell
+                - Check that x in cell
+                - Get function values at local dofs  
+                - Evaluate shape functions on cell
+                - f = phi*f_loc
+                
+            3. Specifying phi and dofs (x, derivatives, cell not checked)
+                - Get function values at local dofs
+                - Compute f = phi*f_loc 
+            
+            
+        Inputs:
+        
+            NOTE: If n_variables=2, use tuples for x, cell, phi, dofs, and derivative
+            
+            *x: double, function input in the form of an (n_points, dim) array,
+                or a list of vertices or a list of tuples.
+            
+            *cell: Cell, on which f is evaluated. If included, all points in x
+                should be contained in it. 
+            
+            *phi: shape functions (if function is nodal). 
+            
+            *dofs: list/np.ndarray listing the degrees of freedom associated
+                 with columns of the shape functions. 
+                
+            *derivative: int, tuple, (order,i,j) where order specifies the order
+                of the derivative, and i,j specify the variable wrt which we 
+                differentiate, e.g. (2,0,0) computes d^2p/dx^2 = p_xx,
+                (2,1,0) computes d^2p/dxdy = p_yx
+        
+        
+        Output:
+        
+            If the function is deterministic, return an (n_points, ) vector of
+                function values
+                
+            If the function is stochastic, return an (n_points, n_samples)
+                array.
+                    
+        """
+        n_samples = self.n_samples()
+        n_variables = self.n_variables()
+        
+        # Get dof information
+        sf, rf = self.subforest_flag(), self.subregion_flag()
+        dh = self.dofhandler()
+        mesh = dh.mesh
+        element = self.dofhandler().element
+        gdofs = dh.get_region_dofs(subforest_flag=sf, entity_flag=rf)
+             
+        if phi is not None:
+            # =============================================================
+            # Shape function specified
+            # =============================================================
+            assert dofs is not None, \
+            'When shape function provided, require input "dofs".'
+            if n_variables==1:
+                #
+                # Single input variable
+                # 
+                
+                #
+                # Checks
+                #             
+                assert all([dof in gdofs for dof in dofs]),\
+                    'Nodal function not defined at given dofs.' 
+                
+                assert len(dofs)==phi.shape[1], \
+                    'Number of columns in phi should equal the number of dofs'
+                 
+                #
+                # Evaluate function at local dofs 
+                # 
+                idx_cell = [gdofs.index(i) for i in dofs]
+        
+                if n_samples is None:
+                    #
+                    # Deterministic function
+                    # 
+                    f_loc = self.data()[idx_cell]
+                else:
+                    #
+                    # Stochastic function
+                    # 
+                    f_loc = self.data()[np.ix_(idx_cell, self.subsample())]
+                
+                #
+                # Combine local 
+                # 
+                f_vec = np.dot(phi, f_loc)
+                return f_vec
+            
+            elif n_variables==2:
+                #
+                # Two inputs
+                #
+                phir, phic = phi
+                rdofs, cdofs = dofs
+                
+                # 
+                # Checks
+                # 
+                assert all([dof in gdofs for dof in rdofs]),\
+                    'Nodal function not defined at given dofs'
+                    
+                assert all([dof in gdofs for dof in cdofs]),\
+                    'Nodal function not defined at given dofs'
+                    
+                assert len(rdofs==phir.shape[1]), \
+                    'Number of columns in phi_rows should equal the number of dofs'
+
+                assert len(cdofs==phic.shape[1]), \
+                    'Number of columns in phi_cols should equal the number of dofs'
+
+                #
+                # Evaluate functions at local dofs 
+                # 
+                idx_rcell = [gdofs.index(i) for i in rdofs]
+                idx_ccell = [gdofs.index(i) for i in cdofs]
+                
+                if n_samples is None:
+                    #
+                    # Deterministic function
+                    # 
+                    f_loc = self.data()[np.ix_(idx_rcell,idx_ccell)]
+                    f_vec = np.sum(phir*(phic.T.dot(f_loc)),axis=1)
+                else:
+                    #
+                    # Stochastic function
+                    #
+                    f_loc = self.data()[np.ix_(idx_rcell,idx_ccell, self.subsample())]
+                    Aphic = np.tensordot(phic, f_loc, axes=(1,1))
+                    rAc = phir*Aphic.transpose((2,0,1))
+                    rAc = rAc.transpose((1,2,0))
+                    f_vec = np.sum(rAc, axis=1) 
+      
+        else:
+            # =============================================================
+            # Must compute shape functions (need x)
+            # =============================================================
+            if n_variables==1:
+                #
+                # Single variable
+                # 
+                assert x is not None, \
+                    'Need input "x" to evaluate shape functions.'
+            
+                x, is_singleton = convert_to_array(x, dim=self.dim(), 
+                                                   return_is_singleton=True)
+                
+                #
+                # Initialize output
+                # 
+                n_points = x.shape[0]
+                if n_samples is None:
+                    # Deterministic function
+                    f_vec = np.array(n_points)
+                else:
+                    # Stochastic function
+                    f_vec = np.array((n_points,n_samples))
+                    
+                #
+                # Determine tree cells to traverse
+                # 
+                if cell is None:
+                    #
+                    # Cell not specified
+                    # 
+                    bins = mesh.bin_points(x, subforest_flag=sf)
+                else:
+                    #
+                    # Cell given
+                    # 
+                    bins = cell.bin_points(x, subforest_flag=sf)
+                
+                
+                for cell, i_points in bins:
+                    #
+                    # Evaluate shape functions
+                    # 
+                    dofs = dh.get_cell_dofs(cell)
+                    x_loc = x[i_points]
+                    
+                    phi = element.shape(x_loc, cell=cell, derivatives=derivative)
+                    
+                    #
+                    # Compute nodal function at given points
+                    # 
+                    f_vec[i_points] = self.eval(phi, dofs)
+                    
+            elif n_variables==2:
+                #
+                # Bivariate function
+                # 
+                
+                #
+                # Parse x
+                # 
+                x1, x2 = x
+                assert x1.shape==x2.shape, \
+                'Points x1 and x2 should have the same shape'
+                
+                x1, is_singleton = convert_to_array(x1, dim=self.dim(), 
+                                                    return_is_singleton=True)
+                
+                x2 = convert_to_array(x2, dim=self.dim())
+                
+                #
+                # Parse derivative
+                # 
+                if derivative is None:
+                    der1, der2 = (0,), (0,)
+                else:
+                    der1, der2 = derivative
+                    
+                    
+                if cell is not None:
+                    #
+                    # Cell tuple given
+                    #
+                    cell_1, cell_2 = cell
+                    
+                    # Bin points within each cell
+                    bins_1 = cell_1.bin_points(x1, subforest_flag=sf)
+                    bins_2 = cell_2.bin_points(x2, subforest_flag=sf)
+                
+                else:
+                    #
+                    # No cells, use mesh
+                    # 
+                    bins_1 = mesh.bin_points(x1, subforest_flag=sf)
+                    bins_2 = mesh.bin_points(x2, subforest_flag=sf)
+                    
+                n_dofs = element.n_dofs()  
+                rphi = np.empty((n_points, n_dofs))
+                rdofs = np.empty((n_points, n_dofs))
+                for c1, i1 in bins_1:
+                    #
+                    # Evaluate phir 
+                    # 
+                    rdofs[i1] = dh.get_cell_dofs(c1)
+                    rphi[i1] = element.shape(x1[i1], cell=c1, derivatives=der1)
+                     
+                cphi = np.empty((n_points, n_dofs))
+                cdofs = np.empty((n_points, n_dofs))
+                for c2, i2 in bins_2:
+                    #
+                    # Evaluate column shape functions 
+                    # 
+                    cdofs[i2] = dh.get_cell_dofs(c2)
+                    cphi[i2] = element.shape(x2[i2], cell=c2, derivatives=der2)
+                
+                if n_samples is None:
+                    # Deterministic function
+                    pass
+                else:
+                    # Stochastic function
+                    pass
+                    
+                    
+                
+                    
+                     
+            """
+            #
+            # Evaluate function within each cell
+            #
+            for cell in cell_list:
+                #
+                # Evaluate function at local dofs 
+                # 
+                idx_cell = [gdofs.index(i) for i in \
+                            self.dofhandler().get_cell_dofs(cell)]  
+                if self.n_samples() is None:
+                    f_loc = self.__f[idx_cell]
+                else:
+                    f_loc = self.__f[np.ix_(idx_cell, self.subsamples())]
     
+                #
+                # Evaluate shape function at x-values
+                #    
+                in_cell = cell.contains_points(x)
+                x_loc = x[in_cell,:]
+                phi = self.dofhandler().element.shape(x_loc, cell=cell, \
+                                                      derivatives=derivative)
+                #
+                # Update output vector
+                # 
+                if n_samples is None:
+                    f_vec[in_cell] = np.dot(phi, f_loc)
+                else:
+                    f_vec[in_cell,:] = np.dot(phi, f_loc)
+                """
+    
+        if is_singleton:
+            #
+            # Singleton input
+            # 
+            if n_samples is None:
+                #
+                # Deterministic function
+                # 
+                return f_vec[0]
+            else:
+                #
+                # Sampled function
+                # 
+                return f_vec[0,:]
+        else:
+            #
+            # Vector input
+            # 
+            return f_vec
     
     def mesh_compatible(self, mesh, subforest_flag):
         """

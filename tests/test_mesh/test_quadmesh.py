@@ -15,9 +15,45 @@ class TestQuadMesh(unittest.TestCase):
         self.assertTrue(mesh.is_quadmesh())
         
         
-    def test_locate_point(self):
-        pass
-    
+    def test_bin_points(self):
+        # Construct mesh
+        mesh = QuadMesh(resolution=(2,2))
+        mesh.record(1)
+        mesh.cells.get_child(0).mark('refine')
+        mesh.cells.refine(refinement_flag='refine')
+        
+        #
+        # Bin random points using the coarsest mesh
+        #
+        x = np.random.rand(5,2)
+        bins = mesh.bin_points(x,subforest_flag=1)
+        for cell, dummy in bins:
+            self.assertEqual(cell.get_depth(),0)
+        
+        #
+        # x
+        # 
+        x = np.array([[0.125,0.125]])
+        bins = mesh.bin_points(x, subforest_flag=1)
+        self.assertEqual(len(bins),1)
+        for cell, dummy in bins:
+            # Cell should be on level 0
+            self.assertEqual(cell.get_depth(),0)
+            
+        # Bin over all cells
+        bins = mesh.bin_points(x)
+        self.assertEqual(len(bins),1)
+        for cell, dummy in bins:
+            # Cell should now be on level  1
+            self.assertEqual(cell.get_depth(),1)
+        
+        # 
+        # Out of bounds x
+        # 
+        x = np.array([[-1,-1]])
+        self.assertRaises(Exception, mesh.bin_points, *(x,))
+        
+            
     
     def test_is_balanced(self):
         

@@ -1,8 +1,11 @@
 from mesh import Vertex, HalfEdge, QuadCell
 from mesh import convert_to_array
 from assembler import GaussRule
+from plot import Plot
 import numpy as np
+import matplotlib.pyplot as plt
 import unittest
+
 
 
 
@@ -117,8 +120,82 @@ class TestQuadCell(unittest.TestCase):
         
     
     def test_locate_point(self):
-        pass
+        v_sw = Vertex((0,0))
+        v_se = Vertex((3,1))
+        v_ne = Vertex((2,3))
+        v_nw = Vertex((-1,1))
+        
+        h12 = HalfEdge(v_sw, v_se)
+        h23 = HalfEdge(v_se, v_ne)
+        h34 = HalfEdge(v_ne, v_nw)
+        h41 = HalfEdge(v_nw, v_sw)
+        cell = QuadCell([h12,h23,h34,h41])
+
+        
+        points = np.random.rand(5,2)
+        
+        
+    def test_bin_points(self):
+        #
+        # Cell vertices
+        # 
+        v1 = Vertex((0,0))
+        v2 = Vertex((1,0))
+        v3 = Vertex((1,1))
+        v4 = Vertex((0,1))
+        
+        # Cell HalfEdges
+        h12 = HalfEdge(v1, v2)
+        h23 = HalfEdge(v2, v3)
+        h34 = HalfEdge(v3, v4)
+        h41 = HalfEdge(v4, v1)
     
+        # Cell
+        cell = QuadCell([h12, h23, h34, h41])
+
+        # Split cell twice
+        cell.split()
+        cell.get_child(1).split()
+        
+        #
+        # Error: point not in cell
+        #
+        x = np.array([[-1,-1]]) 
+        self.assertRaises(Exception, cell.bin_points, *(x,))
+        
+        #
+        # Corner points
+        #
+        x = convert_to_array([v1,v2,v3,v4])
+        bins = cell.bin_points(x)
+        
+        # There should be four bins
+        self.assertEqual(len(bins),4)
+        
+        # No binning cells should have children
+        for c, dummy in bins:
+            self.assertFalse(c.has_children()) 
+        
+        #
+        # Center point
+        # 
+        x = np.array([[0.5,0.5]])
+        bins = cell.bin_points(x)
+        self.assertEqual(len(bins),1)
+        
+        #
+        # Mark        
+        # 
+        sf = '1'
+        for child in cell.get_children():
+            child.mark(sf)
+            
+        x = np.array([[0.75,0.25]])
+        bins = cell.bin_points(x, subforest_flag=sf)
+        for c, dummy in bins:
+            self.assertTrue(c.is_marked(sf))
+            self.assertFalse(c.has_children(flag=sf))
+        
         
     def test_reference_map(self):
         v_sw = Vertex((0,0))

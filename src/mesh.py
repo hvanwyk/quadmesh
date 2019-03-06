@@ -2710,42 +2710,78 @@ class Interval(HalfEdge):
             if i != 0:
                 # Middle children
                 child.assign_previous(self.get_child(i-1))
-                    
+           
     
-    def locate_point(self, point, subforest_flag=None):
+    def bin_points(self, points, i_points=None, subforest_flag=None):
         """
-        Returns the smallest subinterval that contains a given point
+        Determine the set of smallest subintervals (within submesh) that
+        contain the set of points, as well as the indices of these.
         
-        Note: The flag is a subtree type flag. If current interval is 
-            not flagged, then its children will also not be flagged.
+        Inputs:
+        
+            points: set of points
+            
+            i_points: indices of these points
+            
+            subforest_flag: submesh flag
+            
+        
+        Outputs:
+        
+            bins: (cell, index) tuples of cells containing subsets of the
+                points, and the points' indices.
         """
+        assert all(self.contains_points(points)), \
+        'Not all points contained in cell'
+        
+        sf = subforest_flag
+        
+        # Convert points to array
+        x = convert_to_array(points)
+        if i_points is None:
+            i_points = np.arange(x.shape[0])
+        
+        bins = []
         #
-        # Check that self contains the point
-        #
-        if subforest_flag is not None:
-            if not self.is_marked(subforest_flag):
-                return None  
-        if self.contains_points(point):
+        # Cell is not in submesh
+        # 
+        if not (sf is None or self.is_marked(flag=sf)):
             #
-            # Look for child that contains the point
-            #  
-            if self.has_children(flag=subforest_flag):
-                for child in self.get_children(flag=subforest_flag):
-                    if child.contains_points(point):
-                        #
-                        # Recursion
-                        # 
-                        return child.locate_point(point, subforest_flag=subforest_flag)  
-            else:
-                #
-                # Current cell is the smallest that contains point
-                # 
-                return self 
+            # Move up tree until in submesh
+            #
+            if self.has_parent():
+                cell = self.get_parent()
+                bins.extend(cell.bin_points(x, i_points, subforest_flag=sf))
+            return bins
+        
+        #
+        # Cell in submesh
+        #
+        if self.has_children(flag=sf):
+            #
+            # Points must be contained in some child cells
+            # 
+            for child in self.get_children(flag=sf):
+                in_cell = child.contains_points(x)
+                if any(in_cell):
+                    # Extract the points in child and bin 
+                    y = x[in_cell]
+                    i_y = i_points[in_cell]
+                    c_bin = child.bin_points(y,i_y, subforest_flag=sf)
+                    bins.extend(c_bin)
+                    
+                    # Remove points contained in child from list
+                    x = x[~in_cell]
+                    i_points = i_points[~in_cell] 
         else:
             #
-            # Point is not contained in self 
-            # 
-            return None        
+            # Base case
+            #
+            bins.append((self, i_points))
+            return bins
+        
+        return bins
+        
     
     
     def contains_points(self, points):
@@ -3306,38 +3342,83 @@ class QuadCell(Cell, Tree):
             for he_child in half_edge.get_children():
                 if he_child.is_periodic() and he_child.twin() is not None:
                     he_child.pair_periodic_vertices()
-                
-                
-    def locate_point(self, point, flag=None):
+    
+    
+    def bin_points(self, points, i_points=None, subforest_flag=None):
         """
-        Returns the smallest subcell that contains a given point
-        """
+        Returns a list of the smallest flagged subcells in containing at least 
+        one point, together with the indices of the included points
+        
+        Inputs:
+        
+            points: points in cell, to be categorized
+            
+            i_points: point indices (if contained within a larger array).
+            
+            subforest_flag: submesh indicator
+            
+            
+        Outputs:
+        
+            bins: list of (cell, i_points) pairs enumerating all cells 
+                that contain points, and the indices of these. 
+         """         
         #
-        # Check that self contains the point
+        # Check that cell contains points
+        #
+        assert all(self.contains_points(points)), \
+        'Not all points contained in cell'
+        
+        sf = subforest_flag
+        
+        # Convert points to array
+        x = convert_to_array(points)
+        if i_points is None:
+            i_points = np.arange(x.shape[0])
+        
+        bins = []
+
+        #
+        # Cell is not in submesh
         # 
-        if self.contains_points(point):
+        if not (sf is None or self.is_marked(flag=sf)):
             #
-            # Look for child that contains the point
-            #  
-            if self.has_children(flag=flag):
-                for child in self.get_children(flag=flag):
-                    if child.contains_points(point):
-                        #
-                        # Recursion
-                        # 
-                        return child.locate(point)  
-            else:
-                #
-                # Current cell is the smallest that contains point
-                # 
-                return self 
+            # Move up tree until in submesh
+            #
+            if self.has_parent():
+                cell = self.get_parent()
+                bins.extend(cell.bin_points(x, i_points, subforest_flag=sf))
+            return bins
+        
+        #
+        # Cell is in submesh
+        #
+        if self.has_children(flag=sf):
+            #
+            # Points must be contained in some child cells
+            # 
+            for child in self.get_children(flag=sf):
+                in_cell = child.contains_points(x)
+                if any(in_cell):
+                    # Extract the points in child and bin 
+                    y = x[in_cell]
+                    i_y = i_points[in_cell]
+                    c_bin = child.bin_points(y,i_y, subforest_flag=sf)
+                    bins.extend(c_bin)
+                    
+                    # Remove points contained in child from list
+                    x = x[~in_cell]
+                    i_points = i_points[~in_cell] 
         else:
             #
-            # Point is not contained in self 
-            # 
-            return None
+            # Base case
+            #
+            bins.append((self, i_points))
+            return bins
+        
+        return bins
     
-    
+        
     def reference_map(self, x_in, jacobian=False, 
                       hessian=False, mapsto='physical'):
         """
@@ -6080,29 +6161,57 @@ class Mesh1D(Mesh):
         return 0 in self.__periodic_coordinates
     
     
-    def locate_point(self, point, flag=None):
+    def bin_points(self, points, i_points=None, subforest_flag=None):
         """
-        Returns the smallest (flagged) cell containing a given point 
-        or None if current cell doesn't contain the point
+        Determine a list of LEAF cells in the submesh, each of which contains 
+        at least one point in points. Return the list of tuples of LEAF cells 
+        and point indices. 
         
-        Input:
+        Inputs:
+        
+            points: Set of admissible points
             
-            point: Vertex
-            
-        Output:
-            
-            cell: smallest cell that contains x
-                
+            subforest_flag: submesh flag
+          
+          
+        Outputs:
+        
+            bins: tuple of (cell, index) pairs detailing the bins and indices
+                of points.
         """
-        for interval in self.cells.get_children(flag=flag):
-            if interval.contains_points(point):
-                if flag is not None:
-                    if not interval.is_marked(flag):
-                        return None
-                    else: return interval.locate_point(point, subforest_flag=flag)
-                else:
-                    return interval.locate_point(point, subforest_flag=flag)
+        x = convert_to_array(points)
+        
+        n_points = x.shape[0]
+        
+        if i_points is None:
+            i_points = np.arange(n_points)
+        else:
+            assert n_points==len(i_points)
+            
+        bins = []
+        
+        for cell in self.cells.get_children(flag=subforest_flag):
+            in_cell = cell.contains_points(x)
+            if any(in_cell):
+                #
+                # Cell contains (some) points
+                #
                 
+                # Isolate points in cell and their indices
+                y = x[in_cell]    # subset of points
+                y_idx = i_points[in_cell]  # index of subset
+                
+                # Recursion step
+                c_bin = cell.bin_points(y, y_idx, subforest_flag)
+                bins.extend(c_bin)
+                
+                # Eliminate points from list
+                x = x[~in_cell]
+                i_points = i_points[~in_cell] 
+        
+        assert len(x)==0, 'Some points are not in domain.'    
+        return bins
+              
     
     def get_boundary_vertices(self):
         """
@@ -7130,28 +7239,60 @@ class QuadMesh(Mesh2D):
                         file_path=file_path, file_format=file_format)
         self.cells = Forest(self.cells.get_children())
          
-        
-    def locate_point(self, point, flag=None):
+    
+    def bin_points(self, points, i_points=None, subforest_flag=None):
         """
-        Returns the smallest (flagged) cell containing a given point 
-        or None if current cell doesn't contain the point
+        Determine a list of LEAF cells in the submesh, each of which contains 
+        at least one point in points. Return the list of tuples of LEAF cells 
+        and point indices. 
         
-        Input:
+        Inputs:
+        
+            points: Set of admissible points
             
-            point: Vertex
+            subforest_flag: submesh flag
+          
+          
+        Outputs:
+        
+            bins: tuple of (cell, index) pairs detailing the bins and indices
+                of points.
+        """
+        x = convert_to_array(points)
+        
+        n_points = x.shape[0]
+        
+        if i_points is None:
+            i_points = np.arange(n_points)
+        else:
+            assert n_points==len(i_points)
             
-        Output:
-            
-            cell: smallest cell that contains x
+        bins = []
+        
+        for cell in self.cells.get_children(flag=subforest_flag):
+            in_cell = cell.contains_points(x)
+            if any(in_cell):
+                #
+                # Cell contains (some) points
+                #
                 
-        """
-        for cell in self.cells.get_children(flag=flag):
-            if cell.contains_points(point):
-                if cell.has_children(flag=flag):
-                    return cell.locate_point(point, flag=flag)
-                else:
-                    return cell
-
+                # Isolate points in cell and their indices
+                y = x[in_cell]    # subset of points
+                y_idx = i_points[in_cell]  # index of subset
+                
+                # Recursion step
+                c_bin = cell.bin_points(y, y_idx, subforest_flag)
+                bins.extend(c_bin)
+                
+                # Eliminate points from list
+                x = x[~in_cell]
+                i_points = i_points[~in_cell] 
+        
+        assert len(x)==0, 'Some points are not in domain.'
+        
+        return bins
+                
+    
         
     def is_balanced(self, subforest_flag=None):
         """

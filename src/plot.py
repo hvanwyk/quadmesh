@@ -5,7 +5,7 @@ Created on Feb 8, 2017
 '''
 
 import matplotlib.pyplot as plt
-from mesh import QuadCell
+from mesh import QuadCell, Cell, Interval
 from matplotlib import colors as clrs
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
@@ -160,7 +160,8 @@ class Plot(object):
         #
         # Plot mesh cells
         # 
-        axis = self.cells(axis, mesh, subforest_flag=subforest_flag)
+        cells = mesh.get_region(entity_type='cell', subforest_flag=subforest_flag)
+        axis = self.cells(axis, cells)
         
         #
         # Plot regions
@@ -521,8 +522,7 @@ class Plot(object):
 
     
            
-    def cells(self, axis, mesh, subforest_flag=None, 
-              cell_flag=None, color='w', alpha=1):
+    def cells(self, axis, cells, color='w', alpha=1):
         """
         Plot (selected) cells in a mesh
         
@@ -530,7 +530,7 @@ class Plot(object):
         
             axis: Axes, current axes
             
-            mesh: Mesh, whose cells are to be plotted
+            cells: cells are to be plotted
             
             subforest_flag: str/int/tuple, submesh flag
             
@@ -546,17 +546,15 @@ class Plot(object):
         #
         # Iterate over cells
         # 
-        for cell in mesh.get_region(flag=cell_flag, entity_type='cell', 
-                                    subforest_flag=subforest_flag):
-            dim = mesh.dim()
-            if dim == 1:
+        for cell in cells: 
+            if isinstance(cell, Interval):
                 #
                 # 1D Mesh
                 # 
                 a, = cell.base().coordinates()
                 b, = cell.head().coordinates()
                 axis.plot([a,b], [0,0], '-|k')
-            elif dim == 2:
+            elif isinstance(cell, Cell):
                 #
                 # 2D Mesh 
                 #

@@ -213,7 +213,9 @@ class TestExplicit(unittest.TestCase):
         
         pars = [{'a': 1}, {'a':2}]
         
+        #
         # Singletons
+        #
         x  = {1: {1: 2,     2: (3,4)},
               2: {1: (1,2), 2: ((1,2),(3,4))}}
         
@@ -236,7 +238,7 @@ class TestExplicit(unittest.TestCase):
                 self.assertEqual(f.eval(xn)[1],2*vals[dim][n_variables])
         
         #
-        # Check output dimensions
+        # 2 points
         # 
         n_points = 2
         x  = {1: {1: [(2,),(2,)],     
@@ -270,19 +272,160 @@ class TestNodal(unittest.TestCase):
     Test Nodal test functions
     """ 
     def test_constructor(self):
-        pass
+        # 
+        # Errors
+        #
+        
+        # Nothing specified
+        self.assertRaises(Exception, Nodal)
+        
+        # Nominal case
+        mesh = QuadMesh()
+        element = QuadFE(2,'Q1')
+        data = np.arange(0,4)
+        
+        f = Nodal(data=data, mesh=mesh, element=element)
+        self.assertEqual(f.dim(),2)
+        self.assertTrue(np.allclose(f.data(),data))
+        
+        # Now change the data -> Error
+        false_data = np.arange(0,6)
+        self.assertRaises(Exception,Nodal, 
+                          **{'data':false_data, 'mesh':mesh, 'element':element})
     
+        # Now omit mesh or element
+        kwargs = {'data': data, 'mesh': mesh}
+        self.assertRaises(Exception, Nodal, **kwargs)
+        
+        kwargs = {'data': data, 'element': element}
+        self.assertRaises(Exception, Nodal, **kwargs)
     
-    def test_set_data(self):
-        pass
-    
-    
+        
+    def test_set_data(self): 
+        meshes = {1: Mesh1D(), 2: QuadMesh()}
+        elements = {1: QuadFE(1, 'Q2'), 2: QuadFE(2, 'Q2')}
+        
+        #
+        # Use function to set data
+        #
+        fns = {1: {1: lambda x: 2*x[:,0]**2, 
+                   2: lambda x,y: 2*x[:,0] + 2*y[:,0]}, 
+               2: {1: lambda x: x[:,0]**2 + x[:,1], 
+                   2: lambda x,y: x[:,0]*y[:,0]+x[:,1]*y[:,1]}}
+        
+        parms = {1: {1: [{},{}], 
+                     2: [{},{}]}, 
+                 2: {1: [{},{}], 
+                     2: [{},{}]}}
+        
+        for dim in [1,2]:
+            # Get mesh and element
+            mesh = meshes[dim]
+            element = elements[dim]
+            
+            # Set dofhandler
+            dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
+            n_dofs = dofhandler.n_dofs()
+            
+            # Determine the shapes of the data
+            det_shapes = {1: (n_dofs,),  2: (n_dofs,n_dofs)}
+            smp_shapes = {1: (n_dofs, 2), 2: (n_dofs, n_dofs, 2)}
+            
+            # Get a vertex
+            i = np.random.randint(n_dofs)
+            j = np.random.randint(n_dofs)
+            dofhandler.set_dof_vertices()
+            x = dofhandler.get_dof_vertices()
+            
+            x1 = np.array([x[i,:]])
+            x2 = np.array([x[j,:]])
+                        
+            for n_variables in [1,2]:
+                fn = fns[dim][n_variables]
+                parm = parms[dim][n_variables]
+                #
+                # Deterministic
+                # 
+                f = Nodal(f=fn, mesh=mesh, element=element, 
+                          dim=dim, n_variables=n_variables)
+                
+                # Check shape
+                self.assertEqual(f.data().shape, det_shapes[n_variables])
+                
+                # Check value
+                if n_variables==1:
+                    val = fn(x1)[0]
+                    self.assertEqual(val, f.data()[i])
+                else:
+                    val = fn(x1, x2)
+                    self.assertEqual(val[0], f.data()[i,j])
+                
+                #
+                # Sampled 
+                # 
+                f = Nodal(f=fn, parameters=parm, mesh=mesh, element=element, 
+                          dim=dim, n_variables=n_variables)
+                
+                # Check shape
+                self.assertEqual(f.data().shape, smp_shapes[n_variables])
+                                
+                # Check that samples are stored in the right place
+                if n_variables==1:
+                    self.assertTrue(np.allclose(f.data()[:,0],f.data()[:,1]))
+                elif n_variables==2:
+                    self.assertTrue(np.allclose(f.data()[:,:,0], f.data()[:,:,1]))
+                
+        #
+        # Use arrays to set data        
+        # 
+        
+                        
     def test_add_data(self):
         pass
     
     
     def test_n_samples(self):
-        pass
+        #
+        # Sampled Case
+        # 
+        meshes = {1: Mesh1D(), 2: QuadMesh()}
+        elements = {1: QuadFE(1, 'Q2'), 2: QuadFE(2, 'Q2')}
+        
+        
+        # Use function to set data
+        fns = {1: {1: lambda x: 2*x[:,0]**2, 
+                   2: lambda x,y: 2*x[:,0] + 2*y[:,0]}, 
+               2: {1: lambda x: x[:,0]**2 + x[:,1], 
+                   2: lambda x,y: x[:,0]*y[:,0]+x[:,1]*y[:,1]}}
+        
+        # n_samples = 2
+        parms = {1: {1: [{},{}], 
+                     2: [{},{}]}, 
+                 2: {1: [{},{}], 
+                     2: [{},{}]}}
+        
+        for dim in [1,2]:
+            mesh = meshes[dim]
+            element = elements[dim]
+            for n_variables in [1,2]:
+                fn = fns[dim][n_variables]
+                parm = parms[dim][n_variables]
+                #
+                # Deterministic
+                # 
+                f = Nodal(f=fn,  
+                          mesh=mesh, element=element, 
+                          dim=dim, n_variables=n_variables)
+                self.assertIsNone(f.n_samples())
+                
+                #
+                # Sampled
+                # 
+                f = Nodal(f=fn, parameters=parm,
+                          mesh=mesh, element=element, 
+                          dim=dim, n_variables=n_variables)
+                self.assertEqual(f.n_samples(),2)
     
     
     def test_mesh_compatible(self):
