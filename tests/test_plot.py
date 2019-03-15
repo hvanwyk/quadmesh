@@ -6,15 +6,16 @@ Created on Feb 24, 2017
 
 import unittest
 from plot import Plot
-from mesh import Mesh
-from fem import System, QuadFE
+from mesh import Mesh, DCEL, QuadMesh
+from assembler import Assembler 
+from fem import QuadFE
 import matplotlib.pyplot as plt
 #from mpl_toolkits.mplot3d import *  # @UnresolvedImport
 import numpy as np
 
 class TestPlot(unittest.TestCase):
 
-
+    '''
     def test_plot_mesh(self):
         """
         Plot the computational mesh
@@ -29,18 +30,19 @@ class TestPlot(unittest.TestCase):
         #
         # Define mesh
         # 
-        mesh = Mesh.newmesh(grid_size=(2,2))
-        mesh.refine()      
+        grid = DCEL(resolution=(2,2))
+        mesh = Mesh(dcel=grid)
+        mesh.cells.refine()      
         mesh.root_node().children[1,1].mark(1)
-        mesh.refine(1)
+        mesh.cells.refine(refinement_flag=1)
         
         # Plot simple mesh
-        ax[0,0] = plot.mesh(ax[0,0], mesh)
+        ax[0,0] = plot.mesh(mesh, axis=ax[0,0])
         
         #
         # Flag a few cells
         # 
-        mesh.unmark(nodes=True)
+        mesh.unmark_all(nodes=True)
         mesh.root_node().children[0,0].mark(2)
         mesh.root_node().children[1,0].mark(1)
         mesh.root_node().children[1,1].children['SW'].mark(3)
@@ -81,8 +83,8 @@ class TestPlot(unittest.TestCase):
         
         fig, ax = plt.subplots(3,3)
         plot = Plot()
-        mesh = Mesh.newmesh(grid_size=(5,5))
-        mesh.refine()
+        mesh = QuadMesh(resolution=(5,5))
+        mesh.cells.refine()
         
         #
         # Explicit function
@@ -94,7 +96,7 @@ class TestPlot(unittest.TestCase):
         # Nodal function
         #
         element = QuadFE(2,'Q1') 
-        system = System(mesh, element)
+        system = Assembler(mesh, element)
         x = system.dof_vertices()
         fn = f(x[:,0],x[:,1])
         fig, ax[0,1] = plot.contour(ax[0,1], fig, fn, mesh, element, \
@@ -104,19 +106,19 @@ class TestPlot(unittest.TestCase):
         # Mesh function
         #
         # Refine mesh 
-        mesh = Mesh.newmesh(grid_size=(5,5))
+        mesh = Mesh(grid=DCEL(resolution=(5,5)))
         mesh.refine()
         for _ in range(4):
-            for leaf in mesh.root_node().find_leaves():
+            for leaf in mesh.root_node().get_leaves():
                 if np.random.rand() < 0.5:
                     leaf.mark('refine')
             mesh.refine('refine')
-            mesh.unmark(nodes='True')
+            mesh.unmark_all(nodes='True')
         mesh.balance()
         # Meshfunction
         fm = []
         for cell in mesh.iter_quadcells():
-            xi,yi = cell.vertices['M'].coordinate()
+            xi,yi = cell.vertices['M'].coordinates()
             fm.append(f(xi,yi))
         fm = np.array(fm)
         # Plot
@@ -131,7 +133,7 @@ class TestPlot(unittest.TestCase):
             for i in range(3):
                 etype = element_list[i]
                 element = QuadFE(2,etype)
-                system = System(mesh, element)
+                system = Assembler(mesh, element)
                 x = system.dof_vertices()
                 fn = f(x[:,0],x[:,1])
                 fig, ax[1+j,i] = plot.contour(ax[1+j,i], fig, fn, mesh, element,\
@@ -144,14 +146,14 @@ class TestPlot(unittest.TestCase):
         Surface plots
         """
         f = lambda x,y: np.exp(-x**2-y**2)
-        mesh = Mesh.newmesh(box=[-1,1,-1,1], grid_size=(2,2))
-        mesh.refine()
+        grid = DCEL(resolution=(2,2), box=[-1,1,-1,1])
+        mesh = Mesh(dcel=grid)
         for _ in range(4):
-            for leaf in mesh.root_node().find_leaves():
+            for leaf in mesh.cells.get_leaves():
                 if np.random.rand() < 0.5:
                     leaf.mark('s')
             mesh.refine('s')
-            mesh.unmark(nodes=True)
+            mesh.unmark_all(nodes=True)
         mesh.balance()   
         element = QuadFE(2,'Q1')
         
@@ -170,7 +172,7 @@ class TestPlot(unittest.TestCase):
         #
         ax = fig.add_subplot(3,3,2, projection='3d')
         element = QuadFE(2,'Q1') 
-        system = System(mesh, element)
+        system = Assembler(mesh, element)
         x = system.dof_vertices()
         fn = f(x[:,0],x[:,1])
         # Plot
@@ -181,7 +183,7 @@ class TestPlot(unittest.TestCase):
         #
         fm = []
         for cell in mesh.iter_quadcells():
-            xi,yi = cell.vertices['M'].coordinate()
+            xi,yi = cell.vertices['M'].coordinates()
             fm.append(f(xi,yi))
         fm = np.array(fm)
         # Plot
@@ -196,7 +198,7 @@ class TestPlot(unittest.TestCase):
             for i in range(3):
                 etype = element_list[i]
                 element = QuadFE(2,etype)
-                system = System(mesh, element)
+                system = Assembler(mesh, element)
                 x = system.dof_vertices()
                 fn = f(x[:,0],x[:,1])
                 ax = fig.add_subplot(3,3,3*(j+1)+(i+1), projection='3d')
@@ -206,6 +208,7 @@ class TestPlot(unittest.TestCase):
         
         
         plt.show()
+    '''
         
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

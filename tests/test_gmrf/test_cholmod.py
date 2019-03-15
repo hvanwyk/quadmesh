@@ -30,7 +30,7 @@
 
 import os.path
 import warnings
-from nose.tools import assert_raises
+#from nose.tools import assert_raises
 import numpy as np
 from scipy import sparse
 from sksparse.cholmod import (cholesky, cholesky_AAt,
@@ -150,7 +150,7 @@ class TestCholmod(unittest.TestCase):
         assert np.allclose(fr(np.arange(4)),
                            (r.todense().I * np.arange(4)[:, np.newaxis]).ravel())
         # If we did a real factorization, we can't do solves on complex arrays:
-        assert_raises(CholmodError, fr, np.arange(4) * 1j)
+        self.assertRaises(CholmodError, fr, np.arange(4) * 1j)
     
     def test_beta(self):
         #
@@ -197,11 +197,11 @@ class TestCholmod(unittest.TestCase):
         # 2d dense matrices are also accepted:
         assert f(np.arange(m.shape[0])[:, np.newaxis]).shape == (m.shape[0], 1)
         # But not if the dimensions are wrong...:
-        assert_raises(CholmodError, f, np.arange(m.shape[0] + 1)[:, np.newaxis])
-        assert_raises(CholmodError, f, np.arange(m.shape[0])[np.newaxis, :])
-        assert_raises(CholmodError, f, np.arange(m.shape[0])[:, np.newaxis, np.newaxis])
+        self.assertRaises(CholmodError, f, np.arange(m.shape[0] + 1)[:, np.newaxis])
+        self.assertRaises(CholmodError, f, np.arange(m.shape[0])[np.newaxis, :])
+        self.assertRaises(CholmodError, f, np.arange(m.shape[0])[:, np.newaxis, np.newaxis])
         # And ditto for the sparse version:
-        assert_raises(CholmodError, f, sparse.eye(m.shape[0] + 1, m.shape[1]).tocsc())
+        self.assertRaises(CholmodError, f, sparse.eye(m.shape[0] + 1, m.shape[1]).tocsc())
     
     
 
@@ -222,27 +222,27 @@ class TestCholmod(unittest.TestCase):
                 f1 = analyze(XtX, mode=mode)
                 f2 = f1.cholesky(XtX)
                 assert np.allclose(f2(Xty), answer)
-                assert_raises(CholmodError, f1, Xty)
-                assert_raises(CholmodError, f1.solve_A, Xty)
-                assert_raises(CholmodError, f1.solve_LDLt, Xty)
-                assert_raises(CholmodError, f1.solve_LD, Xty)
-                assert_raises(CholmodError, f1.solve_DLt, Xty)
-                assert_raises(CholmodError, f1.solve_L, Xty)
-                assert_raises(CholmodError, f1.solve_D, Xty)
-                assert_raises(CholmodError, f1.apply_P, Xty)
-                assert_raises(CholmodError, f1.apply_Pt, Xty)
+                self.assertRaises(CholmodError, f1, Xty)
+                self.assertRaises(CholmodError, f1.solve_A, Xty)
+                self.assertRaises(CholmodError, f1.solve_LDLt, Xty)
+                self.assertRaises(CholmodError, f1.solve_LD, Xty)
+                self.assertRaises(CholmodError, f1.solve_DLt, Xty)
+                self.assertRaises(CholmodError, f1.solve_L, Xty)
+                self.assertRaises(CholmodError, f1.solve_D, Xty)
+                self.assertRaises(CholmodError, f1.apply_P, Xty)
+                self.assertRaises(CholmodError, f1.apply_Pt, Xty)
                 f1.P()
-                assert_raises(CholmodError, f1.L)
-                assert_raises(CholmodError, f1.LD)
-                assert_raises(CholmodError, f1.L_D)
-                assert_raises(CholmodError, f1.L_D)
+                self.assertRaises(CholmodError, f1.L)
+                self.assertRaises(CholmodError, f1.LD)
+                self.assertRaises(CholmodError, f1.L_D)
+                self.assertRaises(CholmodError, f1.L_D)
                 f1.cholesky_inplace(XtX)
                 assert np.allclose(f1(Xty), answer)
     
                 f3 = analyze_AAt(X.T, mode=mode)
                 f4 = f3.cholesky(XtX)
                 assert np.allclose(f4(Xty), answer)
-                assert_raises(CholmodError, f3, Xty)
+                self.assertRaises(CholmodError, f3, Xty)
                 f3.cholesky_AAt_inplace(X.T)
                 assert np.allclose(f3(Xty), answer)
     

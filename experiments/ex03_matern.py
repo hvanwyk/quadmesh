@@ -15,7 +15,7 @@ implementation and effect of
 # Import 
 from mesh import Mesh
 from fem import QuadFE, System, DofHandler, Function, GaussRule
-from gmrf import Gmrf, matern_precision
+from gmrf import Gmrf
 from plot import Plot
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,9 +28,8 @@ def test01():
     Condition on coarse realization
     """
     print('Test 1:')
-
-    mesh = Mesh.newmesh([0,20,0,20], grid_size=(10,10))
-    mesh.refine()
+    grid = Grid(box=[0,20,0,20], resolution=(10,10))
+    mesh = Mesh.newmesh(grid=grid)
     mesh.record(flag=0)
     for _ in range(3):
         mesh.refine()
@@ -82,9 +81,8 @@ def test02():
     Spatially varying anisotropy
     """
     print('Test 2:')
-
-    mesh = Mesh.newmesh([0,20,0,20], grid_size=(100,100))
-    mesh.refine()
+    grid = Grid(box = [0,20,0,20], resolution=(100,100))
+    mesh = Mesh(grid=grid)
     element = QuadFE(2,'Q1')
     system = System(mesh, element)
     

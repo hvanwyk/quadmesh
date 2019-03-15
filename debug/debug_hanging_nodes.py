@@ -1,116 +1,166 @@
-from mesh import Mesh
-from finite_element import QuadFE, DofHandler
-import matplotlib.pyplot as plt
-import numpy as np
+from mesh import QuadMesh
+from fem import QuadFE
+from fem import DofHandler
+from fem import Form
+from fem import Basis
+from fem import Kernel
+from fem import GaussRule
+from fem import Assembler
+from fem import Function
 from plot import Plot
-# TODO: Add this all to the test file.
-        
-mesh = Mesh.newmesh()
-mesh.refine()
+from scipy import sparse as sp
+import numpy as np
 
-mesh.root_node().children['SE'].mark('l')
-mesh.refine('l')
+#
+# Define Mesh
+# 
+mesh = QuadMesh(resolution=(2,1))
+mesh.cells.get_child(1).mark('1')
+mesh.cells.refine(refinement_flag='1')
 
-mesh.root_node().children['SE'].children['SW'] = None
-_,ax = plt.subplots()
 
+#
+# Define element
+# 
+Q1 = QuadFE(2,'Q1')
 
-element_type = 'Q3'
-V = QuadFE(2,element_type)
-d = DofHandler(mesh,V)
-d.distribute_dofs()
-order = int(list(element_type)[1])
+#
+# Basis Functions 
+#
+u = Basis(Q1, 'u')
+ux = Basis(Q1, 'ux')
+uy = Basis(Q1, 'uy')
 
-x = [i*1.0/order for i in range(order+1)]
-xy = []
-for xi in x:
-    for yi in x:
-        xy.append((xi,yi))
-zlist = []
-for n in range(order+1):
-    print('\n\n')
-    for yi in x:
-        zline = []
-        for xi in x:
-            zline.append(V.phi(n,np.array([(xi,yi)])))
-        print([v for v in zline])       
-"""    
-print('Evaluating shape functions at hanging nodes.')
-x = [i*0.5/order for i in range(2*order+1)]
-xy = [(xi,1.0) for xi in x]
-for xx in xy:
-    print('Point {0}'.format(xx))
-    zline = []
-    for n in range(12):
-        zline.append(V.phi(n,xx))
-    print([v for v in zline])
-    print('\n')
-"""    
-        
-            
+rule = GaussRule(9, Q1)
 
-C = d.make_hanging_node_constraints()
-print(C)
-c = V.constraint_coefficients()
+ue = Function(lambda x,dummy: x, 'nodal', mesh=mesh, element=Q1)
+zero = Function(0, 'constant')
+
+ax = Form(trial=ux, test=ux)
+ay = Form(trial=uy, test=uy)
+L = Form(kernel=Kernel(zero), test=u)
+assembler = Assembler([ax,ay,L], mesh)
+for dofhandler in assembler.dofhandlers.values():
+    dofhandler.set_hanging_nodes()
+
 plot = Plot()
-plot.mesh(ax, mesh, element=V, cell_numbers=True, vertex_numbers=False, dofs=True )
-plt.show()
-'''
-# Number nodes Q1
+plot.mesh(mesh, dofhandler=dofhandler, dofs=True)
 
-count = 0
-for node in mesh.root_node().find_leaves():
-    node.dofs = dict.fromkeys(['SW','SE','NW','NE'])
-    for key in ['SW','SE','NW','NE']:
-        if node.dofs[key] == None:
-            node.dofs[key] = count
-            #
-            # Shared cells
-            # 
-            for direction in list(key).append(key):
-                nb = node.find_neighbor(direction)
-                if nb != None
-                    if nb.has_children():
-                        nb = nb.children[opposite[direction]]
-                    
-                    
-            no_neighbor = dict.fromkeys(list(key), False)
-            print(no_neighbor)
-            for direction in list(key):
-                nb = node.find_neighbor(direction)
-                if nb != None:
-                    pos = key.replace(direction,opposite[direction])
-                    if nb.has_children():
-                        child = nb.children[pos]
-                        shared_cells[direction] = {pos: child}
-                    else:
-                        shared_cells[direction] = {pos: nb}
-                else:
-                    no_neighbor[direction] = True
-            # Diagonal neighbor
-            if all(no_neighbor.values()):
-                # No neighbors in either direction
-                
-                
-                    """
-                    if nb.has_children():
-                        new_key = 
-                        nb = nb.children[new_key]
-                        if nb != None:
-                            if not hasattr(nb,'dofs'):
-                                nb.dofs = dict.fromkeys(['SW','SE','NW','NE'])
-                                
-                            if nb.dofs[key] != None:
-                                nb.dofs().vertices[new_key] = count
-                    else:
-                        if nb.dofs[key] != None:
-                            nb.dofs[key.replace(direction,opposite[direction])] = count
-                    
-                    if not hasattr(nb,'dofs'):
-                        nb.dofs = dict.fromkeys(['SW','SE','NW','NE'])
-                    """
-            print(no_neighbor)
-        count += 1
-        
+n_equations = dofhandler.n_dofs()
+rows = []
+cols = []
+vals = []
+b = np.zeros(n_equations)
+
+for cell in mesh.cells.get_leaves():
+    #
+    # Get global cell dofs for each element type  
+    #
+    cell_dofs = assembler.cell_dofs(cell)
+    #
+    # Determine what shape functions and Gauss rules to compute on current cells
+    # 
+    shape_info = assembler.shape_info(cell)
     
-'''      
+    # 
+    # Compute Gauss nodes and weights on cell
+    # 
+    xg, wg = assembler.gauss_rules(shape_info)
+
+    #
+    # Compute shape functions on cell
+    #  
+    phi = assembler.shape_eval(shape_info, xg, cell)
+    
+    problem = assembler.problems[0]
+    for form in problem:
+        form_loc = form.eval(cell, xg, wg, phi, cell_dofs)
+        if form.type=='bilinear':
+            # Assemble bilinear form
+            R,C = np.meshgrid(cell_dofs['Q1'], cell_dofs['Q1'])
+            rows.extend(list(R.ravel()))
+            cols.extend(list(C.ravel()))
+            vals.extend(list(form_loc.ravel(order='F')))
+        elif form.type=='linear':
+            for i in range(4):
+                dof = cell_dofs['Q1'][i]
+                b[dof] += form_loc[i]
+    
+    A = sp.coo_matrix((vals,(rows,cols)))
+    A = A.toarray()
+
+#hn = dofhandler.get_hanging_nodes()
+# Manually impose dirichlet conditions 
+# At x=0
+A[0,:] = 0
+A[:,0] = 0
+A[0,0] = 1
+b[0] = 0 
+
+A[3,:] = 0 
+A[:,3] = 0
+A[3,3] = 1
+b[3] = 0
+
+# At x = 1
+one = np.zeros(n_equations)
+one[[4,5,9]] = 1
+b -= A.dot(one)
+b[[4,5,9]] = 1
+
+A[[4,5,9],:] = 0 
+A[:,[4,5,9]] = 0
+A[4,4] = 1
+A[5,5] = 1
+A[9,9] = 1 
+
+
+A[:,1] += A[:,8]*0.5 
+A[:,2] += A[:,8]*0.5 
+A = A[:,[0,1,2,3,4,5,6,7,9,10]]
+
+A[1,:] += A[8,:]*0.5
+A[2,:] += A[8,:]*0.5
+A = A[[0,1,2,3,4,5,6,7,9,10],:]
+
+b[1] += b[8]*0.5
+b[2] += b[8]*0.5
+b = b[[0,1,2,3,4,5,6,7,9,10]]
+print(np.linalg.matrix_rank(A))
+
+#print(hn[8])
+ue_vec = ue.fn()  
+print(A.dot(ue_vec[[0,1,2,3,4,5,6,7,9,10]])-b)
+ua = np.zeros(n_equations)
+
+ua[[0,1,2,3,4,5,6,7,9,10]] = np.linalg.solve(A,b)
+ua[8] = 0.5*ua[1] + 0.5*ua[2]
+
+ua_fn = Function(ua, 'nodal', dofhandler=dofhandler)
+plot = Plot()
+plot.wire(ua_fn)
+    
+"""
+
+shape_info = assembler.shape_info(cell)
+xg, wg = assembler.gauss_rules(shape_info)
+phi = assembler.shape_eval(shape_info, xg, cell)
+b_loc, rows, cols = form.eval(cell, xg, wg, phi)
+B = np.empty((4,4))
+B[np.ix_(rows,cols)] = b_loc
+print(B)
+print(rows)
+print(cols)
+B = b_loc.reshape((4,4),order='F')
+print(l2g)
+test_etype = test_element.element_type()
+trial_etype = trial_element.element_type()
+test_l2g = np.array(list(l2g[test_etype].values()))
+trial_l2g = np.array(list(l2g[trial_etype].values()))
+
+print(test_l2g)
+print(trial_l2g)
+A = sp.coo_matrix((b_loc, (rows,cols)))
+A = A.todense()
+print(test_l2g.dot(A).dot(trial_l2g.T))
+"""

@@ -7,8 +7,8 @@ Created on Mar 11, 2017
 import unittest
 
 from gmrf import Gmrf
-from mesh import Mesh
-from fem import QuadFE, DofHandler, System, Function
+from mesh import QuadMesh, DCEL
+from fem import QuadFE, DofHandler, Assembler, Function
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
@@ -41,10 +41,10 @@ class TestGmrf(unittest.TestCase):
         box = (0,1)
         x = np.array([0.5,0.75])
         y = np.array([0.25,0.125])
-        d_xy = Gmrf.distance(x,y)
-        d_xMy = Gmrf.distance(x,y,M=M)
-        d_xy_tau = Gmrf.distance(x,y, periodic=True, box=box)
-        d_xMy_tau = Gmrf.distance(x, y, M=M, periodic=True, box=box)
+        d_xy = distance(x,y)
+        d_xMy = distance(x,y,M=M)
+        d_xy_tau = distance(x,y, periodic=True, box=box)
+        d_xMy_tau = distance(x, y, M=M, periodic=True, box=box)
         self.assertTrue(np.allclose(d_xy, np.array([0.25,0.625])),\
                         'Unweighted distance incorrect.')
         self.assertTrue(np.allclose(d_xMy, np.sqrt(2)*np.array([0.25,0.625])),\
@@ -60,10 +60,10 @@ class TestGmrf(unittest.TestCase):
         box = (0,1,0,1)
         x = np.array([[0.5,0.5],[0.75, 0.75]])
         y = np.array([[0.25,0.25],[0.125,0.5]])
-        d_xy = Gmrf.distance(x, y)
-        d_xMy = Gmrf.distance(x, y, M=M)
-        d_xy_tau = Gmrf.distance(x, y, periodic=True, box=box)
-        d_xMy_tau = Gmrf.distance(x, y, M=M, periodic=True, box=box)
+        d_xy = distance(x, y)
+        d_xMy = distance(x, y, M=M)
+        d_xy_tau = distance(x, y, periodic=True, box=box)
+        d_xMy_tau = distance(x, y, M=M, periodic=True, box=box)
         self.assertTrue(np.allclose(d_xy, \
                         np.array([np.sqrt(2)/4, np.sqrt(29)/8])), \
                         'Distance incorrect')
@@ -99,7 +99,7 @@ class TestGmrf(unittest.TestCase):
                      'exponential', 'matern', 'rational']
         anisotropy = [None, np.diag([2,1])]
         
-        mesh = Mesh.newmesh(grid_size=(20,20))
+        mesh = QuadMesh(resolution=(20,20))
         mesh.refine()
         element = QuadFE(2,'Q1')
         fig = plt.figure()
@@ -141,7 +141,7 @@ class TestGmrf(unittest.TestCase):
         """
         
         """ 
-        mesh = Mesh.newmesh(grid_size=(10,10))
+        mesh = QuadMesh(resolution=(10,10))
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs()
@@ -394,17 +394,17 @@ class TestGmrf(unittest.TestCase):
         (iii) soft constraints. (1) finite elements, (2) finite
         differences.
         """
-        mesh = Mesh.newmesh(grid_size=(10,10))
-        mesh.refine()
-        mesh.record(0)
-        for _ in range(2):
-            for leaf in mesh.root_node().find_leaves():
-                x = leaf.quadcell().get_vertices()
+        mesh = QuadMesh(resolution=(10,10))
+        mesh.cells.refine()
+        mesh.cells.record(0)
+        for dummy in range(2):
+            for leaf in mesh.cells.get_leaves():
+                x = leaf.get_vertices()
                 if all(x[:,0]>=0.25) and all(x[:,0]<=0.75) and \
                    all(x[:,1]>=0.25) and all(x[:,1]<=0.75):
                     leaf.mark('refine')
-            mesh.refine(flag='refine')
-            mesh.root_node().balance()
+            mesh.cells.refine(refinement_flag='refine')
+            mesh.balance()
             
             #mesh.root_node().unmark(flag='refine',recursive=True)
             
@@ -439,7 +439,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Define mesh and element    
         # 
-        mesh = Mesh.newmesh(grid_size=(40,40), box=[0,20,0,20])
+        mesh = QuadMesh(resolution=(40,40), box=[0,20,0,20])
         mesh.refine()
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh,element)
@@ -447,7 +447,7 @@ class TestGmrf(unittest.TestCase):
         #kappa = lambda x,y: np.log(2+5*x**2 + 2*y**3);
         kappa = 3
         alpha =3
-        system = System(mesh,element)
+        system = Assembler(mesh,element)
         X = Gmrf.from_matern_pde(alpha, kappa, mesh, element)
         """
         Xsmpl = X.sample(n_samples=1)

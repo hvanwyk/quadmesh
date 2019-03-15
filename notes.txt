@@ -1,5 +1,8 @@
 Current Wishlist:
 
+0. Questions: 
+	Basis functions for bilinear forms - should they have separate names?
+
 1. GMRFs: 
 	
 	We want to implement the simulation and conditioning of GMRF's on a 
@@ -29,7 +32,9 @@ Current Wishlist:
 		i. move shape_eval from 'System' to 'Elements' class [done] 
 		ii. allow for samples of functions (i.e. multiple columns) [done].
 		iii. introduce piecewise constant elements. [done]
-					
+	c. Tests
+		
+
 	
 3. 1D Mesh: 
 
@@ -80,9 +85,44 @@ Current Wishlist:
 	TODO: 
 	
 	a. write a function that imports a mesh from a gmsh file (generalize 
-	   'grid_size').  
+	   'grid_size') [done].  
 	b. resolve how to orient cells consistently (e.g. goin 'N' twice and then
 	   'S' twice should get you back to the same cell. Perhaps loop over all 
 	   elements and resolve all neighbors (and reciprocally)0.  
 	c. Resolve this stupid problem with level 0 (the empty root). Maybe make
 	   the initial refinement by default. 
+	   
+	d. Modify QuadCell, BiCell classes
+		QuadCell:
+			- consolidate map_to_reference, map_from_reference, and derivative_multiplier
+			  into one function: reference_mapping  [done]
+			- use nodal basis functions to map from physical to reference cell. [done]
+			
+		BiCell: 
+			- reference_mapping: consolidates, map_to_reference, map_from_reference,
+			  and derivative multiplier. 
+			  
+			  
+		Node: Incorporate Grid object in Nodes
+	
+	
+5. Merge Cells and Nodes (submeshes via tags)
+	
+	Instead of using Nodes for the tree structure and Cells for the physical structure,
+	combine them. 
+	
+	TODO:
+	
+	a. Copy Node methods to Cells.
+	
+	b. Ensure
+	
+	
+Tree
+Forest
+Dcel
+Vertex 		 
+HalfEdge(Tree)
+Cell
+QuadCell(Cell, Tree) + reference map + split
+Mesh(Forest)  + boundary_edges + boundary_nodes +  
