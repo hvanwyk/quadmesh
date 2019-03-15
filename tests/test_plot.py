@@ -7,14 +7,15 @@ Created on Feb 24, 2017
 import unittest
 from plot import Plot
 from mesh import Mesh, DCEL, QuadMesh
-from fem import Assembler, QuadFE
+from assembler import Assembler 
+from fem import QuadFE
 import matplotlib.pyplot as plt
 #from mpl_toolkits.mplot3d import *  # @UnresolvedImport
 import numpy as np
 
 class TestPlot(unittest.TestCase):
 
-
+    '''
     def test_plot_mesh(self):
         """
         Plot the computational mesh
@@ -31,9 +32,9 @@ class TestPlot(unittest.TestCase):
         # 
         grid = DCEL(resolution=(2,2))
         mesh = Mesh(dcel=grid)
-        mesh.refine()      
+        mesh.cells.refine()      
         mesh.root_node().children[1,1].mark(1)
-        mesh.refine(1)
+        mesh.cells.refine(refinement_flag=1)
         
         # Plot simple mesh
         ax[0,0] = plot.mesh(mesh, axis=ax[0,0])
@@ -83,7 +84,7 @@ class TestPlot(unittest.TestCase):
         fig, ax = plt.subplots(3,3)
         plot = Plot()
         mesh = QuadMesh(resolution=(5,5))
-        mesh.refine()
+        mesh.cells.refine()
         
         #
         # Explicit function
@@ -146,9 +147,9 @@ class TestPlot(unittest.TestCase):
         """
         f = lambda x,y: np.exp(-x**2-y**2)
         grid = DCEL(resolution=(2,2), box=[-1,1,-1,1])
-        mesh = Mesh(grid=grid)
+        mesh = Mesh(dcel=grid)
         for _ in range(4):
-            for leaf in mesh.root_node().get_leaves():
+            for leaf in mesh.cells.get_leaves():
                 if np.random.rand() < 0.5:
                     leaf.mark('s')
             mesh.refine('s')
@@ -207,6 +208,7 @@ class TestPlot(unittest.TestCase):
         
         
         plt.show()
+    '''
         
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

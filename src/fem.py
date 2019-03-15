@@ -966,7 +966,7 @@ class Basis(object):
     """
     Finite element basis function
     """
-    def __init__(self, element, derivative='v'):
+    def __init__(self, element, derivative='v', subforest_flag=None):
         """
         Constructor
         
@@ -977,10 +977,14 @@ class Basis(object):
             derivative: str, derivative of the basis function 
                 'v', 'vx', 'vy', 'vxy', 'vyx', or 'vyy'
                 (first letter is irrelevant)
+                
+            subforest_flag: str/int/tuple, submesh marker on which basis 
+                function is defined.
         """
         self.element = element
         self.derivative = parse_derivative_info(derivative)
-       
+        self.subforest_flag = subforest_flag
+        
    
 class DofHandler(object):
     """

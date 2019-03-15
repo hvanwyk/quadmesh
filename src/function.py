@@ -146,7 +146,6 @@ class Map(object):
         assert type(n_variables) is int, \
             'Input "n_variables" should be an integer.'
             
-        assert n_variables <= 2, 'Only one or two variables supported.'
         self.__n_variables = n_variables
         
         # If function is symmetric, it should have 2 variables
@@ -274,6 +273,86 @@ class Map(object):
         Returns the subregion flag
         """
         return self.__subregion_flag
+
+
+    def parse_x(self, x):
+        """
+        Parse input variable x
+        
+        Input:
+            
+            x: double, [list of] (dim, ) tuples, or dim Vertex objects, 
+                or an (n_points, -) array. If n_variables>1, can also be a
+                tuple of [lists of]....
+                
+        Output:
+        
+            xx: n_variables list of (n_points, dim) arrays (one for each 
+                variable).  
+            
+            is_singleton: bool, True if the input is a singleton 
+        """
+        n_variables = self.n_variables()
+        if n_variables > 1:
+            #
+            # More than one variable -> should be passed as tuple
+            # 
+            assert type(x) is tuple, \
+            'Input "x" for multivariable functions should be a tuple'
+        
+            assert len(x)==n_variables, \
+            'Input "x" incompatible with number of variables.'
+        else:    
+            #
+            # One variable
+            # 
+            if type(x) is np.ndarray:
+                x = [x]
+            
+        # Convert to usable format
+        xx = []
+        for i in range(n_variables):
+            if i==0:
+                xi, is_singleton = \
+                    convert_to_array(x[i], dim=self.dim(),\
+                                     return_is_singleton=True)
+                xx.append(xi)
+                n_points = xi.shape[0]
+            else:
+                xx.append(convert_to_array(x[i], dim=self.dim()))
+                assert xx[i].shape[0]==n_points, \
+                'Each variable should have the same number of points.'
+        return xx, is_singleton
+        
+    
+    def return_singleton(self, fx, is_singleton):
+        """
+        Returns output appropriate for singleton points
+        
+        Input:
+        
+            fx: double, (n_points, n_samples) array of points
+            
+            is_singleton: bool, True if input was a singleton
+            
+        
+        Output:
+        
+            fx: double, possibly  
+        """
+        #
+        # Parse fx (n_points, n_samples)   
+        # 
+        if is_singleton:
+            #
+            # Singleton input
+            #  
+            return fx[0]
+        else:
+            #
+            # Vector input
+            # 
+            return fx
 
 
     def eval(self):
@@ -1369,8 +1448,6 @@ class Explicit(Map):
         assert self.n_variables() in [1,2], \
             'The number of inputs should be 1 or 2.'
         
-        
-        
 
     def n_samples(self):
         """
@@ -1826,13 +1903,15 @@ class Nodal(Map):
         pass
     
     
-    def eval(self, x=None, cell=None, phi=None, dofs=None, derivative=None):
+    def eval(self, x=None, cell=None, phi=None, dofs=None, \
+             derivative=None, is_singleton=False):
         """
         Evaluate function at an array of points x
         
         The function can be evaluated by:
         
-            1. Specifying the points x (in a compatible format).
+            1. Specifying the points x in a compatible format 
+                (see "convert_to_array").
                 - Search through mesh to find cells containing x's
                 - Get function values at local dofs  
                 - Evaluate shape functions for each cell
@@ -1851,7 +1930,8 @@ class Nodal(Map):
             
         Inputs:
         
-            NOTE: If n_variables=2, use tuples for x, cell, phi, dofs, and derivative
+            NOTE: If n_variables=2, use tuples/list for x, cell, phi, dofs, and 
+                derivative
             
             *x: double, function input in the form of an (n_points, dim) array,
                 or a list of vertices or a list of tuples.
@@ -1869,6 +1949,8 @@ class Nodal(Map):
                 differentiate, e.g. (2,0,0) computes d^2p/dx^2 = p_xx,
                 (2,1,0) computes d^2p/dxdy = p_yx
         
+            *is_singleton: False, specifies whether the input was a singleton.
+            
         
         Output:
         
@@ -1879,16 +1961,272 @@ class Nodal(Map):
                 array.
                     
         """
+        #
+        # Initialization
+        # 
         n_samples = self.n_samples()
         n_variables = self.n_variables()
-        
-        # Get dof information
         sf, rf = self.subforest_flag(), self.subregion_flag()
+        
+        #
+        # Get dof information
+        #
         dh = self.dofhandler()
         mesh = dh.mesh
         element = self.dofhandler().element
         gdofs = dh.get_region_dofs(subforest_flag=sf, entity_flag=rf)
-             
+        # =====================================================================
+        # Shape functions provided
+        # =====================================================================
+        if phi is not None:
+            #
+            # Parse shape functions
+            # 
+            if type(phi) is np.ndarray:
+                phi = [phi]
+            phi = list(phi)
+                
+            assert len(phi)==n_variables, \
+            'Number of shape functions incompatible with number of variables.'
+            
+            #
+            # Parse dofs
+            # 
+            assert dofs is not None, \
+            'When shape function provided, require input "dofs".'
+            
+            if type(dofs) is tuple:
+                # Convert tuple to list
+                dofs = list(dofs)
+            
+            assert type(dofs) is list, \
+            'Dofs should be passed as list'
+            
+            if all([type(dof) is np.int for dof in dofs]):
+                #
+                # list of numbers -> 1 variable
+                # 
+                dofs = [dofs]
+                
+            assert len(dofs)==n_variables, \
+            'Number of dof-lists incompatible with nunmber of variables.'
+            
+            #
+            # Get local nodes
+            # 
+            i_f = []
+            for i in range(n_variables):
+                #
+                # Convert dofs to array indices
+                #
+                i_f.append([gdofs.index(j) for j in dofs[i]])
+            
+            #
+            # Add sub-sample information   
+            #                
+            if n_samples is not None:
+                i_f.append(self.subsample())
+            #
+            # Get local array (n1,...,nk,n_samples)  
+            #  
+            f_loc = self.data()[np.ix_(*i_f)]
+            
+            #
+            # Convert shape functions into tensors
+            #
+            P = 1
+            for i in range(n_variables):
+                #
+                # For each variable
+                # 
+                for dummy in range(n_variables-1):
+                    #
+                    # For each of the other variables, add a trivial dimension
+                    # 
+                    phi[i] = phi[i][:,:,None]
+                #
+                # Move dof axis to the right position
+                # 
+                phi[i] = np.swapaxes(phi[i], 1+i, 1)
+
+                #
+                # Multiply tensors, using python's broadcasting
+                # 
+                P = P*phi[i]
+        
+            #
+            # Compute f
+            # 
+            
+            # Determine axes over which to sum
+            p_axes = [i+1 for i in range(n_variables)]
+            f_axes = [i for i in range(n_variables)]
+            
+            # Contract the tensor
+            fx = np.tensordot(P, f_loc, axes=(p_axes, f_axes))
+               
+        else:        
+            # =====================================================================
+            # First Evaluate Shape functions
+            # =====================================================================
+            #
+            # Parse derivative
+            #  
+            # Convert into lists
+            if derivative is None:
+                derivative = [(0,)]*n_variables
+            elif type(derivative) is tuple:
+                derivative = [derivative]
+                
+            # Compatibility with n_varibles
+            if len(derivative)==1:
+                derivative = derivative*n_variables
+            else:
+                assert len(derivative)==n_variables, \
+                'Input "derivative" length incompatible with number of variables.'
+                                 
+            #
+            # Parse x input
+            # 
+            if x is not None:
+                xx, is_singleton = self.parse_x(x)
+                n_points = xx[0].shape[0]
+                """
+                if type(x) is np.ndarray:
+                    x = [x]
+                
+                assert len(x)==n_variables, \
+                'Input "x" incompatible with number of variables.'
+                
+                # Convert to usable format
+                xx = []
+                for i in range(n_variables):
+                    if i==0:
+                        xi, is_singleton = \
+                            convert_to_array(x[i], dim=self.dim(),\
+                                             return_is_singleton=True)
+                        xx.append(xi)
+                        n_points = xi.shape[0]
+                    else:
+                        xx.append(convert_to_array(x[i], dim=self.dim()))
+                        assert xx[i].shape[0]==n_points, \
+                        'Each variable should have the same number of points.'
+                """
+            else:
+                assert phi is not None, \
+                'If input "x" is None, input "phi" should be given.'
+            
+            
+            #
+            # Bin points
+            #
+            if cell is None:
+                #
+                # Cell not specified, bin from mesh
+                # 
+                bins = []
+                for i in range(n_variables):
+                    bins.append(mesh.bin_points(xx[i], subforest_flag=sf))
+            else:
+                #
+                # Cell given
+                # 
+                cell = list(cell)  # Convert to list
+                
+                if len(cell)==1:
+                    # Same cell for each variable, enlarge list
+                    cell = cell*n_variables
+                else:
+                    assert len(cell)==n_variables, \
+                    'Number of cells incompatible with number of variables'
+                    
+                #
+                # Bin from cell
+                # 
+                bins = []
+                for i in range(n_variables):
+                    bins.append(cell.bin_points(xx[i], subforest_flag=sf))
+           
+            
+            #
+            # Evaluate local shape functions and get dofs
+            # 
+            phis = []   # phi
+            dofs = []  # dofs 
+            pidx = []  # point index
+            udofs = []  # unique dofs
+            for i in range(n_variables):
+                #
+                # For each variable
+                # 
+                phis.append([])
+                dofs.append([])
+                pidx.append([])
+                udofs.append(set())
+                for cell, i_points in bins[i]:
+                    #
+                    # For each cell
+                    #
+                    
+                    # Record point indices
+                    pidx[i].append(i_points)
+                    
+                    # Locate the dofs
+                    dofi = dh.get_cell_dofs(cell)
+                    udofs[i] = udofs[i].union(set(dofi))
+                    dofs[i].append(dofi)
+                    
+                    # Compute the shape functions 
+                    y = xx[i][i_points]
+                    phii = element.shape(y, cell=cell, derivatives=derivative[i])
+                    phis[i].append(phii)
+                    
+                udofs[i] = list(udofs[i])
+            
+            #
+            # Get unique dofs
+            # 
+            Phi = []
+            for i in range(n_variables):
+                n_basis = len(udofs[i])
+                Phi.append(np.zeros((n_points, n_basis)))
+                for phi, i_pt, dof in zip(phis[i], pidx[i], dofs[i]):
+                    i_col = [udofs[i].index(d) for d in dof]
+                    Phi[i][np.ix_(i_pt, i_col)] = phi
+            
+                assert Phi[i].shape[1]==n_basis
+            #
+            # Compute f(x) using the shape functions and dofs 
+            #  
+            fx = self.eval(phi=Phi, dofs=udofs)
+            
+        #
+        # Parse fx (n_points, n_samples)   
+        # 
+        if is_singleton:
+            #
+            # Singleton input
+            # 
+            if n_samples is None:
+                #
+                # Deterministic function
+                # 
+                return fx[0]
+            else:
+                #
+                # Sampled function
+                # 
+                return fx[0,:]
+        else:
+            #
+            # Vector input
+            # 
+            return fx
+        
+        
+            
+        """
+               
         if phi is not None:
             # =============================================================
             # Shape function specified
@@ -1986,19 +2324,8 @@ class Nodal(Map):
                 assert x is not None, \
                     'Need input "x" to evaluate shape functions.'
             
-                x, is_singleton = convert_to_array(x, dim=self.dim(), 
-                                                   return_is_singleton=True)
                 
-                #
-                # Initialize output
-                # 
-                n_points = x.shape[0]
-                if n_samples is None:
-                    # Deterministic function
-                    f_vec = np.array(n_points)
-                else:
-                    # Stochastic function
-                    f_vec = np.array((n_points,n_samples))
+                
                     
                 #
                 # Determine tree cells to traverse
@@ -2036,24 +2363,7 @@ class Nodal(Map):
                 
                 #
                 # Parse x
-                # 
-                x1, x2 = x
-                assert x1.shape==x2.shape, \
-                'Points x1 and x2 should have the same shape'
-                
-                x1, is_singleton = convert_to_array(x1, dim=self.dim(), 
-                                                    return_is_singleton=True)
-                
-                x2 = convert_to_array(x2, dim=self.dim())
-                
-                #
-                # Parse derivative
-                # 
-                if derivative is None:
-                    der1, der2 = (0,), (0,)
-                else:
-                    der1, der2 = derivative
-                    
+                #  
                     
                 if cell is not None:
                     #
@@ -2101,8 +2411,6 @@ class Nodal(Map):
                     
                 
                     
-                     
-            """
             #
             # Evaluate function within each cell
             #
@@ -2132,26 +2440,7 @@ class Nodal(Map):
                 else:
                     f_vec[in_cell,:] = np.dot(phi, f_loc)
                 """
-    
-        if is_singleton:
-            #
-            # Singleton input
-            # 
-            if n_samples is None:
-                #
-                # Deterministic function
-                # 
-                return f_vec[0]
-            else:
-                #
-                # Sampled function
-                # 
-                return f_vec[0,:]
-        else:
-            #
-            # Vector input
-            # 
-            return f_vec
+
     
     def mesh_compatible(self, mesh, subforest_flag):
         """
@@ -2170,35 +2459,137 @@ class Nodal(Map):
             return False
         
         
-    def derivative(self):
+    def derivative(self, derivative):
         """
         Returns the function's derivative as a NodalFn. 
         """
-        pass
+        """
+        Returns the derivative of the function f (stored as a Nodal Map). 
+        
+        Input
+        
+            derivative: int, tuple, (order,i,j) where order specifies the order
+                of the derivative, and i,j specify the variable wrt which we 
+                differentiate, e.g. (2,0,0) computes d^2f/dx^2 = f_xx,
+                (2,1,0) computes d^2f/dxdy = f_yx
+                
+                
+        Output
+        
+            df^p/dx^qdy^{p-q}: Function, derivative of current function on the
+                same mesh/element.
+        """
+        sf = self.subforest_flag()
+        dim = self.dim()  
+        mesh, element = self.mesh(), self.dofhandler().element
+        
+        #
+        # Tear element if necessary 
+        # 
+        etype = element.element_type()
+        if etype[0] == 'Q':
+            etype = 'D' + etype
+        element = QuadFE(dim, etype)
+        
+        #
+        # Define new dofhandler
+        # 
+        dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+        #
+        # Determine dof vertices
+        #
+        dofs = dofhandler.get_region_dofs(subforest_flag=sf)
+        x = dofhandler.get_dof_vertices(dofs)       
+        #
+        # Evaluate function at dof vertices
+        #
+        fv = self.eval(x, derivative=derivative)
+        #
+        # Define new function
+        #
+        return Nodal(data=fv, dofhandler=dofhandler, \
+                     subforest_flag=sf) 
     
     
 class Constant(Function):
     """
     Constant functions
     """
-    def __init__(self):
+    def __init__(self, data=None, n_variables=1):
         """
         Constructor
+        
+        Inputs:
+          
+            *f: (list of) function(s) of the form 
+                fi = f(x1,..,xn_vars, **parameters) for i=1,...,n_samples 
+                Each variable xi will be an (n_points, dim) array.
+            
+            *parameters: (list of) dictionary(/ies) of keyword parameters
+                        
+            *data [None]: array of function values at finite element dof 
+                vertices. Size is consistent with the dofs 
+                required by the mesh/element/subforest or dofhandler/subforest.
+            
+            For other inputs, see Map constructor
         """
-        pass
-    
-    
-    def values(self):
+        Map.__init__(self, dim=None, n_variables=n_variables, symmetric=True)
+        self.set_data(data)
+        
+        
+    def set_data(self, data):
+        """
+        Parse and store data for constant function
+        
+        Inputs:
+        
+            data: double, 
+        """
+        is_number = isinstance(data, numbers.Real)
+        is_array = type(data) is np.ndarray
+        assert is_number or is_array,  \
+        'Input "data" should be a number of a one dimensional array'     
+        if is_array: 
+            assert len(data.shape)==1, \
+            '"data" array should be one dimensional.'
+        self.__data = data
+        
+        
+    def data(self):
         """
         Return function's values
         """
-        return self.__values 
+        return self.__data
     
     
-    def eval(self):
+    def n_samples(self):
         """
-        Evaluate function
+        Returns the sample size 
         """
-        pass
+        data = self.data()
+        if isinstance(data, np.ndarray):
+            n_samples = len(data)
+        else:
+            n_samples = None
+        return n_samples
+    
+    
+    def eval(self, x):
+        """
+        Evaluate constant function
+        
+        Input:
+        
+            x: double, (n_points,n_samples) array of points 
+                or tuple
+        """
+        if type(x) is tuple:
+            xx = x[0]
+        
+        x = convert_to_array(x)
+        n_points = x.shape[0]
+        return np.ones((n_points,1))*self.data()
+                
 
-
+    

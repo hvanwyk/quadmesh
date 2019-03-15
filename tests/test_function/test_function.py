@@ -1,5 +1,4 @@
 import unittest
-from mesh import Mesh
 from mesh import convert_to_array
 from mesh import Mesh1D
 from mesh import Mesh2D
@@ -39,8 +38,6 @@ class TestMap(unittest.TestCase):
         # Exceptions
         # 
         
-        # Too many variables
-        self.assertRaises(Exception, Map, **{'n_variables':3})
 
         # Mesh dimension incompatible with specified dimension
         mesh = Mesh1D()
@@ -433,9 +430,243 @@ class TestNodal(unittest.TestCase):
     
     
     def test_derivative(self):
-        pass
+        """
+        Compute the derivatives of a Nodal Map
+        """
+        # Define meshes for each dimension
+        meshes = {1: Mesh1D(resolution=(2,)), 
+                  2: QuadMesh(resolution=(2,2))}
+        
+        # Define elements for each dimension
+        elements = {1: QuadFE(1, 'Q2'), 
+                    2: QuadFE(2, 'Q2')}
+        
+        
+        # Use function to set data
+        fns = {1: lambda x: 2*x[:,0]**2, 
+               2: lambda x: x[:,0]**2 + x[:,1]} 
+        
+        derivatives = {1: [(1,0),(2,0)], 
+                       2: [(1,0), (1,1), (2,0,0)]}
+        
+        
+        dfdx_exact = {1: [lambda x: 4*x[:,0], 
+                          lambda x: 4*np.ones(x.shape[0])],
+                      2: [lambda x: 2*x[:,0], 
+                          lambda x: np.ones(x.shape[0]),
+                          lambda x: 2*np.ones(x.shape[0])]}
+                
+        # n_samples = 2
+        parms = {1: [{},{}], 
+                 2: [{},{}]} 
+        
+        for dim in [1,2]:
+            mesh = meshes[dim]
+            
+            # Random points in domain
+            n_points = 5
+            if dim==1:
+                x_min, x_max = mesh.bounding_box()
+                x = x_min + 0.5*(x_max-x_min)*np.random.rand(n_points)
+                x = x[:,np.newaxis]
+            elif dim==2:
+                x_min, x_max, y_min, y_max = mesh.bounding_box()
+                x = np.zeros((n_points,2))
+                x[:,0] = x_min + (x_max-x_min)*np.random.rand(n_points)
+                x[:,1] = y_min + (y_max-y_min)*np.random.rand(n_points)
+                
+            element = elements[dim]
+            fn = fns[dim]
+            
+            #
+            # Deterministic
+            # 
+            f = Nodal(f=fn, mesh=mesh, element=element, 
+                      dim=dim, n_variables=1)
+            
+            count = 0
+            for derivative in derivatives[dim]:
+                # Evaluate the derivative
+                dfdx = f.derivative(derivative)
+                self.assertTrue(np.allclose(dfdx.eval(x=x), 
+                                            dfdx_exact[dim][count](x)))
+                count += 1
+            #
+            # Sampled
+            #
+            parm = parms[dim] 
+            f = Nodal(f=fn, parameters=parm, mesh=mesh, element=element, dim=dim)
+            count = 0
+            for derivative in derivatives[dim]:
+                # Evaluate the derivative
+                dfdx = f.derivative(derivative)
+                self.assertTrue(np.allclose(dfdx.eval(x=x)[:,0], 
+                                            dfdx_exact[dim][count](x)))
+                self.assertTrue(np.allclose(dfdx.eval(x=x)[:,1], 
+                                            dfdx_exact[dim][count](x)))
+                count += 1
     
     
+    def test_eval_phi(self):
+        """
+        Check that the shapes are correct
+        """
+        #
+        # Mesh
+        # 
+        mesh = QuadMesh()
+        dim = mesh.dim()
+        
+        # 
+        # element information
+        #
+        element = QuadFE(dim,'Q2')
+        dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+        
+        # Define phi
+        n_points = 5
+        phi = np.random.rand(n_points,2)
+        dofs = [0,1]
+        
+        # 
+        # Deterministic Data
+        #
+        n_dofs = dofhandler.n_dofs()
+        data = np.random.rand(n_dofs)
+        
+        # Define deterministic function
+        f = Nodal(data=data, dofhandler=dofhandler)
+        
+        # Evaluate and check dimensions
+        fx = f.eval(phi=phi, dofs=dofs) 
+        self.assertEqual(fx.shape, (n_points,))
+        
+        #
+        # Sampled Data
+        #
+        n_samples = 4
+        data = np.random.rand(n_dofs,n_samples)
+        
+        # Define stochastic function
+        f = Nodal(data=data, dofhandler=dofhandler)
+        
+        # Evaluate and check dimensions
+        fx = f.eval(phi=phi, dofs=dofs)
+        self.assertEqual(fx.shape,(n_points,n_samples))
+        
+        #
+        # Bivariate deterministic
+        # 
+        data = np.random.rand(n_dofs, n_dofs)
+        
+        # Define deterministic function
+        f = Nodal(data=data, dofhandler=dofhandler, n_variables=2)
+        fx = f.eval(phi=(phi,phi), dofs=(dofs,dofs))
+        self.assertEqual(fx.shape, (n_points,))
+        
+        #
+        # Bivariate sampled
+        # 
+        data = np.random.rand(n_dofs, n_dofs, n_samples)
+        
+        # Define stochastic function
+        f = Nodal(data=data, dofhandler=dofhandler, n_variables=2)
+        fx = f.eval(phi=(phi,phi), dofs=(dofs,dofs))
+        self.assertEqual(fx.shape, (n_points, n_samples))
+        
+        #
+        # Trivariate deterministic
+        # 
+        data = np.random.rand(n_dofs, n_dofs, n_dofs)
+        f = Nodal(data=data, dofhandler=dofhandler, n_variables=3)
+        
+    
+    def test_eval_x(self):
+        #
+        # Evaluate Nodal function at a given set of x-values
+        # 
+        
+        # Meshes and elements
+        meshes = {1: Mesh1D(resolution=(2,)), 2: QuadMesh(resolution=(2,1))}
+        elements = {1: QuadFE(1, 'Q2'), 2: QuadFE(2, 'Q2')}
+        
+        
+        # Use function to set data
+        fns = {1: {1: lambda x: 2*x[:,0]**2, 
+                   2: lambda x,y: 2*x[:,0] + 2*y[:,0]}, 
+               2: {1: lambda x: x[:,0]**2 + x[:,1], 
+                   2: lambda x,y: x[:,0]*y[:,0]+x[:,1]*y[:,1]}}
+        
+        # n_samples = 2
+        parms = {1: {1: [{},{}], 
+                     2: [{},{}]}, 
+                 2: {1: [{},{}], 
+                     2: [{},{}]}}
+        
+        n_points = 1
+        for dim in [1,2]:
+            mesh = meshes[dim]
+            element = elements[dim]
+            dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
+            dofhandler.get_region_dofs()
+            #
+            # Define random points in domain
+            #
+            if dim==1:
+                x_min, x_max = mesh.bounding_box()
+                
+                x = x_min + 0.5*(x_max-x_min)*np.random.rand(n_points)
+                x = x[:,np.newaxis]
+                
+                y = x_min + (x_max-x_min)*np.random.rand(n_points)
+                y = y[:,np.newaxis]
+            elif dim==2:
+                x_min,x_max,y_min,y_max = mesh.bounding_box()
+                
+                x = np.zeros((n_points,2))
+                x[:,0] = x_min + (x_max-x_min)*np.random.rand(n_points)
+                x[:,1] = y_min + (y_max-y_min)*np.random.rand(n_points)
+                
+                y = np.zeros((n_points,2))
+                y[:,0] = x_min + (x_max-x_min)*np.random.rand(n_points)
+                y[:,1] = y_min + (y_max-y_min)*np.random.rand(n_points)
+                
+
+            for n_variables in [1,2]:
+                fn = fns[dim][n_variables]
+                parm = parms[dim][n_variables]
+                #
+                # Deterministic
+                # 
+                f = Nodal(f=fn,  
+                          mesh=mesh, element=element, 
+                          dim=dim, n_variables=n_variables)
+                
+                if n_variables==1:
+                    xx = (x,)
+                elif n_variables==2:
+                    xx = (x,y)
+                
+                fe = fn(*xx)
+                fx = f.eval(x=xx)
+                self.assertTrue(np.allclose(fx,fe))
+                                
+                #
+                # Sampled
+                # 
+                f = Nodal(f=fn, parameters=parm,
+                          mesh=mesh, element=element, 
+                          dim=dim, n_variables=n_variables)
+                self.assertEqual(f.n_samples(),2)
+                
+                
+                fx = f.eval(x=xx)
+                self.assertTrue(np.allclose(fx[:,0],fe))
+                self.assertTrue(np.allclose(fx[:,1],fe))
+                
+                
     
 class TestConstant(unittest.TestCase):
     """

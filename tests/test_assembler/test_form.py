@@ -1,8 +1,8 @@
 import unittest
 from mesh import QuadMesh, Mesh1D
-from assembler import Assembler, Form, GaussRule, IForm, IFormItrp, IKernel
+from assembler import Assembler, Form, GaussRule, IForm, IFormI, Kernel
 from fem import QuadFE, DofHandler, Basis
-from function import Function
+from function import Function, Explicit, Nodal
 import numpy as np
 
 class TestForm(unittest.TestCase):
@@ -61,10 +61,10 @@ class TestIForm(unittest.TestCase):
             kfn = kfns[ktype]
             
             # Define integral kernel
-            kernel = IKernel(kfn, 1, parameters=None, dofhandler=dofhandler)
+            kernel = Kernel(Explicit(kfn, dim=1))
             
             # Define Bilinear Form
-            form = IFormItrp(kernel, trial=phi, test=phi)
+            form = IFormI(kernel, trial=phi, test=phi)
             
             # 
             # Compute inputs required for evaluating form_loc
@@ -157,7 +157,7 @@ class TestIForm(unittest.TestCase):
             kfn = kfns[ktype]
             
             # Define integral kernel
-            kernel = IKernel(kfn, 1, parameters=None, dofhandler=dofhandler)
+            kernel = Kernel(Explicit(kfn, dim=1))
             
             # Define Bilinear Form
             form = IForm(kernel, trial=phi, test=phi, form_type='projection')

@@ -1,6 +1,6 @@
-from assembler import Assembler, Form, Kernel, IKernel, IForm
+from assembler import Assembler, Form, Kernel, IKernel, IFormI, IFormP, IForm
 from fem import QuadFE, DofHandler, Basis
-from function import Function
+from function import Function, Constant
 from mesh import QuadMesh, Mesh1D
 
 import unittest
@@ -72,7 +72,7 @@ class TestAssembler(unittest.TestCase):
         v = Basis(Q1, 'v')
         w = Basis(Q2, 'wx')
         
-        one = Kernel(Function(1,'constant'))    
+        one = Kernel(Function(1, 'constant'))    
         # Multiple forms, same element 
         problem_1 = [Form(one, trial=v, test=vx), Form(one, test=v), Form(one)]
         

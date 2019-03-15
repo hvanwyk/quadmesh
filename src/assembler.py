@@ -2,7 +2,7 @@ import numpy as np
 import numbers  
 from scipy import sparse, linalg 
 from mesh import Vertex, Interval, HalfEdge, QuadCell, convert_to_array
-from function import Function
+from function import Function, Map
 from fem import DofHandler, parse_derivative_info, Basis
  
  
@@ -379,21 +379,22 @@ class Kernel(object):
             
             *F: function, lambda function describing how the f's are combined 
                 and modified to form the kernel
+                
         """
         
         # 
         # Store input function(s)
         #
         if type(f) is not list:
-            assert isinstance(f, Function), \
-                'Input "f" should be a (tuple of) Function(s).'
+            assert isinstance(f, Function) or isinstance(f, Map), \
+                'Input "f" should be a (tuple of) Function(s) or Map(s).'
             f = [f]
-        self.f = f
+        self.__f = f
         n_functions = len(f)
         
         #
         # Store derivatives
-        #     
+        #  
         if dfdx is None:
             #
             # No derivative specified -> simple function evaluation
@@ -411,7 +412,7 @@ class Kernel(object):
             assert len(dfdx)==n_functions, \
                 'Number of derivatives in "dfdx" should equal n_functions'
             dfdx = [parse_derivative_info(der) for der in dfdx]
-        self.dfdx = dfdx
+        self.__dfdx = dfdx
         
         #
         # Store meta function F
@@ -424,7 +425,7 @@ class Kernel(object):
             assert n_functions == 1, \
                 'If input "F" not specified, only one function allowed.'
             F = lambda f: f
-        self.F = F
+        self.__F = F
         
         #
         # Check that samples are compatible with functions
@@ -434,7 +435,7 @@ class Kernel(object):
             #
             # Compute all samples
             # 
-            for f in self.f:
+            for f in self.__f:
                 #
                 # Check that all function have the same number of samples
                 # 
@@ -456,7 +457,7 @@ class Kernel(object):
             #
             n_samples = len(samples)
             n_max = samples.max()
-            for f in self.f:
+            for f in self.__f:
                 if f.n_samples() is not None:
                     #
                     # Maximum sample index may not exceed sample size
@@ -470,25 +471,25 @@ class Kernel(object):
         self.n_samples = n_samples
                         
     
-    def fn(self):
+    def f(self):
         """
         Returns kernel's functions
         """
-        return self.f
+        return self.__f
     
     
-    def Fn(self):
+    def F(self):
         """
         Returns kernel's outer function
         """
-        return self.F
+        return self.__F
     
     
     def derivatives(self):
         """
         Returns kernel functions' derivatives
         """
-        return self.dfdx
+        return self.__dfdx
     
     
     def subsample(self):
@@ -536,7 +537,7 @@ class Kernel(object):
         # Evaluate constituent functions 
         # 
         f_vals = []
-        for f, dfdx in zip(self.f, self.dfdx):
+        for f, dfdx in zip(self.__f, self.__dfdx):
             if f in compatible_functions: 
                 #if False:
                 etype = f.dofhandler().element.element_type()
@@ -561,7 +562,7 @@ class Kernel(object):
         #
         # Combine functions using metafunction F 
         # 
-        return self.F(*f_vals)
+        return self.__F(*f_vals)
 
 
 class IKernel(Kernel):
@@ -580,6 +581,8 @@ class IKernel(Kernel):
             parameters: dict, additional parameters
             
             dim: int, dimensional of the domain (1 or 2).
+            
+        TODO: Delete
         """    
         self.f = kernel_fn
         self.__parameters = parameters
@@ -872,7 +875,7 @@ class Form(object):
             #
             # Add derivatives associated with the kernel function
             #     
-            for (f, dfdx) in zip(self.kernel.f, self.kernel.dfdx):
+            for (f, dfdx) in zip(self.kernel.f(), self.kernel.derivatives()):
                 #
                 # Iterate over constituent functions
                 # 
@@ -1084,7 +1087,7 @@ class Form(object):
         
         
         #
-        # Initialize local matrix if necessary 
+        # Initialize zero local matrix if necessary 
         # 
         if f_loc is None:
             if self.type == 'constant':
@@ -1199,7 +1202,7 @@ class Form(object):
         """
   
   
-class IFormItrp(Form):
+class IFormI(Form):
     """
     Bilinear form arising from the interpolatory approximation of an integral
     operator.
@@ -1322,7 +1325,7 @@ class IFormItrp(Form):
         
     
     
-class IFormProj(Form):
+class IFormP(Form):
     """
     Bilinear form arising from the projection based approximation of an integral
     operator.
@@ -1467,14 +1470,14 @@ class IFormProj(Form):
         # Return local form
         return f_loc
      
-     
+
 class IForm(Form):
     """
     Bilinear form for an integral operator 
     
         Cu(x) = I_D k(x,y) u(y) dy
         
-    TODO: Replace with IFormItrp and IFormProj
+    TODO: Replace with IFormI and IFormP
     """
     def __init__(self, kernel, trial=None, test=None, dmu='dx', flag=None,
                  form_type='projection'):
@@ -1521,8 +1524,6 @@ class IForm(Form):
         #
         # Check kernel
         # 
-        assert isinstance(kernel, IKernel),\
-        'Input "kernel" should be of type "IKernel".'
         self.kernel = kernel
         
         #
@@ -1742,7 +1743,7 @@ class IForm(Form):
                 
         # Return local form
         return f_loc
-    
+
     
 class Assembler(object):
     """
@@ -1769,7 +1770,7 @@ class Assembler(object):
         
             mesh: Mesh, finite element mesh
             
-            subforest_flag: submesh marker over which to assemble
+            subforest_flag: submesh marker over which to assemble forms
                         
             n_gauss: int tuple, number of quadrature nodes in 1d and 2d respectively
         
@@ -1984,7 +1985,7 @@ class Assembler(object):
                     # For now, mesh compatibility only valid for traditional
                     # kernels. 
                     # 
-                    for f in form.kernel.f:
+                    for f in form.kernel.f():
                         if f.mesh_compatible(self.mesh, \
                                              subforest_flag=self.subforest_flag):
                             #

@@ -3,6 +3,7 @@ from assembler import AssembledForm
 from function import Function
 import numpy as np
 from scipy import sparse
+from scipy.sparse import linalg
 import numbers
            
 class LinearSystem(object):
@@ -822,7 +823,7 @@ class LinearSystem(object):
         Factor system matrix
         """
         A = self.get_matrix()
-        self.__invA = sparse.linalg.splu(A.tocsc())
+        self.__invA = linalg.splu(A.tocsc())
         self.__A_is_factored = True
         
     
@@ -940,11 +941,11 @@ class LinearSystem(object):
                 #
                 n_samples = rhs.shape[1]
                 
-        elif sparse.issparse(b):
+        elif sparse.issparse(rhs):
             #
             # Rhs is a sparse matrix   
             # 
-            assert b.shape[0] == len(self.dofs()), dofs_error
+            assert rhs.shape[0] == len(self.dofs()), dofs_error
             
             b = rhs
             n_samples = rhs.shape[1]
