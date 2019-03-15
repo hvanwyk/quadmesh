@@ -381,7 +381,6 @@ class Kernel(object):
                 and modified to form the kernel
                 
         """
-        
         # 
         # Store input function(s)
         #
