@@ -1,6 +1,6 @@
 import unittest
 from mesh import QuadMesh, Mesh1D
-from assembler import Assembler, Form, GaussRule, IForm, IFormI, Kernel
+from assembler import Assembler, Form, GaussRule, IForm, FormII, Kernel
 from fem import QuadFE, DofHandler, Basis
 from function import Function, Explicit, Nodal
 import numpy as np
@@ -64,7 +64,7 @@ class TestIForm(unittest.TestCase):
             kernel = Kernel(Explicit(kfn, dim=1))
             
             # Define Bilinear Form
-            form = IFormI(kernel, trial=phi, test=phi)
+            form = FormII(kernel, trial=phi, test=phi)
             
             # 
             # Compute inputs required for evaluating form_loc

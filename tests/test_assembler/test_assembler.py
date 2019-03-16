@@ -1,4 +1,4 @@
-from assembler import Assembler, Form, Kernel, IKernel, IFormI, IFormP, IForm
+from assembler import Assembler, Form, Kernel, IKernel, FormII, FormIP, IForm
 from fem import QuadFE, DofHandler, Basis
 from function import Function, Constant
 from mesh import QuadMesh, Mesh1D

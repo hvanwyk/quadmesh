@@ -2,7 +2,7 @@ import numpy as np
 import numbers  
 from scipy import sparse, linalg 
 from mesh import Vertex, Interval, HalfEdge, QuadCell, convert_to_array
-from function import Function, Map
+from function import Function, Map, Nodal, Explicit, Constant
 from fem import DofHandler, parse_derivative_info, Basis
  
  
@@ -359,7 +359,7 @@ class Kernel(object):
     """
     Kernel (combination of Functions) to be used in Forms
     """
-    def __init__(self, f, dfdx=None, F=None, samples='all'):
+    def __init__(self, f, F=None, subsample=None):
         """
         Constructor
         
@@ -367,51 +367,24 @@ class Kernel(object):
         
             f: single Function, or list of Functions
             
-            dfdx: list of strings, derivatives of function to be evaluated
-                In 1D: 'f', 'fx', 'fxx'
-                In 2D: 'f', 'fx', 'fy', 'fxy', 'fyx', 'fxx', 'fyy'
-                The number of strings in dfdx should equal the number of 
-                functions in f. If no derivatives are to be computed, use
-                dfdx = None. 
-            
-            *samples: 'all', or numpy integer array specifying what samples to
-                take. 
+            *f_kwargs: dict, (list of) keyword arguments to be passed to the f's 
             
             *F: function, lambda function describing how the f's are combined 
                 and modified to form the kernel
-                
+               
+            *subsample: int, numpy array of subsample indices
         """
         # 
         # Store input function(s)
         #
         if type(f) is not list:
-            assert isinstance(f, Function) or isinstance(f, Map), \
-                'Input "f" should be a (tuple of) Function(s) or Map(s).'
+            #
+            # Single function
+            # 
+            assert isinstance(f, Map), 'Input "f" should be a "Map" object.'
             f = [f]
         self.__f = f
-        n_functions = len(f)
-        
-        #
-        # Store derivatives
-        #  
-        if dfdx is None:
-            #
-            # No derivative specified -> simple function evaluation
-            #
-            dfdx = [parse_derivative_info('f')]*n_functions 
-        elif type(dfdx) is str:
-            #
-            # Only one derivative specified -> apply to all functions
-            #
-            dfdx = [parse_derivative_info(dfdx)]*n_functions
-        elif type(dfdx) is list:
-            #
-            # Derivatives passed in list -> check for compatibility
-            #
-            assert len(dfdx)==n_functions, \
-                'Number of derivatives in "dfdx" should equal n_functions'
-            dfdx = [parse_derivative_info(der) for der in dfdx]
-        self.__dfdx = dfdx
+        n_functions = len(self.__f)
         
         #
         # Store meta function F
@@ -429,84 +402,37 @@ class Kernel(object):
         #
         # Check that samples are compatible with functions
         #
-        n_samples = None
-        if samples=='all':
-            #
-            # Compute all samples
-            # 
+        if subsample is not None:
             for f in self.__f:
-                #
-                # Check that all function have the same number of samples
-                # 
-                if f.n_samples() is not None:
-                    if n_samples is None:
-                        #
-                        # Initialize number of samples 
-                        # 
-                        n_samples = f.n_samples()
-                    elif f.n_samples()>1:
-                        #
-                        # function has more than one sample
-                        # 
-                        assert f.n_samples()==n_samples,\
-                            'Kernel function sample sizes incompatible.'
-        elif type(samples) is np.ndarray:
-            #
-            # Subsample: Check that every sampled function contains subsample 
-            #
-            n_samples = len(samples)
-            n_max = samples.max()
-            for f in self.__f:
-                if f.n_samples() is not None:
-                    #
-                    # Maximum sample index may not exceed sample size
-                    # 
-                    assert n_max >= f.n_samples(), \
-                        'Maximum sample index exceeds sample size.'
+                f.set_subsample(subsample)
+                
         #
         # Store samples
         # 
-        self.samples = samples
-        self.n_samples = n_samples
-                        
+        self.__subsample = subsample
+        self.__n_samples = len(subsample)    
     
-    def f(self):
+    def set_subsample(self, subsample):
         """
-        Returns kernel's functions
+        Set kernel's subsample
+        
+        Input:
+        
+            subsample: int, numpy array specifying subsample indices
         """
-        return self.__f
-    
-    
-    def F(self):
-        """
-        Returns kernel's outer function
-        """
-        return self.__F
-    
-    
-    def derivatives(self):
-        """
-        Returns kernel functions' derivatives
-        """
-        return self.__dfdx
+        for f in self.__f:
+            f.set_subsample(subsample)
+        self.__subsample = subsample
     
     
     def subsample(self):
         """
         Returns the subsample of functions used
         """
-        return self.sample 
+        return self.__subsample 
     
     
-    def sample_size(self):
-        """
-        Returns the number of sampled functions
-        """
-        return self.n_samples
-    
-    
-    def eval(self, x=None, cell=None, phi=None, dofs=None,
-             compatible_functions=set()):
+    def eval(self, x=None):
         """
         Evaluate the kernel at the points stored in x 
         
@@ -514,195 +440,24 @@ class Kernel(object):
         
             *x: (n_points, dim) array of points at which to evaluate the kernel
             
-            *cell: Cell/Interval within which the points x reside
             
-            *phi: dictionary of shape functions used to evaluate 
-                nodal constituent functions f. Must also specify dofs
-                 
-            *dofs: list of (n_dofs,) degrees of freedom associated with shape
-                 functions
-                                    
-            *compatible_functions: set of functions determined (a priori) to
-                be compatible with the current mesh. These functions can 
-        """
-        x = convert_to_array(x)
-        #
-        # Determine dimensions of output array
-        #
-        n_points = x.shape[0]
-        n_samples = self.n_samples
+        Output:
         
+            Kernel function evaluated at point x.
+        """
         #
         # Evaluate constituent functions 
         # 
         f_vals = []
-        for f, dfdx in zip(self.__f, self.__dfdx):
-            if f in compatible_functions: 
-                #if False:
-                etype = f.dofhandler().element.element_type()
-                #
-                # f may be evaluated through shape functions
-                # 
-                fv = f.eval(phi=phi[etype][dfdx], dofs=dofs[etype], derivative=dfdx, \
-                            samples=self.samples)
-            else:
-                #
-                # f must be evaluated explicitly
-                # 
-                fv = f.eval(x=x, cell=cell, derivative=dfdx, \
-                            samples=self.samples)
-            if n_samples is not None:
-                if f.n_samples() is None:
-                    #
-                    # Deterministic function
-                    # 
-                    fv = (np.ones((n_samples,n_points))*fv).T
+        for f in self.__f:
+            fv = f.eval(x=x)
             f_vals.append(fv)
+               
         #
         # Combine functions using metafunction F 
         # 
         return self.__F(*f_vals)
 
-
-class IKernel(Kernel):
-    """
-    Class for integral kernels of the form k = k(x,y)
-    """
-    def __init__(self, kernel_fn, dim, parameters=None, dofhandler=None, 
-                 symmetric=False):
-        """
-        Constructor
-        
-        Inputs: 
-        
-            kernel_fn: Bivariate function to be used for kernel
-            
-            parameters: dict, additional parameters
-            
-            dim: int, dimensional of the domain (1 or 2).
-            
-        TODO: Delete
-        """    
-        self.f = kernel_fn
-        self.__parameters = parameters
-        self.__dim = dim
-        self.__dofhandler = dofhandler
-        self.__symmetric = symmetric # TODO: should be moved to the function class
-        self.n_samples = None
-        
-    
-    def dim(self):
-        """
-        Returns the dimension of the underlying domain
-        """
-        return self.__dim
-    
-    
-    def dofhandler(self):
-        """
-        Returns the dofhandler of the kernel
-        """
-        return self.__dofhandler
-    
-    
-    def parameters(self):
-        """
-        Return 
-        """
-        return self.__parameters
-    
-        
-    def eval(self,x,y):
-        """
-        Evaluate kernel at the points x and y
-        
-        Inputs:
-        
-            x,y: (n_points, dim) array of spatial points
-            
-                
-        Output:
-        
-            k: double, (n_points,) kernel value, at points 
-        """
-        if self.__parameters is not None:
-            return self.f(x,y, **self.__parameters)
-        else: 
-            return self.f(x,y)
-        
-    
-    def is_symmetric(self):
-        """
-        Returns True if the kernel satisfies k(x,y) = k(y,x), False otherwise.
-        """
-        return self.__symmetric
-
-    
-    def slice(self, x0, pos):
-        """
-        Evaluate kernel only in one argument
-        
-        
-        Inputs:
-        
-            x: double, single spatial point 
-            
-            pos: int, variable position at which kernel is evaluated
-            
-            
-        Output:
-        
-            f: function, representing either k(x0,y) or k(x,x0)  
-        
-        TODO: Remove - inefficient
-        """
-        if self.dim()==1:
-            #
-            # One dimensional input
-            # 
-            if type(x0) is np.ndarray:
-                #
-                # Point passed as an array
-                # 
-                assert len(x0)==1 and len(x0.shape)==1,\
-                'For dim=1, input x0 should be passed as 1x1 array or scalar.'
-            else:
-                assert isinstance(x0, numbers.Real), \
-                    'For dim=1, input x0 should be passed as 1x1 array or scalar.'
-                
-            if pos==0:
-                #
-                # Slice in first component
-                # 
-                f = lambda y: self.eval(np.tile(x0, y.shape), y)
-            elif pos==1:
-                #
-                # Slice in second component
-                # 
-                f = lambda x: self.eval(x, np.tile(x0, x.shape))
-        elif self.dim()==2:
-            #
-            # Two dimensional input
-            # 
-            assert type(x0) is np.ndarray, \
-                'Input "x0" should be a (2,) numpy array.'
-                
-            assert len(x0.shape)==1 and len(x0)==2,\
-                'Input "x0" should be a (2,) numpy array.'
-        
-        
-            if pos==0:
-                #
-                # Slice in first component
-                #
-                f = lambda y1, y2: self.__fn(np.tile(x0,(len(y1),1)), np.array([y1,y2]).T, **self.__parameters)
-            elif pos==1:
-                #
-                # Slice in second component
-                #
-                f = lambda y1, y2: self.__fn(np.array([y1,y2]).T, np.tile(x0,(len(y1),1)), **self.__parameters)     
-        return f
-     
     
 class Form(object):
     """
@@ -775,16 +530,16 @@ class Form(object):
             #
             # Check that kernel is the right type
             # 
-            if isinstance(kernel, Function):
+            if isinstance(kernel, Map):
                 #
-                # Kernel entered as Function
+                # Kernel entered as Map
                 #  
                 kernel = Kernel(kernel)
             elif isinstance(kernel, numbers.Real):
                 #
                 # Kernel entered as real number
                 # 
-                kernel = Kernel(Function(kernel, 'constant'))
+                kernel = Kernel(Constant(kernel))
             else:
                 #
                 # Otherwise, kernel must be of type Kernel
@@ -795,7 +550,7 @@ class Form(object):
             #
             # Default Kernel
             # 
-            kernel = Kernel(Function(1, 'constant'))
+            kernel = Kernel(Constant(1))
         self.kernel = kernel
         
         self.flag = flag
@@ -820,6 +575,7 @@ class Form(object):
             form_type = 'bilinear'
         self.type = form_type
 
+        
 
     def shape_info(self, compatible_functions=set()):
         """
@@ -870,7 +626,7 @@ class Form(object):
                                'derivatives': set()}
             D = self.test.derivative
             info[etype]['derivatives'].add(D)
-        if self.kernel is not None and not isinstance(self.kernel,IKernel):
+        if self.kernel is not None:
             #
             # Add derivatives associated with the kernel function
             #     
@@ -980,10 +736,7 @@ class Form(object):
             # Compute kernel, weight by quadrature weights    
             #
             kernel = self.kernel
-            Ker = kernel.eval(x=xg[region], cell=cell, phi=phi[region], \
-                              dofs=dofs, \
-                              compatible_functions=compatible_functions)
-            
+            Ker = kernel.eval(x=xg[region])
             wKer = (wg[region]*Ker.T).T        
     
             if self.type=='constant':
@@ -1201,7 +954,7 @@ class Form(object):
         """
   
   
-class IFormI(Form):
+class FormII(Form):
     """
     Bilinear form arising from the interpolatory approximation of an integral
     operator.
@@ -1324,7 +1077,7 @@ class IFormI(Form):
         
     
     
-class IFormP(Form):
+class FormIP(Form):
     """
     Bilinear form arising from the projection based approximation of an integral
     operator.
@@ -1469,14 +1222,14 @@ class IFormP(Form):
         # Return local form
         return f_loc
      
-
+'''
 class IForm(Form):
     """
     Bilinear form for an integral operator 
     
         Cu(x) = I_D k(x,y) u(y) dy
         
-    TODO: Replace with IFormI and IFormP
+    TODO: Replace with FormII and FormIP
     """
     def __init__(self, kernel, trial=None, test=None, dmu='dx', flag=None,
                  form_type='projection'):
@@ -1742,7 +1495,7 @@ class IForm(Form):
                 
         # Return local form
         return f_loc
-
+'''
     
 class Assembler(object):
     """
@@ -2085,8 +1838,7 @@ class Assembler(object):
                     #
                     # Evaluate form
                     #
-                    if isinstance(form, IForm) and \
-                    form.assembly_type()=='interpolation':
+                    if isinstance(form, FormII):
                         # =====================================================
                         # Integral form by interpolation
                         # =====================================================
@@ -2109,8 +1861,7 @@ class Assembler(object):
                         af.update(ci_addr, form_loc, 
                                   row_dofs=dofs_tst, col_dofs=dofs_trl)
                         
-                    elif isinstance(form, IForm) and \
-                    form.assembly_type()=='projection':
+                    elif isinstance(form, FormIP):
                         # =====================================================
                         # Integral form by projection
                         # =====================================================

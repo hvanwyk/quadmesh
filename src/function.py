@@ -1,4 +1,5 @@
 from fem import DofHandler, QuadFE
+from fem import parse_derivative_info
 from mesh import convert_to_array, Vertex, Mesh
 import numbers
 import numpy as np
@@ -177,6 +178,10 @@ class Map(object):
     def set_subsample(self, i=None):
         """
         Set subset of samples to be evaluated
+        
+        Input:
+        
+            i: int, numpy array of sample indices
         """
         if i is not None:
             #
@@ -216,6 +221,16 @@ class Map(object):
             # 
             return self.__subsample
     
+    
+    def n_subsample(self):
+        """
+        Returns size of the subsample
+        """
+        if self.__subsample is None:
+            return None
+        else:
+            return len(self.__subsample)
+        
     
     def dim(self):
         """
@@ -1789,7 +1804,12 @@ class Nodal(Map):
         # 
         self.set_data(data=data, f=f, parameters=parameters)
         
-    
+        #
+        # Store derivative values
+        # 
+        self.set_derivative(None)
+        
+        
     def n_samples(self):
         """
         Returns the number of samples 
@@ -1901,6 +1921,17 @@ class Nodal(Map):
             parameters: (compatible list of) function parameters  
         """
         pass
+    
+    
+    def set_derivative(self, dfdx):
+        """
+        Specify derivative
+        
+        Inputs:
+        
+            dfdx: str/tuple, derivative(s)  
+        """
+        
     
     
     def eval(self, x=None, cell=None, phi=None, dofs=None, \
@@ -2459,10 +2490,7 @@ class Nodal(Map):
             return False
         
         
-    def derivative(self, derivative):
-        """
-        Returns the function's derivative as a NodalFn. 
-        """
+    def differentiate(self, derivative):
         """
         Returns the derivative of the function f (stored as a Nodal Map). 
         
