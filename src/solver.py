@@ -1,6 +1,6 @@
 from mesh import convert_to_array
 from assembler import AssembledForm
-from function import Function
+from function import Nodal
 import numpy as np
 from scipy import sparse
 from scipy.sparse import linalg
@@ -80,7 +80,7 @@ class LinearSystem(object):
                 'Problem must have a bilinear form.'
             
             bilinear_form = assembler.af[problem_index]['bilinear']
-            
+                    
             if 'linear' in assembler.af[problem_index]:
                 #
                 # Linear form appears in problem
@@ -92,6 +92,17 @@ class LinearSystem(object):
                 # No linear form appears in problem it may be specified explicitly
                 # 
                 linear_form = linear_form
+        
+        #
+        # Check that test and trial functions are the same
+        # 
+        test = bilinear_form.form().test
+        trial = bilinear_form.form().trial
+        assert test.dofhandler()==trial.dofhandler(), \
+        'Test and trial functions should have the same dofhandler'
+        assert test.subforest_flag()==trial.subforest_flag(),\
+        'Test and trial functions should have the same subforest_flag'
+        self.__basis = test
                 
         #
         # Determine element type  
@@ -182,11 +193,18 @@ class LinearSystem(object):
         self.dofhandler().set_hanging_nodes(subforest_flag=subforest_flag)
         
         
+    def basis(self):
+        """
+        Return the basis function 
+        """
+        return self.__basis
+        
+        
     def dofhandler(self):
         """
         Return the system's dofhandler
         """   
-        return self.assembler.dofhandlers[self.etype()]
+        return self.basis().dofhandler()
     
     
     def dofs(self):
@@ -1178,9 +1196,9 @@ class LinearSystem(object):
             #
             # Return solution as nodal function
             # 
-            u = Function(self.__u, 'nodal', mesh=self.assembler.mesh, \
-                         dofhandler=self.dofhandler(), \
-                         subforest_flag=self.assembler.subforest_flag)
+            u = Nodal(data=self.__u, mesh=self.assembler.mesh, \
+                     dofhandler=self.dofhandler(), \
+                     subforest_flag=self.assembler.subforest_flag)
             return u
        
             

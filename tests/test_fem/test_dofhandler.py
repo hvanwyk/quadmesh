@@ -21,7 +21,7 @@ class TestDofHandler(unittest.TestCase):
         dofhandler.clear_dofs()
         
         # Check that there are no dofs
-        self.assertIsNone(dofhandler.get_global_dofs(cell))
+        self.assertIsNone(dofhandler.get_cell_dofs(cell))
     
     
     def test_assign_get_global_dofs(self):
@@ -191,8 +191,9 @@ class TestDofHandler(unittest.TestCase):
                 dofhandler = DofHandler(mesh, element)
                 for i_entity in range(len(entities)):
                     entity = entities[i_entity]
-                    self.assertEqual(local_dofs[dim][etype][i_entity], \
-                                     dofhandler.get_local_dofs(cell, entity))
+                    dofs = dofhandler.get_cell_dofs(cell, entity=entity,
+                                                    doftype='local', interior=True)
+                    self.assertEqual(local_dofs[dim][etype][i_entity], dofs)
                 
                 
     def test_fill_dofs(self):
@@ -217,7 +218,7 @@ class TestDofHandler(unittest.TestCase):
             element = QuadFE(1, etype) 
             dofhandler = DofHandler(mesh, element)
             dofhandler.fill_dofs(cell)
-            dofs = dofhandler.get_global_dofs(cell)
+            dofs = dofhandler.get_cell_dofs(cell)
             self.assertEqual(expected_dofs[etype], dofs)
             
         #
@@ -236,7 +237,7 @@ class TestDofHandler(unittest.TestCase):
             element = QuadFE(1, etype) 
             dofhandler = DofHandler(mesh, element)
             dofhandler.fill_dofs(cell)
-            dofs = dofhandler.get_global_dofs(cell)
+            dofs = dofhandler.get_cell_dofs(cell)
             self.assertEqual(dofs, expected_dofs[etype])
         
         # =====================================================================
@@ -259,7 +260,7 @@ class TestDofHandler(unittest.TestCase):
             element = QuadFE(2, etype)
             dofhandler = DofHandler(mesh, element)
             dofhandler.fill_dofs(cell)
-            dofs = dofhandler.get_global_dofs(cell)
+            dofs = dofhandler.get_cell_dofs(cell)
             self.assertEqual(dofs, expected_dofs[etype])
             
         #
@@ -279,7 +280,7 @@ class TestDofHandler(unittest.TestCase):
             element = QuadFE(2, etype)
             dofhandler = DofHandler(mesh, element)
             dofhandler.fill_dofs(cell)
-            dofs = dofhandler.get_global_dofs(cell)
+            dofs = dofhandler.get_cell_dofs(cell)
             self.assertEqual(dofs, expected_dofs[etype])
             
         #
@@ -299,7 +300,7 @@ class TestDofHandler(unittest.TestCase):
             element = QuadFE(2, etype)
             dofhandler = DofHandler(mesh, element)
             dofhandler.fill_dofs(cell)
-            dofs = dofhandler.get_global_dofs(cell)
+            dofs = dofhandler.get_cell_dofs(cell)
             self.assertEqual(dofs, expected_dofs[etype])
             
     
@@ -784,7 +785,7 @@ class TestDofHandler(unittest.TestCase):
                 js, ws = support 
                 
                 # Extract
-                dofs_glb = dofhandler.get_global_dofs(c_00)
+                dofs_glb = dofhandler.get_cell_dofs(c_00)
                 
                 #print(dof, js)
                 

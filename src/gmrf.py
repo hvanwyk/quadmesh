@@ -3,15 +3,22 @@ Created on Feb 8, 2017
 
 @author: hans-werner
 '''
-from fem import Assembler
+from assembler import Assembler
+from assembler import Kernel
+from assembler import IIForm
+from assembler import Form
+from assembler import IPForm
+from assembler import GaussRule
+
 from fem import Element
 from fem import DofHandler
-from fem import IKernel
-from fem import GaussRule
-from fem import Function
-from fem import Form
 from fem import Basis
-from fem import Kernel
+
+from function import Function
+from function import Nodal
+from function import Explicit
+from function import Constant
+
 from mesh import Mesh1D
 from mesh import QuadMesh
 
@@ -236,7 +243,7 @@ def rational(x, y, a, M=None, periodic=False):
 
            
     
-class CovKernel(IKernel):
+class CovKernel(Kernel):
     """
     Integral kernel
     """
@@ -293,7 +300,8 @@ class CovKernel(IKernel):
                 cov_fn = rational
  
         # Store results
-        IKernel.__init__(self, cov_fn, parameters, dim)
+        k = Explicit(f=cov_fn, parameters=parameters, n_variables=2, dim=dim)
+        Kernel.__init__(self, f=cov_fn, parameters, dim)
         
 
 class Covariance(object):
@@ -313,15 +321,11 @@ class Covariance(object):
         dofhandler.set_dof_vertices()
         self.__dofhandler = dofhandler
         
-        
-        # Element
-        element = dofhandler.element
-        
         # Mesh 
         mesh = dofhandler.mesh
         
         # Basis
-        u = Basis(element, 'u')
+        u = Basis(dofhandler, 'u')
         
         # Mass matrix 
         m = Form(trial=u, test=u)

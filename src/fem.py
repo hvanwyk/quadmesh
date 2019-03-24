@@ -15,6 +15,10 @@ def parse_derivative_info(dstring):
         
             tuple, encoding derivative information  
         """
+        # Return tuples
+        if type(dstring) is tuple:
+            return dstring
+        
         s = list(dstring)
         if len(s) == 1:
             #
@@ -966,13 +970,14 @@ class Basis(object):
     """
     Finite element basis function
     """
-    def __init__(self, element, derivative='v', subforest_flag=None):
+    def __init__(self, dofhandler, derivative='v', subforest_flag=None):
         """
         Constructor
         
         Inputs:
         
-            element: Element, element associated with basis function
+            dofhandler: DofHandler (mesh and element)  associated with basis 
+                function
             
             derivative: str, derivative of the basis function 
                 'v', 'vx', 'vy', 'vxy', 'vyx', or 'vyy'
@@ -981,11 +986,90 @@ class Basis(object):
             subforest_flag: str/int/tuple, submesh marker on which basis 
                 function is defined.
         """
-        self.element = element
-        self.derivative = parse_derivative_info(derivative)
-        self.subforest_flag = subforest_flag
+        #
+        # Parse dofhandler
+        #
+        assert isinstance(dofhandler, DofHandler), \
+        'Input "dofhandler" should be of type "DofHandler".'
+        dofhandler.distribute_dofs(subforest_flag=subforest_flag)
+        dofhandler.set_dof_vertices()
+        self.__dofhandler = dofhandler
+        self.__subforest_flag = subforest_flag
+        self.__derivative = parse_derivative_info(derivative)
+    
+    '''
+    def __eq__(self, other):
+        """
+        Define equality
+        """ 
+        return self.__dict__ == other.__dict__    
+    '''
+    
+    def dofhandler(self):
+        """
+        Returns Basis function's dofhandler
+        """ 
+        return self.__dofhandler
         
-   
+        
+    def subforest_flag(self):
+        """
+        Returns the subforest flag
+        """
+        return self.__subforest_flag
+    
+    
+    def derivative(self):
+        """
+        Returns Basis functions' derivative information
+        """
+        return self.__derivative
+    
+    
+    def dofs(self, cell):
+        """
+        Returns the dofs of the shape functions defined over a cell. 
+        """
+        dofhandler = self.dofhandler()
+        subforest_flag = self.subforest_flag()
+        
+        if cell is not None:
+            #
+            # Cel provided 
+            # 
+            
+            # Determine smallest cell in subforest that contains given cell
+            e_cell = cell.nearest_ancestor(subforest_flag)
+            
+            # Get dofs
+            dofs = dofhandler.get_cell_dofs(e_cell)
+        else:
+            #
+            # Get mesh dofs
+            # 
+            dofs = dofhandler.get_region_dofs(subforest_flag=subforest_flag)
+        return dofs
+    
+    
+    def eval(self, x, cell):
+        """
+        Evaluate a basis function at a given set of points on the given cell
+        """
+        element = self.dofhandler().element
+        subforest_flag = self.subforest_flag()
+        
+        #
+        # Determine smallest cell in subforest that contains given cell 
+        # 
+        e_cell = cell.nearest_ancestor(subforest_flag)
+        
+        #
+        # Evaluate the Basis function at the given points
+        # 
+        phi = element.shape(x, derivatives=self.derivative(), cell=e_cell)
+        return phi
+    
+
 class DofHandler(object):
     """
     Degrees of freedom handler
@@ -1449,7 +1533,7 @@ class DofHandler(object):
             raise Exception('Entity not recognized.')
         self.__global_dofs[cell] = cell_dofs
         
-        
+    '''    
     def get_local_dofs(self, cell, entities=None):
         """
         Return the local dofs associated with a given geometric entity 
@@ -1536,8 +1620,9 @@ class DofHandler(object):
                     dofs += [i for i in range(dof_start, dof_start + dpc)]
         dofs.sort()
         return dofs
+    '''   
        
-            
+    '''     
     def get_global_dofs(self, cell=None, entity=None, subforest_flag=None, 
                         mode='breadth-first', all_dofs=False):
         """
@@ -1648,7 +1733,9 @@ class DofHandler(object):
                 cell_dofs = self.__global_dofs[cell]
                 i = cell.n_vertices()*dpv + cell.n_half_edges()*dpe
                 return cell_dofs[i:i+dpc]
-        return None         
+        return None
+    '''
+             
     ''' 
     def get_global_dofs(self, cell=None, entity=None, interior=False):
         """
@@ -2086,7 +2173,7 @@ class DofHandler(object):
         #
         # Extract the dofs and compute the length
         #
-        dofs = self.get_global_dofs(all_dofs=all_dofs, subforest_flag=subforest_flag)
+        dofs = self.get_region_dofs(subforest_flag=subforest_flag)
         return len(dofs)
       
       
@@ -2224,7 +2311,7 @@ class DofHandler(object):
                             if se_gdof not in le_gdofs:
                                 #
                                 # Hanging Dof must be adjusted 
-                                # 
+                                # TODO: This is not complete
                                 l2g[subcell][se_gdof]
         #
         # Store local-to-global mapping in a dictionary                    
@@ -2292,7 +2379,7 @@ class DofHandler(object):
                         #
                         # Neighbor has children -> Look for hanging nodes
                         #
-                        dofs = self.get_global_dofs(nb)
+                        dofs = self.get_cell_dofs(nb)
                         twin = half_edge.twin() 
         
                         #
@@ -2336,7 +2423,7 @@ class DofHandler(object):
                                     
                                     # Store in dictionary
                                     he_ch = twin.get_child(i_rhe_ch)
-                                    hn_dof = self.get_global_dofs(he_ch.cell())
+                                    hn_dof = self.get_cell_dofs(he_ch.cell())
                                     i_child = rhe_ch.cell().get_node_position()
                                     constrained_dof = hn_dof[v.get_pos(1, i_child)]
                                     

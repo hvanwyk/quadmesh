@@ -4,9 +4,8 @@ from assembler import Assembler
 from assembler import GaussRule
 from assembler import Form
 from assembler import Kernel
-from assembler import IKernel
 from fem import QuadFE, DofHandler
-from function import Function
+from function import Explicit, Nodal, Constant
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -33,7 +32,7 @@ class TestKernel(unittest.TestCase):
         # Kernel consists of a single explicit Function: 
         # 
         f1 = lambda x: x+2
-        f = Function(f1, 'explicit', dim=1)
+        f = Explicit(f1, dim=1)
         k = Kernel(f)
         x = np.linspace(0,1,100)
         n_points = len(x)
@@ -47,8 +46,8 @@ class TestKernel(unittest.TestCase):
         #
         # Kernel consists of a combination of two explicit functions
         # 
-        f1 = Function(lambda x: x+2, 'explicit',dim=1)
-        f2 = Function(lambda x: x**2 + 1, 'explicit',dim=1)
+        f1 = Explicit(lambda x: x+2, dim=1)
+        f2 = Explicit(lambda x: x**2 + 1, dim=1)
         F = lambda f1, f2: f1**2 + f2
         f_t = lambda x: (x+2)**2 + x**2 + 1
         k = Kernel([f1,f2], F=F)
@@ -66,8 +65,8 @@ class TestKernel(unittest.TestCase):
         mesh = Mesh1D(resolution=(1,))
         Q1 = QuadFE(1,'Q1')
         Q2 = QuadFE(1,'Q2')
-        f1 = Function(lambda x: x+2, 'nodal', mesh=mesh, element=Q1)
-        f2 = Function(lambda x: x**2 + 1, 'nodal', mesh=mesh, element=Q2)
+        f1 = Nodal(lambda x: x+2, mesh=mesh, element=Q1)
+        f2 = Nodal(lambda x: x**2 + 1, mesh=mesh, element=Q2)
         k = Kernel([f1,f2], F=F)
         
         # Check evaluation
@@ -76,7 +75,7 @@ class TestKernel(unittest.TestCase):
         #
         # Replace f2 above with its derivative
         # 
-        k = Kernel([f1,f2], dfdx=['f', 'fx'], F=F)
+        k = Kernel([f1,f2], derivatives=['f', 'fx'], F=F)
         f_t = lambda x: (x+2)**2 + 2*x
                 
         # Check derivative evaluation F = F(f1, df2_dx)
@@ -86,8 +85,8 @@ class TestKernel(unittest.TestCase):
         # 
         # Sampling 
         #
-        one = Function(1, 'constant')
-        f1 = Function(lambda x: x**2 + 1, 'explicit',dim=1)
+        one = Constant(1)
+        f1 = Explicit(lambda x: x**2 + 1, dim=1)
         
         # Sampled function
         a = np.linspace(0,1,11)
@@ -104,7 +103,7 @@ class TestKernel(unittest.TestCase):
         f2_m  = np.empty((n_dofs, n_samples))
         for i in range(n_samples):
             f2_m[:,i] = xv.ravel() + a[i]*xv.ravel()**2
-        f2 = Function(f2_m, 'nodal', dofhandler=dh)
+        f2 = Nodal(data=f2_m, dofhandler=dh)
         
         # Define kernel
         F = lambda f1, f2, one: f1 + f2 + one
@@ -115,16 +114,16 @@ class TestKernel(unittest.TestCase):
         n_points = len(x)
         self.assertEqual(k.eval(x).shape, (n_points, n_samples))    
         for i in range(n_samples):
-            # Check evaluation
-            self.assertTrue(np.allclose(k.eval(x)[:,i], f1.eval(x) + x + a[i]*x**2+ 1))
+            # Check evaluation            
+            self.assertTrue(np.allclose(k.eval(x)[:,i], f1.eval(x)[:,i] + x + a[i]*x**2+ 1))
             
         
         #
         # Sample multiple constant functions
         # 
-        f1 = Function(a, 'constant')
-        f2 = Function(lambda x: 1 + x**2, 'explicit', dim=1)
-        f3 = Function(f2_m[:,-1], 'nodal', dofhandler=dh)
+        f1 = Constant(data=a)
+        f2 = Explicit(lambda x: 1 + x**2, dim=1)
+        f3 = Nodal(data=f2_m[:,-1], dofhandler=dh)
         
         F = lambda f1, f2, f3: f1 + f2 + f3
         k = Kernel([f1,f2,f3], F=F)
@@ -132,7 +131,7 @@ class TestKernel(unittest.TestCase):
         x = np.linspace(0,1,100)
         for i in range(n_samples):
             self.assertTrue(np.allclose(k.eval(x)[:,i], \
-                                        a[i] + f2.eval(x) + f3.eval(x)))
+                                        a[i] + f2.eval(x)[:,i] + f3.eval(x)[:,i]))
         
         #
         # Submeshes
@@ -144,9 +143,9 @@ class TestKernel(unittest.TestCase):
         Q1 = QuadFE(1,'Q1')
         Q2 = QuadFE(1,'Q2')
         
-        f1 = Function(lambda x: x, 'nodal', mesh=mesh, element=Q1)
-        f2 = Function(lambda x: -2+2*x**2, 'nodal', mesh=mesh, element=Q2)
-        one = Function([1,2], 'constant', mesh=mesh)
+        f1 = Nodal(lambda x: x, mesh=mesh, element=Q1)
+        f2 = Nodal(lambda x: -2+2*x**2, mesh=mesh, element=Q2)
+        one = Constant(np.array([1,2]))
     
         F = lambda f1, f2, one: 2*f1**2 + f2 + one
         
@@ -170,7 +169,7 @@ class TestKernel(unittest.TestCase):
         mesh = Mesh1D(resolution=(10,))
         
         # Define function  
-        f = Function([lambda x: x, lambda x: -2+2*x**2], 'explicit', dim=1)
+        f = Explicit([lambda x: x, lambda x: -2+2*x**2], dim=1)
         n_samples = f.n_samples()
         
         k = Kernel(f)
@@ -200,21 +199,26 @@ class TestIKernel(unittest.TestCase):
         def k_fn(x,y,c = 2):
             return x*y + c
         
+        k = Explicit(f=lambda x,y,c: x*y+c, parameters={'c':1}, 
+                     n_variables=2, dim=1)
+        
         # Construct kernel, specifying parameter c
-        kernel = IKernel(k_fn, 1, {'c':1})
+        kernel = Kernel(k)
         
         # Evaluation points
         x = np.ones(11)
         y = np.linspace(0,1,11)
         
         # Check accuracy
-        self.assertTrue(np.allclose(kernel.eval(x,y), x*y+1))
+        self.assertTrue(np.allclose(kernel.eval((x,y)), x*y+1))
         
         # Define kernel with default parameters
-        kernel = IKernel(k_fn, 1, None)
+        k.set_parameters({'c':2})
+        
+        kernel = Kernel(k)
         
         # Check accuracy
-        self.assertTrue(np.allclose(kernel.eval(x,y), x*y+2))
+        self.assertTrue(np.allclose(kernel.eval((x,y)), x*y+2))
         
     
     

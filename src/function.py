@@ -151,8 +151,8 @@ class Map(object):
         
         # If function is symmetric, it should have 2 variables
         if symmetric:
-            assert self.n_variables()==2, \
-            'Symmetric functions should at least be bivariate'
+            assert self.n_variables()<=2, \
+            'Symmetric functions should be at most bivariate'
         self.__symmetric = symmetric
     
         # 
@@ -182,6 +182,12 @@ class Map(object):
         Input:
         
             i: int, numpy array of sample indices
+            
+        Notes: 
+        
+            We allow subsamples to be determined for deterministic functions.
+            In this case, copies of the deterministic function values will be
+            returned for each subsample.
         """
         if i is not None:
             #
@@ -189,18 +195,12 @@ class Map(object):
             # 
             assert type(i) is np.ndarray, \
             'subsample index set should be an array'
-        
-            assert self.n_samples() is not None,\
-            'Cannot sub-sample from a deterministic function'
             
             assert len(i.shape)==1, \
             'Subsample index is a 1-dimensional integer array.'
             
-            assert all([type(ii) is int for ii in i]), \
+            assert all([isinstance(ii, numbers.Integral) for ii in i]), \
             'Subsample should be an integer array.'
-            
-            assert i.max()<self.n_samples(), \
-            'Subsample index out of bounds.'
         
         self.__subsample = i
     
@@ -210,9 +210,9 @@ class Map(object):
         Returns the index set representing the subsample or else a list of
         integers from 0 to n_samples-1.
         """
-        if self.__subsample is None:
+        if self.__subsample is None and self.n_samples() is not None:
             #
-            # No subsample specified -> return full sample
+            # Stochastic function with no subsample specified
             # 
             return np.arange(self.n_samples())
         else:
@@ -321,8 +321,8 @@ class Map(object):
             #
             # One variable
             # 
-            if type(x) is np.ndarray:
-                x = [x]
+            x = (x,)
+            
             
         # Convert to usable format
         xx = []
@@ -340,7 +340,7 @@ class Map(object):
         return xx, is_singleton
         
     
-    def return_singleton(self, fx, is_singleton):
+    def parse_fx(self, fx, is_singleton):
         """
         Returns output appropriate for singleton points
         
@@ -353,22 +353,87 @@ class Map(object):
         
         Output:
         
-            fx: double, possibly  
+            fx: double, function output - possibly modified to account 
+                for the singleton.
         """
         #
         # Parse fx (n_points, n_samples)   
         # 
+        n_samples = self.n_samples()
+        if n_samples is None:
+            #
+            # Deterministic function
+            #
+            if self.subsample() is not None:
+                #
+                # Nontrivial subsample
+                # 
+                n_subsample = self.n_subsample()
+                if is_singleton:
+                    #
+                    # Singleton input
+                    #
+                    return fx[0]*np.ones(n_subsample)
+                else:
+                    #
+                    # Vector input
+                    # 
+                    if len(fx.shape)==1:
+                        #
+                        # (n_points,) vector
+                        #
+                        return np.tile(fx[:,np.newaxis], (1,n_subsample))
+                    elif len(fx.shape)==2:
+                        #
+                        # (n_points,1) vector
+                        #
+                        assert len(fx.shape[1])==1, \
+                        'Number of columns should be 1.'
+                        return np.tile(fx, (1, n_subsample))
+            else:
+                #
+                # No subsample
+                #
+                if is_singleton:
+                    return fx[0]
+                else:
+                    return fx
+        else:
+            #
+            # Sampled function
+            # 
+            if is_singleton:
+                return fx[0]
+            else:
+                return fx
+        
+        """        
+        repeat = False
+        if self.n_samples() is None and self.subsample() is not None:
+            #
+            # Deterministic function with non-trivial subsample
+            #  
+            repeat = True
+            n_subsample = self.n_subsample()
+          
         if is_singleton:
             #
             # Singleton input
             #  
-            return fx[0]
+            if repeat:
+                return fx[0]*np.ones(n_subsample)
+            else:
+                return fx[0]
         else:
             #
-            # Vector input
+            # Vector output
             # 
-            return fx
-
+            if repeat:
+                print(fx)
+                return np.tile(fx, (1,n_subsample))
+            else:
+                return fx
+        """
 
     def eval(self):
         """
@@ -1428,7 +1493,7 @@ class Explicit(Map):
     """
     def __init__(self, f, parameters={}, mesh=None, element=None, \
                  dofhandler=None, subforest_flag=None, subregion_flag=None, \
-                 dim=None, n_variables=1, symmetric=False):
+                 dim=None, n_variables=1, subsample=None, symmetric=False):
         """
         Constructor
         
@@ -1442,11 +1507,12 @@ class Explicit(Map):
             
             For other input parameters, see Map class
             
-        TODO: subregion flag doesn't do anything (plays a role in eval).
+        TODO: subregion flag doesn't do anything (should play a role in eval).
         """
         Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, \
                      subforest_flag=subforest_flag, subregion_flag=subregion_flag, \
-                     dim=dim, n_variables=n_variables, symmetric=symmetric)
+                     dim=dim, n_variables=n_variables, subsample=subsample,\
+                     symmetric=symmetric)
         
         # Define rules
         self.set_rules(f, parameters)
@@ -1462,7 +1528,12 @@ class Explicit(Map):
         # Number of inputs should be 1 or 2
         assert self.n_variables() in [1,2], \
             'The number of inputs should be 1 or 2.'
-        
+       
+        # Subsample index should not exceed sample size
+        if self.subsample() is not None:
+            if self.n_samples() is not None:
+                assert self.subsample().max()<self.n_samples(), \
+                'Subsample index out of bounds.'
 
     def n_samples(self):
         """
@@ -1656,28 +1727,9 @@ class Explicit(Map):
                 f(x) is an (n_points, ) numpy array. Otherwise, f(x) is an 
                 (n_points, n_samples) numpy array of outputs   
         """ 
-        dim = self.dim()
-        n_variables = self.n_variables()
-        if n_variables==1:
-            #
-            # Univariate function
-            # 
-            x, is_singleton = convert_to_array(x, dim=dim, 
-                                               return_is_singleton=True)
-            n_points = x.shape[0]
+        x, is_singleton = self.parse_x(x)
             
-        elif n_variables==2:
-            # 
-            # Bivariate function
-            #
-             
-            # Two variables passed as tuple
-            x1, x2 = x
-            x1, is_singleton = convert_to_array(x1, dim=dim, 
-                                                return_is_singleton=True)
-            x2 = convert_to_array(x2, dim=dim)
-            
-            n_points = x1.shape[0]
+        n_points = x[0].shape[0]
                 
         # =====================================================================
         # Parse sample size
@@ -1705,64 +1757,32 @@ class Explicit(Map):
             #
             # Deterministic function
             # 
-            if n_variables==1:
-                #
-                # 1 Variable (any dimension)
-                #   
-                f_vec = self.__f(x, **self.__parameters)
-            else:
-                #
-                # 2 Variables (any dimension)
-                # 
-                f_vec = self.__f(x1, x2, **self.__parameters)
+            fx = self.__f(*x, **self.__parameters)
+            
+            # Fix output shape (depends on how lambda function was passed)
+            if fx.shape==(n_points,1):
+                fx = fx[:,0]
         else:
             #
             # Stochastic function
             # 
-            f_vec = np.empty((n_points, n_subsample))
+            fx = np.empty((n_points, n_subsample))
             for i in subsample:
-                fi, pi = self.__f[i], self.__parameters[i]
-                
-                if n_variables==1:
-                    #
-                    # 1 Variable (any dimension)
-                    # 
-                    f_vec[:,i] = fi(x, **pi).ravel()
-                elif n_variables==2:
-                    #
-                    # 2 Variables (any dimension)
-                    # 
-                    f_vec[:,i] = fi(x1,x2, **pi).ravel()
+                fi, pi = self.__f[i], self.__parameters[i]   
+                fx[:,i] = fi(*x, **pi).ravel()
         
-                        
-        if is_singleton:
-            #
-            # Singleton input
-            # 
-            if n_samples is None:
-                #
-                # Deterministic function
-                # 
-                return f_vec[0]
-            else:
-                #
-                # Sampled function
-                # 
-                return f_vec[0,:]
-        else:
-            #
-            # Vector input
-            # 
-            return f_vec
-
-    
+        # Returns function value   
+        return self.parse_fx(fx, is_singleton)
+            
+            
 class Nodal(Map):
     """
     Nodal functions
     """    
     def __init__(self, f=None, parameters={}, data=None, mesh=None, \
                  element=None, dofhandler=None, subforest_flag=None, \
-                 subregion_flag=None, dim=None, n_variables=1, symmetric=False):
+                 subregion_flag=None, dim=None, n_variables=1, \
+                 subsample=None, symmetric=False):
         """
         Constructor
         
@@ -1782,7 +1802,8 @@ class Nodal(Map):
         """
         Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, \
                      subforest_flag=subforest_flag, subregion_flag=subregion_flag, \
-                     dim=dim, n_variables=n_variables, symmetric=symmetric)
+                     dim=dim, n_variables=n_variables, subsample=subsample,\
+                     symmetric=symmetric)
         # 
         # Checks
         # 
@@ -1804,10 +1825,6 @@ class Nodal(Map):
         # 
         self.set_data(data=data, f=f, parameters=parameters)
         
-        #
-        # Store derivative values
-        # 
-        self.set_derivative(None)
         
         
     def n_samples(self):
@@ -1838,6 +1855,8 @@ class Nodal(Map):
             values: (n_dofs, n_samples) array of function values
             
             f: (list of) lambda function(s) 
+            
+        TODO: Can only define univariate and bivariate functions using Explicit
         """
         if data is not None:
             #
@@ -1921,18 +1940,7 @@ class Nodal(Map):
             parameters: (compatible list of) function parameters  
         """
         pass
-    
-    
-    def set_derivative(self, dfdx):
-        """
-        Specify derivative
-        
-        Inputs:
-        
-            dfdx: str/tuple, derivative(s)  
-        """
-        
-    
+       
     
     def eval(self, x=None, cell=None, phi=None, dofs=None, \
              derivative=None, is_singleton=False):
@@ -2095,7 +2103,11 @@ class Nodal(Map):
             
             # Contract the tensor
             fx = np.tensordot(P, f_loc, axes=(p_axes, f_axes))
-               
+            
+            #
+            # Parse fx (n_points, n_samples)   
+            # 
+            return self.parse_fx(fx, is_singleton)   
         else:        
             # =====================================================================
             # First Evaluate Shape functions
@@ -2108,7 +2120,12 @@ class Nodal(Map):
                 derivative = [(0,)]*n_variables
             elif type(derivative) is tuple:
                 derivative = [derivative]
-                
+            elif type(derivative) is str:
+                derivative = [derivative]
+            
+            # Ensure that the derivative is a tuple
+            derivative = [parse_derivative_info(dfdx) for dfdx in derivative]
+            
             # Compatibility with n_varibles
             if len(derivative)==1:
                 derivative = derivative*n_variables
@@ -2122,32 +2139,10 @@ class Nodal(Map):
             if x is not None:
                 xx, is_singleton = self.parse_x(x)
                 n_points = xx[0].shape[0]
-                """
-                if type(x) is np.ndarray:
-                    x = [x]
-                
-                assert len(x)==n_variables, \
-                'Input "x" incompatible with number of variables.'
-                
-                # Convert to usable format
-                xx = []
-                for i in range(n_variables):
-                    if i==0:
-                        xi, is_singleton = \
-                            convert_to_array(x[i], dim=self.dim(),\
-                                             return_is_singleton=True)
-                        xx.append(xi)
-                        n_points = xi.shape[0]
-                    else:
-                        xx.append(convert_to_array(x[i], dim=self.dim()))
-                        assert xx[i].shape[0]==n_points, \
-                        'Each variable should have the same number of points.'
-                """
             else:
                 assert phi is not None, \
                 'If input "x" is None, input "phi" should be given.'
-            
-            
+             
             #
             # Bin points
             #
@@ -2229,33 +2224,8 @@ class Nodal(Map):
             #
             # Compute f(x) using the shape functions and dofs 
             #  
-            fx = self.eval(phi=Phi, dofs=udofs)
-            
-        #
-        # Parse fx (n_points, n_samples)   
-        # 
-        if is_singleton:
-            #
-            # Singleton input
-            # 
-            if n_samples is None:
-                #
-                # Deterministic function
-                # 
-                return fx[0]
-            else:
-                #
-                # Sampled function
-                # 
-                return fx[0,:]
-        else:
-            #
-            # Vector input
-            # 
+            fx = self.eval(phi=Phi, dofs=udofs, is_singleton=is_singleton)
             return fx
-        
-        
-            
         """
                
         if phi is not None:
@@ -2472,23 +2442,6 @@ class Nodal(Map):
                     f_vec[in_cell,:] = np.dot(phi, f_loc)
                 """
 
-    
-    def mesh_compatible(self, mesh, subforest_flag):
-        """
-        Determine whether the NodalFn is compatible with the current
-        mesh and subforest flag
-        """
-        if self.mesh()==mesh and self.subforest_flag()==subforest_flag:
-            #
-            # Same (sub)mesh
-            # 
-            return True
-        else:
-            #
-            # Different (sub)mesh
-            # 
-            return False
-        
         
     def differentiate(self, derivative):
         """
@@ -2540,11 +2493,11 @@ class Nodal(Map):
                      subforest_flag=sf) 
     
     
-class Constant(Function):
+class Constant(Map):
     """
     Constant functions
     """
-    def __init__(self, data=None, n_variables=1):
+    def __init__(self, data=None, n_variables=1, subsample=None):
         """
         Constructor
         
@@ -2562,7 +2515,8 @@ class Constant(Function):
             
             For other inputs, see Map constructor
         """
-        Map.__init__(self, dim=None, n_variables=n_variables, symmetric=True)
+        Map.__init__(self, dim=None, n_variables=n_variables, subsample=subsample,
+                     symmetric=True)
         self.set_data(data)
         
         
@@ -2612,12 +2566,19 @@ class Constant(Function):
             x: double, (n_points,n_samples) array of points 
                 or tuple
         """
-        if type(x) is tuple:
-            xx = x[0]
-        
-        x = convert_to_array(x)
-        n_points = x.shape[0]
-        return np.ones((n_points,1))*self.data()
+        # Parse input
+        x, is_singleton = self.parse_x(x)
+        n_points = x[0].shape[0]
+        n_sample = self.n_samples()        
+        if n_sample is None:
+            #
+            # Deterministic function, copied 
+            #
+            fx = np.ones(n_points)*self.data()
+        else:
+            #
+            # Stochastic function 
+            # 
+            fx = np.outer(np.ones(n_points), self.data()[self.subsample()])
                 
-
-    
+        return self.parse_fx(fx, is_singleton)

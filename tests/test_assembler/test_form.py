@@ -1,8 +1,20 @@
 import unittest
-from mesh import QuadMesh, Mesh1D
-from assembler import Assembler, Form, GaussRule, IForm, FormII, Kernel
-from fem import QuadFE, DofHandler, Basis
-from function import Function, Explicit, Nodal
+
+from assembler import Assembler
+from assembler import IIForm
+from assembler import IPForm
+from assembler import  Kernel
+
+from fem import QuadFE
+from fem import DofHandler
+from fem import Basis
+
+from function import Function
+from function import Explicit
+from function import Nodal
+
+from mesh import Mesh1D
+
 import numpy as np
 
 class TestForm(unittest.TestCase):
@@ -46,7 +58,7 @@ class TestIForm(unittest.TestCase):
         dofhandler.distribute_dofs()
         
         # Basis functions
-        phi = Basis(element, 'u')
+        phi = Basis(dofhandler, 'u')
         
         # Symmetric kernel function
         kfns = {'symmetric': lambda x,y: x*y,
@@ -61,10 +73,10 @@ class TestIForm(unittest.TestCase):
             kfn = kfns[ktype]
             
             # Define integral kernel
-            kernel = Kernel(Explicit(kfn, dim=1))
+            kernel = Kernel(Explicit(kfn, dim=1, n_variables=2))
             
             # Define Bilinear Form
-            form = FormII(kernel, trial=phi, test=phi)
+            form = IIForm(kernel, trial=phi, test=phi)
             
             # 
             # Compute inputs required for evaluating form_loc
@@ -74,11 +86,9 @@ class TestIForm(unittest.TestCase):
             assembler = Assembler(form, mesh)
             
             # Cells
-            ci = mesh.cells.get_child(0)
             cj = mesh.cells.get_child(2)
-            
-            # Degrees of freedom
-            cj_dofs = assembler.cell_dofs(cj)[etype]
+            ci = mesh.cells.get_child(0)
+    
     
             # Shape function info on cells
             cj_sinfo = assembler.shape_info(cj)
@@ -93,22 +103,27 @@ class TestIForm(unittest.TestCase):
             #
             # Evaluate form
             # 
-            form_loc = form.eval((ci,cj), xj_g, \
-                                 wj_g, phij)
+            form_loc = form.eval(cj, xj_g, wj_g, phij)
             #
             # Define functions 
             # 
-            u = Function(lambda x: x, 'nodal', dofhandler=dofhandler)
+            u = Nodal(lambda x: x, dofhandler=dofhandler, n_variables=1)
             
             #
             # Get local node values
-            # 
-            uj = u.fn()[np.array(cj_dofs)]
+            #
+            
+            # Degrees of freedom
+            cj_dofs = phi.dofs(cj)
+            ci_dofs = phi.dofs(ci)
+             
+            uj = u.data()[np.array(cj_dofs)]
                     
             
             # Evaluate Ici Icj k(x,y) y dy (1-x)dx
-            fa = form_loc.dot(uj)
+            fa = form_loc[ci_dofs].dot(uj)
             fe = vals[ktype] 
+            
             self.assertTrue(np.allclose(fa, fe))
 
      
@@ -142,7 +157,7 @@ class TestIForm(unittest.TestCase):
         dofhandler.distribute_dofs()
         
         # Basis functions
-        phi = Basis(element, 'u')
+        phi = Basis(dofhandler, 'u')
         
         # Symmetric kernel function
         kfns = {'symmetric': lambda x,y: x*y,
@@ -157,10 +172,10 @@ class TestIForm(unittest.TestCase):
             kfn = kfns[ktype]
             
             # Define integral kernel
-            kernel = Kernel(Explicit(kfn, dim=1))
+            kernel = Kernel(Explicit(kfn, dim=1, n_variables=2))
             
             # Define Bilinear Form
-            form = IForm(kernel, trial=phi, test=phi, form_type='projection')
+            form = IPForm(kernel, trial=phi, test=phi)
             
             # 
             # Compute inputs required for evaluating form_loc
@@ -172,11 +187,7 @@ class TestIForm(unittest.TestCase):
             # Cells
             ci = mesh.cells.get_child(0)
             cj = mesh.cells.get_child(2)
-            
-            # Degrees of freedom
-            ci_dofs = assembler.cell_dofs(ci)[etype]
-            cj_dofs = assembler.cell_dofs(cj)[etype]
-    
+               
             # Shape function info on cells
             ci_sinfo = assembler.shape_info(ci)
             cj_sinfo = assembler.shape_info(cj)
@@ -204,6 +215,9 @@ class TestIForm(unittest.TestCase):
             #
             # Get local node values
             # 
+            # Degrees of freedom
+            ci_dofs = phi.dofs(ci)
+            cj_dofs = phi.dofs(cj)
             uj = u.fn()[np.array(cj_dofs)]
             vi = v.fn()[np.array(ci_dofs)]
             

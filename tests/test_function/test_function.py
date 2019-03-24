@@ -14,6 +14,7 @@ from function import Constant
 from function import Explicit
 from function import Nodal
 
+import numbers 
 
 from plot import Plot
 
@@ -83,6 +84,169 @@ class TestMap(unittest.TestCase):
     def interpolate(self):
         pass
     
+    def test_subsample_deterministic(self):
+        """
+        When evaluating a deterministic function while specifying a subsample,
+        n_subsample copies of the function output should be returned.        
+        """
+        #
+        # Deterministic functions 
+        #
+            
+        # Functions  
+        fns = {1: {1: lambda x: x[:,0]**2, 2: lambda x,y: x[:,0] + y[:,0]}, 
+               2: {1: lambda x: x[:,0]**2 + x[:,1]**2, 
+                   2: lambda x,y: x[:,0]*y[:,0] + x[:,1]*y[:,1]}}
+        
+        # Singletons
+        x  = {1: {1: 2,     2: (3,4)},
+              2: {1: (1,2), 2: ((1,2),(3,4))}}
+        
+        xv = {1: {1: [(2,),(2,)],     
+                  2: ([(3,),(3,)],[(4,),(4,)])},
+              2: {1: [(1,2),(1,2)], 
+                  2: ([(1,2),(1,2)],[(3,4),(3,4)])}}
+        
+        vals = {1: {1: 4, 2: 7}, 2: {1: 5, 2: 11}} 
+        subsample = np.array([2,3], dtype=np.int)
+        
+        for dim in [1,2]:
+            #
+            # Iterate over dimension
+            # 
+            
+            # DofHandler
+            if dim==1:
+                mesh = Mesh1D(box=[0,5], resolution=(1,))
+            elif dim==2:
+                mesh = QuadMesh(box=[0,5,0,5])
+            element = QuadFE(dim, 'Q2')
+            dofhandler = DofHandler(mesh, element)
+            
+            for n_variables in [1,2]:
+                #
+                # Iterate over number of variables
+                # 
+                
+                #
+                # Explicit
+                # 
+                f = fns[dim][n_variables]
+                
+                # Explicit
+                fe = Explicit(f, n_variables=n_variables, dim=dim, \
+                             subsample=subsample)
+                
+                # Nodal        
+                fn = Nodal(f, n_variables=n_variables, dim=dim, \
+                           dofhandler=dofhandler, subsample=subsample)
+                
+                # Constant
+                fc = Constant(1, n_variables=n_variables, \
+                              subsample=subsample)
+                
+                
+                # Singleton input
+                xn = x[dim][n_variables]
+                
+                # Explicit
+                self.assertEqual(len(fe.eval(xn)),len(subsample))
+                self.assertEqual(fe.eval(xn)[0],vals[dim][n_variables])
+                self.assertEqual(fe.eval(xn)[1],vals[dim][n_variables])
+                
+                
+                # Nodal
+                self.assertEqual(len(fn.eval(xn)),len(subsample))
+                self.assertAlmostEqual(fn.eval(xn)[0],vals[dim][n_variables])
+                self.assertAlmostEqual(fn.eval(xn)[1],vals[dim][n_variables])
+                
+                
+                # Constant
+                self.assertEqual(len(fc.eval(xn)),len(subsample))
+                self.assertAlmostEqual(fc.eval(xn)[0],1)
+                self.assertAlmostEqual(fc.eval(xn)[1],1)
+                
+                # Vector input
+                xn = xv[dim][n_variables]
+                n_points = 2
+                
+                # Explicit                
+                self.assertEqual(fe.eval(xn).shape, (2,2))
+                for i in range(fe.n_subsample()):
+                    for j in range(n_points):
+                        self.assertEqual(fe.eval(xn)[i][j],vals[dim][n_variables])
+            
+                # Nodal
+                self.assertEqual(fn.eval(xn).shape, (2,2))
+                for i in range(fe.n_subsample()):
+                    for j in range(n_points):
+                        self.assertAlmostEqual(fn.eval(xn)[i][j],vals[dim][n_variables])
+                
+                # Constant 
+                self.assertEqual(fc.eval(xn).shape, (2,2))
+                for i in range(fe.n_subsample()):
+                    for j in range(n_points):
+                        self.assertEqual(fc.eval(xn)[i][j],1)
+                
+        
+    def test_subsample_stochastic(self):
+        """
+        
+        
+        #
+        # Evaluate sampled functions
+        # 
+        fns = {1: {1: lambda x,a: a*x**2, 
+                   2: lambda x,y,a: a*(x + y)}, 
+               2: {1: lambda x,a: a*(x[:,0]**2 + x[:,1]**2), 
+                   2: lambda x,y,a: a*(x[:,0]*y[:,0] + x[:,1]*y[:,1])}}
+        
+        bad_subsample = np.array([2,3], dtype=np.int)
+        subsample = np.array([0], dtype=np.int)
+        
+        pars = [{'a': 1}, {'a':2}]   
+        for dim in [1,2]:
+            #
+            # Iterate over dimension
+            # 
+            for n_variables in [1,2]:
+                #
+                # Iterate over number of variables
+                # 
+                fn = fns[dim][n_variables]
+                self.assertRaises(Exception, Explicit, *(fn,), 
+                                  **{'parameters':pars, 
+                                     'n_variables':n_variables, 
+                                     'dim':dim, 'subsample':bad_subsample})
+        
+        #
+        # 2 points
+        # 
+        n_points = 2
+        for dim in [1,2]:
+            #
+            # Iterate over dimension
+            # 
+            for n_variables in [1,2]:
+                #
+                # Iterate over number of variables
+                # 
+                fn = fns[dim][n_variables]
+                f = Explicit(fn, parameters={}, 
+                             n_variables=n_variables, dim=dim, 
+                             subsample=subsample)
+                
+                xn = x[dim][n_variables]
+                
+                
+                #self.assertEqual(f.eval(xn).shape[0],n_points)
+                #self.assertEqual(f.eval(xn).shape[1],f.n_samples())
+                
+                #for i in range(f.n_samples()):
+                #        val = pars[i]['a']*vals[dim][n_variables]
+                #        self.assertEqual(f.eval(xn)[j,i], val)
+        """
+         
     
     
 class TestExplicit(unittest.TestCase):
@@ -153,6 +317,8 @@ class TestExplicit(unittest.TestCase):
         vals = [4, 8, 2]
         
         for i in range(3):
+            
+            #(*(x,),**{'a':1}))
             self.assertEqual(f.eval(x)[i],vals[i])
         
         
@@ -423,11 +589,7 @@ class TestNodal(unittest.TestCase):
                           mesh=mesh, element=element, 
                           dim=dim, n_variables=n_variables)
                 self.assertEqual(f.n_samples(),2)
-    
-    
-    def test_mesh_compatible(self):
-        pass
-    
+        
     
     def test_derivative(self):
         """
@@ -487,7 +649,7 @@ class TestNodal(unittest.TestCase):
             count = 0
             for derivative in derivatives[dim]:
                 # Evaluate the derivative
-                dfdx = f.derivative(derivative)
+                dfdx = f.differentiate(derivative)
                 self.assertTrue(np.allclose(dfdx.eval(x=x), 
                                             dfdx_exact[dim][count](x)))
                 count += 1
@@ -499,7 +661,7 @@ class TestNodal(unittest.TestCase):
             count = 0
             for derivative in derivatives[dim]:
                 # Evaluate the derivative
-                dfdx = f.derivative(derivative)
+                dfdx = f.differentiate(derivative)
                 self.assertTrue(np.allclose(dfdx.eval(x=x)[:,0], 
                                             dfdx_exact[dim][count](x)))
                 self.assertTrue(np.allclose(dfdx.eval(x=x)[:,1], 
@@ -645,11 +807,11 @@ class TestNodal(unittest.TestCase):
                           dim=dim, n_variables=n_variables)
                 
                 if n_variables==1:
-                    xx = (x,)
+                    xx = x
+                    fe = fn(x)
                 elif n_variables==2:
                     xx = (x,y)
-                
-                fe = fn(*xx)
+                    fe = fn(*xx)
                 fx = f.eval(x=xx)
                 self.assertTrue(np.allclose(fx,fe))
                                 
@@ -938,7 +1100,7 @@ class TestFunction(unittest.TestCase):
         vf = np.empty(4,)
         dh = DofHandler(mesh, element)
         dh.distribute_dofs()
-        dofs = dh.get_global_dofs()
+        dofs = dh.get_region_dofs()
         x_mpt = convert_to_array(dh.get_dof_vertices(dofs),2)
         f = Function(vf, 'nodal', mesh=mesh, element=element)
         

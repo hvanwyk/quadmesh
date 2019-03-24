@@ -2,8 +2,7 @@
 import numpy as np
 from collections import deque
 import numbers
-import time
-#from math import isclose
+
 """
 Created on Jun 29, 2016
 @author: hans-werner
@@ -148,6 +147,37 @@ def convert_to_array(x, dim=None, return_is_singleton=False):
     else:
         return x
 
+
+class Markable(object):
+    """
+    Description: Any object that can be assigned a flag
+    """
+    def __init__(self):
+        """
+        Constructor
+        """
+        self.__flag = None
+        
+        
+    def mark(self, flag):
+        """
+        """
+        pass
+    
+    
+    def unmark(self, flag):
+        """
+        Remove flag
+        """
+        pass
+        
+        
+    def is_marked(self, flag):
+        """
+        Determine whether 
+        """
+        pass
+    
 
 class Tree(object):
     """
@@ -881,6 +911,23 @@ class Tree(object):
         return node 
 
 
+    def nearest_ancestor(self, flag):
+        """
+        Returns the nearest ancestor with given flag
+        """
+        if flag is None:
+            return self
+        
+        candidate = self
+        while not candidate.is_marked(flag):
+            if candidate.get_node_depth()==0:
+                return None
+            else:
+                candidate = candidate.get_parent()
+            
+        return candidate
+            
+            
     def contains(self, tree):
         """
         Determine whether self contains a given node 

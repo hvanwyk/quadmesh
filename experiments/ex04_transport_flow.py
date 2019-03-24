@@ -47,9 +47,9 @@ from matplotlib import animation
 # 
 
 # permeability field
-phi = Function(1, 'constant')  # porosity
-D   = Function(0.0252, 'constant')  # dispersivity
-K   = Function(1, 'constant')  # permeability
+phi = Constant(1)  # porosity
+D   = Constant(0.0252)  # dispersivity
+K   = Constant(1)  # permeability
 
 # =============================================================================
 # Mesh and Elements

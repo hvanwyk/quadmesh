@@ -3,7 +3,7 @@ from mesh import QuadMesh
 from mesh import Mesh1D
 from fem import QuadFE
 from fem import DofHandler
-from fem import Function
+from function import Function
 from plot import Plot
 import matplotlib.pyplot as plt
 

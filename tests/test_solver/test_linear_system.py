@@ -1,14 +1,21 @@
 import unittest
 import numpy as np
-from mesh import Mesh1D
-from mesh import QuadMesh
-from fem import DofHandler
-from function import Function
-from fem import Basis
+
 from assembler import Form
 from assembler import Kernel
 from assembler import Assembler
+
+from mesh import Mesh1D
+from mesh import QuadMesh
+
+from fem import DofHandler
+from fem import Basis
 from fem import QuadFE
+
+from function import Nodal
+from function import Explicit
+from function import Constant
+
 from solver import LinearSystem
 #from plot import Plot
 
@@ -24,7 +31,6 @@ class TestLinearSystem(unittest.TestCase):
         Solve one dimensional boundary value problem with dirichlet 
         conditions on left and right
         """
-        print('test01')
         #
         # Define mesh
         # 
@@ -32,23 +38,23 @@ class TestLinearSystem(unittest.TestCase):
         
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(1,etype)
-            
+            dofhandler = DofHandler(mesh, element)
             #
             # Exact solution 
             # 
-            ue = Function(lambda x: x, 'nodal', mesh=mesh, element=element) 
+            ue = Nodal(f=lambda x: x, dofhandler=dofhandler) 
             
             #
             # Define Basis functions 
             #  
-            u = Basis(element, 'u')
-            ux = Basis(element, 'ux')
+            u = Basis(dofhandler, 'u')
+            ux = Basis(dofhandler, 'ux')
             
             #
             # Define bilinear form
             #
-            one = Function(1, 'constant')
-            zero = Function(0, 'constant')
+            one = Constant(1)
+            zero = Constant(0)
             a = Form(kernel=Kernel(one), trial=ux, test=ux)
             L = Form(kernel=Kernel(zero), test=u)
             problem = [a,L]
@@ -93,24 +99,24 @@ class TestLinearSystem(unittest.TestCase):
             ua = system.get_solution(as_function=True)
             
             # Compare with exact solution
-            self.assertTrue(np.allclose(ua.fn(), ue.fn()))
+            self.assertTrue(np.allclose(ua.data(), ue.data()))
         
     def test02_1d_dirichlet_higher_order(self):
-        print('test02')
         mesh = Mesh1D()
         for etype in ['Q2','Q3']:
             element = QuadFE(1,etype)
+            dofhandler = DofHandler(mesh, element)
             
             # Exact solution
-            ue = Function(lambda x:x*(1-x), 'nodal', mesh=mesh, element=element)
+            ue = Nodal(f=lambda x:x*(1-x), dofhandler=dofhandler)
             
             # Basis functions 
-            ux = Basis(element, 'ux')
-            u = Basis(element, 'u')
+            ux = Basis(dofhandler, 'ux')
+            u = Basis(dofhandler, 'u')
             
             # Define coefficient functions
-            one = Function(1,'constant')
-            two = Function(2,'constant')
+            one = Constant(1)
+            two = Constant(2)
             
             # Define forms
             a = Form(kernel=Kernel(one), trial=ux, test=ux)
@@ -142,16 +148,16 @@ class TestLinearSystem(unittest.TestCase):
             
             # Compare solution with the exact solution
             ua = system.get_solution(as_function=True)
-            self.assertTrue(np.allclose(ua.fn(), ue.fn()))
+            self.assertTrue(np.allclose(ua.data(), ue.data()))
     
     
     def test03_1d_mixed(self):
-        print('test03')
         mesh = Mesh1D()
         element = QuadFE(1,'Q3')
+        dofhandler = DofHandler(mesh, element)
         
         # Exact solution
-        ue = Function(lambda x: x*(1-x), 'nodal', mesh=mesh, element=element)
+        ue = Nodal(f=lambda x: x*(1-x), dofhandler=dofhandler)
         
         # Mark mesh regions
         bnd_right = lambda x: np.abs(x-1)<1e-9
@@ -165,17 +171,17 @@ class TestLinearSystem(unittest.TestCase):
         #
         
         # Basis functions 
-        u = Basis(element, 'u')
-        ux = Basis(element, 'ux')
+        u = Basis(dofhandler, 'u')
+        ux = Basis(dofhandler, 'ux')
         
         # Linear form
-        L  = Form(kernel=Kernel(Function(2, 'constant')), test=u)
+        L  = Form(kernel=Kernel(Constant(2)), test=u)
         
         # Neumann form
-        Ln = Form(kernel=Kernel(ue, dfdx='fx'), test=u, dmu='dv', flag='right')
+        Ln = Form(kernel=Kernel([ue], derivatives=['fx']), test=u, dmu='dv', flag='right')
         
         # Bilinear form
-        a  = Form(kernel=Kernel(Function(1,'constant')), trial=ux, test=ux)
+        a  = Form(kernel=Kernel(Constant(1)), trial=ux, test=ux)
         
         # 
         # Assembly
@@ -202,11 +208,10 @@ class TestLinearSystem(unittest.TestCase):
         # Compare solution with exact solution
         ua = system.get_solution(as_function=True)
         
-        self.assertTrue(np.allclose(ua.fn(), ue.fn()))
+        self.assertTrue(np.allclose(ua.data(), ue.data()))
     
     
     def test04_1d_periodic(self):
-        print('test04')
         #
         # Dirichlet Problem on a Periodic Mesh
         # 
@@ -214,9 +219,10 @@ class TestLinearSystem(unittest.TestCase):
         # Define mesh, element
         mesh = Mesh1D(resolution=(100,), periodic=True)
         element = QuadFE(1,'Q3')
+        dofhandler = DofHandler(mesh, element)
                   
         # Exact solution
-        ue = Function(lambda x: np.sin(2*np.pi*x), 'nodal', mesh=mesh, element=element)
+        ue = Nodal(f=lambda x: np.sin(2*np.pi*x), dofhandler=dofhandler)
         
         #
         # Mark dirichlet regions
@@ -229,14 +235,14 @@ class TestLinearSystem(unittest.TestCase):
         #
         
         # Basis functions
-        u = Basis(element, 'u')
-        ux = Basis(element, 'ux')
+        u = Basis(dofhandler, 'u')
+        ux = Basis(dofhandler, 'ux')
         
         # Bilinear form
-        a = Form(kernel=Kernel(Function(1,'constant')), trial=ux, test=ux)
+        a = Form(kernel=Kernel(Constant(1)), trial=ux, test=ux)
         
         # Linear form
-        f = Function(lambda x: 4*np.pi**2*np.sin(2*np.pi*x), 'explicit', dim=1)
+        f = Explicit(lambda x: 4*np.pi**2*np.sin(2*np.pi*x), dim=1)
         L = Form(kernel=Kernel(f), test=u)
         
         #
@@ -266,14 +272,13 @@ class TestLinearSystem(unittest.TestCase):
         #plot = Plot(2)
         #plot.line(ua)
         #plot.line(ue)
-        self.assertTrue(np.allclose(ua.fn(), ue.fn()))
+        self.assertTrue(np.allclose(ua.data(), ue.data()))
         # TODO: Problems
         
     def test05_2d_dirichlet(self):        
         """
         Two dimensional Dirichlet problem with hanging nodes
         """
-        print('test05')
         #
         # Define mesh
         #
@@ -295,21 +300,22 @@ class TestLinearSystem(unittest.TestCase):
             # Element
             # 
             element = QuadFE(2,etype)            
+            dofhandler = DofHandler(mesh, element)
             
             #
             # Basis 
             #
-            u = Basis(element, 'u')
-            ux = Basis(element, 'ux')
-            uy = Basis(element, 'uy')
+            u = Basis(dofhandler, 'u')
+            ux = Basis(dofhandler, 'ux')
+            uy = Basis(dofhandler, 'uy')
             
             #
             # Construct forms
             # 
-            ue = Function(lambda x,dummy: x, 'nodal', mesh=mesh, element=element)
-            ax = Form(kernel=Kernel(Function(1,'constant')), trial=ux, test=ux)
-            ay = Form(kernel=Kernel(Function(1,'constant')), trial=uy, test=uy)
-            L = Form(kernel=Kernel(Function(0,'constant')), test=u)
+            ue = Nodal(f=lambda x: x[:,0], dofhandler=dofhandler)
+            ax = Form(kernel=Kernel(Constant(1)), trial=ux, test=ux)
+            ay = Form(kernel=Kernel(Constant(1)), trial=uy, test=uy)
+            L = Form(kernel=Kernel(Constant(0)), test=u)
             problem = [ax, ay, L]
             
             #
@@ -341,14 +347,13 @@ class TestLinearSystem(unittest.TestCase):
             # Check solution
             # 
             ua = system.get_solution(as_function=True)            
-            self.assertTrue(np.allclose(ua.fn(),ue.fn()))
+            self.assertTrue(np.allclose(ua.data(),ue.data()))
             
      
     def test06_2d_mixed(self):
         """
         Dirichlet problem with Neumann data on right and Dirichlet data on left
         """
-        print('test06')
         #
         # Define Mesh
         # 
@@ -367,22 +372,23 @@ class TestLinearSystem(unittest.TestCase):
             # Define element and basis type
             #
             element = QuadFE(2,etype)
-            u = Basis(element, 'u')
-            ux = Basis(element, 'ux')
-            uy = Basis(element, 'uy')
+            dofhandler = DofHandler(mesh, element)
+            u = Basis(dofhandler, 'u')
+            ux = Basis(dofhandler, 'ux')
+            uy = Basis(dofhandler, 'uy')
             
             #
             # Exact solution
             # 
-            ue = Function(lambda x,dummy: x, 'nodal', mesh=mesh, element=element)
-            
+            ue = Nodal(f=lambda x: x[:,0], dofhandler=dofhandler)
+            xv = dofhandler.get_dof_vertices()
             #
             # Set up forms
             # 
-            one = Function(1,'constant')
+            one = Constant(1)
             ax = Form(kernel=Kernel(one), trial=ux, test=ux)
             ay = Form(kernel=Kernel(one), trial=uy, test=uy)
-            L = Form(kernel=Kernel(Function(0,'constant')), test=u)
+            L = Form(kernel=Kernel(Constant(0)), test=u)
             Ln = Form(kernel=Kernel(one), test=u, dmu='ds', flag='right')
             
             problem = [ax, ay, L, Ln]
@@ -409,14 +415,13 @@ class TestLinearSystem(unittest.TestCase):
             # Check solution
             # 
             ua = system.get_solution(as_function=True)
-            self.assertTrue(np.allclose(ue.fn(), ua.fn()))
+            self.assertTrue(np.allclose(ue.data(), ua.data()))
     
     
     def test07_1d_mesh_refinement(self):
         """
         Define the input parameters and solution on different resolution meshes
         """
-        print('test07')
         #
         # Define mesh at two different resolutoins
         # 
@@ -433,16 +438,22 @@ class TestLinearSystem(unittest.TestCase):
         Q1  = QuadFE(1, 'Q1')
         
         #
+        #
+        #
+        dhDQ0 = DofHandler(mesh, DQ0)
+        dhQ1 = DofHandler(mesh, Q1)
+        
+        #
         # Diffusion parameter on coarse mesh
         # 
-        q = Function(np.array([1]), 'nodal', mesh=mesh, element=DQ0, subforest_flag=0)
-        f = Function(0, 'constant')
+        q = Nodal(data=np.array([1]), dofhandler=dhDQ0, subforest_flag=0)
+        f = Constant(0)
         
         #
         # Basis functions
         # 
-        u = Basis(Q1, 'u')
-        ux = Basis(Q1, 'ux')
+        u = Basis(dhQ1, 'u')
+        ux = Basis(dhQ1, 'ux')
         
         #
         # Forms
@@ -485,12 +496,11 @@ class TestLinearSystem(unittest.TestCase):
         # Compare solution with the exact solution
         # 
         ua = system.get_solution(as_function=True)
-        ue = Function(lambda x: x, 'nodal', mesh, Q1)        
-        self.assertTrue(np.allclose(ua.fn(), ue.fn()))
+        ue = Nodal(f=lambda x: x, dofhandler=dhQ1)        
+        self.assertTrue(np.allclose(ua.data(), ue.data()))
     
     
     def test08_1d_sampled_rhs(self):
-        print('test08')
         #
         # Mesh
         # 
@@ -524,19 +534,19 @@ class TestLinearSystem(unittest.TestCase):
             
             
         # Define sampled function
-        fn = Function(fdata, 'nodal', dofhandler=dofhandler)
-        ue = Function(udata, 'nodal', dofhandler=dofhandler)
+        fn = Nodal(data=fdata, dofhandler=dofhandler)
+        ue = Nodal(data=udata, dofhandler=dofhandler)
         
         #
         # Basis
         # 
-        u = Basis(Q3, 'u')
-        ux = Basis(Q3, 'ux')
+        u = Basis(dofhandler, 'u')
+        ux = Basis(dofhandler, 'ux')
         
         #
         # Forms
         # 
-        one = Function(1,'constant') 
+        one = Constant(1) 
         a = Form(Kernel(one), test=ux, trial=ux)
         L = Form(Kernel(fn), test=u)
         problem = [a,L]
@@ -566,7 +576,7 @@ class TestLinearSystem(unittest.TestCase):
         ua = system.get_solution(as_function=True)
         
         # Check that the solution is close
-        self.assertTrue(np.allclose(ue.fn(), ua.fn()))
+        self.assertTrue(np.allclose(ue.data(), ua.data()))
         
         
         
@@ -575,7 +585,6 @@ class TestLinearSystem(unittest.TestCase):
         """
         Compute the inverse of a matrix and apply it to a vector/matrix.
         """
-        print('test09')
         #
         # Mesh
         # 
@@ -609,19 +618,19 @@ class TestLinearSystem(unittest.TestCase):
             
             
         # Define sampled function
-        fn = Function(fdata, 'nodal', dofhandler=dofhandler)
-        ue = Function(udata, 'nodal', dofhandler=dofhandler)
+        fn = Nodal(data=fdata, dofhandler=dofhandler)
+        ue = Nodal(data=udata, dofhandler=dofhandler)
         
         #
         # Basis
         # 
-        u = Basis(Q3, 'u')
-        ux = Basis(Q3, 'ux')
+        u = Basis(dofhandler, 'u')
+        ux = Basis(dofhandler, 'ux')
         
         #
         # Forms
         # 
-        one = Function(1,'constant') 
+        one = Constant(1) 
         a = Form(Kernel(one), test=ux, trial=ux)
         L = Form(Kernel(fn), test=u)
         problem = [[a],[L]]
@@ -675,5 +684,5 @@ class TestLinearSystem(unittest.TestCase):
         #plot.line(ue)
     
         # Check that the solution is close
-        self.assertTrue(np.allclose(ue.fn(), ua.fn()))
-        self.assertTrue(np.allclose(ue.fn(), u2.fn()))
+        self.assertTrue(np.allclose(ue.data(), ua.data()))
+        self.assertTrue(np.allclose(ue.data(), u2.data()))

@@ -1,6 +1,6 @@
-from assembler import Assembler, Form, Kernel, IKernel, FormII, FormIP, IForm
+from assembler import Assembler, Form, Kernel, IIForm, IPForm
 from fem import QuadFE, DofHandler, Basis
-from function import Function, Constant
+from function import Constant, Nodal, Explicit
 from mesh import QuadMesh, Mesh1D
 
 import unittest
@@ -23,13 +23,24 @@ class TestAssembler(unittest.TestCase):
         # =====================================================================
         # Test parsing "problems" input
         # ===================================================================== 
+        # Mesh
         mesh = QuadMesh(resolution=(1,1))
+        
+        # Element
         Q1 = QuadFE(2, 'Q1')
         Q2 = QuadFE(2, 'Q2')
-        u = Basis(Q1, 'u')
-        v = Basis(Q2, 'v')
         
+        # Dofhandler
+        dhQ1 = DofHandler(mesh, Q1)
+        dhQ2 = DofHandler(mesh, Q2)
+        
+        # Basis
+        u = Basis(dhQ1, 'u')
+        v = Basis(dhQ2, 'v')
+        
+        # Form
         form = Form(trial=u, test=v)
+        
         # 
         # Single problem consisting of a single form
         # 
@@ -66,13 +77,22 @@ class TestAssembler(unittest.TestCase):
         #
         # Define Problem
         # 
+        
+        # Element
         Q1 = QuadFE(1,'Q1')
         Q2 = QuadFE(1,'Q2')
-        vx = Basis(Q1,'vx')
-        v = Basis(Q1, 'v')
-        w = Basis(Q2, 'wx')
         
-        one = Kernel(Function(1, 'constant'))    
+        # DofHandler
+        dhQ1 = DofHandler(mesh, Q1)
+        dhQ2 = DofHandler(mesh, Q2)
+        
+        # Basis
+        vx = Basis(dhQ1,'vx')
+        v = Basis(dhQ1, 'v')
+        w = Basis(dhQ2, 'wx')
+        
+        one = Kernel(Constant(1))    
+        
         # Multiple forms, same element 
         problem_1 = [Form(one, trial=v, test=vx), Form(one, test=v), Form(one)]
         
@@ -105,24 +125,6 @@ class TestAssembler(unittest.TestCase):
         problems = [problem_3]
         self.assertRaises(Exception, Assembler.__init__, *(problems, mesh))
         
-        # =====================================================================
-        # Initialize DofHandlers
-        # =====================================================================
-        mesh = Mesh1D(resolution=(1,))
-        Q1, Q2, Q3 = QuadFE(1,'Q1'), QuadFE(1,'Q2'), QuadFE(1,'Q3')
-        f = Function(lambda x: x**2, 'nodal', mesh=mesh, element=Q1)
-        kernel = Kernel(f)
-        
-        u = Basis(Q2, 'u')
-        v = Basis(Q3, 'v')
-        
-        form = Form(kernel, trial=u, test=v)
-        system = Assembler(form, mesh)
-        
-        etypes = ['Q1','Q2','Q3']
-        for etype in etypes:
-            self.assertTrue(etype in system.dofhandlers)
-            self.assertEqual(system.dofhandlers['Q1'], f.dofhandler())
         
     def test_shape_info(self):
         """
@@ -133,17 +135,18 @@ class TestAssembler(unittest.TestCase):
         # 
         mesh = Mesh1D(resolution=(1,))
         Q1 = QuadFE(1,'Q1')
-        ux = Basis(Q1, 'ux')
-        v =  Basis(Q1, 'v')
+        dhQ1 = DofHandler(mesh, Q1)
+        ux = Basis(dhQ1, 'ux')
+        v =  Basis(dhQ1, 'v')
         system = Assembler(Form(trial=ux, test=v), mesh)
         
         cell = mesh.cells.get_child(0)
         
         si = system.shape_info(cell)
         self.assertTrue(cell in si)
-        self.assertTrue((1,0) in si[cell]['Q1']['derivatives'])
-        self.assertTrue((0,) in si[cell]['Q1']['derivatives'])
-        self.assertEqual(Q1, si[cell]['Q1']['element'])
+        self.assertTrue(ux in si[cell])
+        self.assertTrue(v in si[cell])
+        
         
         #
         # 2D
@@ -152,21 +155,22 @@ class TestAssembler(unittest.TestCase):
         Q1 = QuadFE(2, 'Q1')
         Q2 = QuadFE(2, 'Q2')
         
+        dhQ1 = DofHandler(mesh, Q1)
+        dhQ2 = DofHandler(mesh, Q2)
+        
         # Kernel
-        f = Function(lambda x,y:x*y, 'nodal', mesh=mesh, element=Q2)
-        g = Function(lambda x,y:x+y, 'nodal', mesh=mesh, element=Q1)
+        f = Nodal(lambda x:x[:,0]*x[:,1], mesh=mesh, element=Q2)
+        g = Nodal(lambda x:x[:,0]+x[:,1], mesh=mesh, element=Q1)
         F = lambda f,g: f-g
-        kernel = Kernel([f,g], dfdx=['fx','g'], F=F)
+        kernel = Kernel([f,g], derivatives=['fx','g'], F=F)
         
-        # Form defined over HalfEdge with flag 1 
-        form_1 = Form(kernel, \
-                      trial=Basis(Q1,'u'), \
-                      test=Basis(Q2,'vx'), \
-                      dmu='ds', flag=1)
+        # Form defined over HalfEdge with flag 1
+        u = Basis(dhQ1, 'u')
+        vx = Basis(dhQ2, 'vx')
+        v = Basis(dhQ2, 'v') 
         
-        form_2 = Form(trial=Basis(Q1,'u'),\
-                      test=Basis(Q2,'v'),\
-                      dmu='dx', flag=2)
+        form_1 = Form(kernel, trial=u, test=vx, dmu='ds', flag=1)
+        form_2 = Form(trial=u, test=v, dmu='dx', flag=2)
                       
         problem = [form_1, form_2]
                       
@@ -177,7 +181,7 @@ class TestAssembler(unittest.TestCase):
         cell = mesh.cells.get_child(0)
         si = system.shape_info(cell)
         
-        # Empty info dictionary (HalfEdge hasn't been marked)
+        # Empty info dictionary (Cell hasn't been marked)
         self.assertEqual(si, {})
         
         # Mark HalfEdge and cell and do it again
@@ -190,21 +194,13 @@ class TestAssembler(unittest.TestCase):
         for region in [he, cell]:
             self.assertTrue(region in si)
         
-        for etype in ['Q1','Q2']:    
-            self.assertTrue(etype in si[he])
-            self.assertTrue(etype in si[cell])
+        for basis in [u,vx]:    
+            self.assertTrue(basis in si[he])
+            
+        for basis in [u,v]:
+            self.assertTrue(basis in si[cell])
         
-        # Check if info contains the correct derivatives
-        self.assertTrue((0,) in si[cell]['Q1']['derivatives'])
-        self.assertTrue((0,) in si[he]['Q1']['derivatives'])
-        self.assertFalse((1,0) in si[he]['Q1']['derivatives'])
-        self.assertFalse((1,0) in si[cell]['Q1']['derivatives'])
-        self.assertTrue((1,0) in si[he]['Q2']['derivatives'])
-        
-        # Check if info contains correct elements
-        self.assertEqual(Q1, si[cell]['Q1']['element'])
-        self.assertEqual(Q2, si[cell]['Q2']['element'])
-        
+                
     def test_assemble_1d(self):
         """
         Test system assembly
@@ -220,9 +216,9 @@ class TestAssembler(unittest.TestCase):
         mesh = Mesh1D(resolution=(2,))
         
         # Test and trial functions
-        Q1   = QuadFE(1, 'Q1')
-        u = Basis(Q1, 'u')
-        v = Basis(Q1, 'v')
+        dhQ1 = DofHandler(mesh, QuadFE(1, 'Q1'))
+        u = Basis(dhQ1, 'u')
+        v = Basis(dhQ1, 'v')
         
         # Form
         form = Form(trial=u, test=v)
@@ -242,12 +238,11 @@ class TestAssembler(unittest.TestCase):
         # Compute local shape functions
         phi = system.shape_eval(si, xg, cell)
         self.assertTrue(cell in phi)
-        self.assertTrue('Q1' in phi[cell])
-        self.assertTrue((0,) in phi[cell]['Q1'])
+        self.assertTrue(u in phi[cell])
+        self.assertTrue(v in phi[cell])
         
         # Assemble system                
         system.assemble()
-        
         
         # Extract system bilinear form
         rows = np.array(system.af[0]['bilinear'].rows)
@@ -257,8 +252,8 @@ class TestAssembler(unittest.TestCase):
         A = sp.coo_matrix((vals,(rows, cols)))
         
         # Use bilinear form to integrate x^2 over [0,1]
-        f = Function(lambda x: x, 'nodal', mesh=mesh, element=Q1)
-        fv = f.fn()
+        f = Nodal(lambda x: x, dofhandler=dhQ1)
+        fv = f.data()
         self.assertAlmostEqual(np.sum(fv*A.dot(fv)),1/3)
         
         # ======================================================================
@@ -269,12 +264,13 @@ class TestAssembler(unittest.TestCase):
         mesh = Mesh1D(resolution=(2,))
         
         # Explicit function
-        f = Function(lambda x: x, 'explicit', dim=1)
+        f = Explicit(lambda x: x, dim=1)
         kernel = Kernel(f=f)
         
         # Test function
         Q1 = QuadFE(1,'Q1')
-        v = Basis(Q1, 'v')
+        dhQ1 = DofHandler(mesh, Q1)
+        v = Basis(dhQ1, 'v')
         
         # Define form and system
         form = Form(kernel=kernel, test=v)
@@ -284,7 +280,7 @@ class TestAssembler(unittest.TestCase):
         system.assemble()
         
         # Evaluate function f(x)=x at dof vertices 
-        xv = system.dofhandlers['Q1'].get_dof_vertices()
+        xv = v.dofhandler().get_dof_vertices()
         fv = f.eval(xv)
         
         # Assemble linear form into
@@ -306,7 +302,7 @@ class TestAssembler(unittest.TestCase):
         
         # Nodal kernel function
         Q2 = QuadFE(1, 'Q2')
-        f = Function(lambda x:x**2, 'nodal', mesh=mesh, element=Q2)
+        f = Nodal(lambda x:x**2, mesh=mesh, element=Q2)
         kernel = Kernel(f=f)
         
         # Form
@@ -332,7 +328,8 @@ class TestAssembler(unittest.TestCase):
         
         # 
         Q1 = QuadFE(1,'Q1')
-        u = Basis(Q1, 'u')
+        dhQ1 = DofHandler(mesh, Q1)
+        u = Basis(dhQ1, 'u')
         
         form = Form(trial=u, test=u)
         
@@ -367,13 +364,12 @@ class TestAssembler(unittest.TestCase):
             
         
         # Define sampled function
-        fn = Function(fdata, 'nodal', dofhandler=dofhandler)
+        fn = Nodal(data=fdata, dofhandler=dofhandler)
         kernel = Kernel(fn)
-        
         #
         # Integrate I[0,1] ax^2 dx by using the linear form (ax,x) 
         # 
-        v = Basis(Q1, 'v')
+        v = Basis(dofhandler, 'v')
         form = Form(kernel=kernel, test=v)
         system = Assembler(form, mesh)
         system.assemble()
@@ -389,7 +385,8 @@ class TestAssembler(unittest.TestCase):
         # Integrate I[0,1] ax^4 dx using bilinear form (ax, x^2, x)
         #
         Q2 = QuadFE(1,'Q2')
-        u = Basis(Q2, 'u')
+        dhQ2 = DofHandler(mesh,Q2)
+        u = Basis(dhQ2, 'u')
         
         # Define form
         form = Form(kernel=kernel, test=v, trial=u)
@@ -404,9 +401,8 @@ class TestAssembler(unittest.TestCase):
         cols = system.af[0]['bilinear'].cols
         
         # Express x^2 in terms of trial function basis
-        dofhandlerQ2 = DofHandler(mesh, Q2)
-        dofhandlerQ2.distribute_dofs() 
-        xvQ2 = dofhandlerQ2.get_dof_vertices()
+        dhQ2.distribute_dofs() 
+        xvQ2 = dhQ2.get_dof_vertices()
         xv_squared = xvQ2**2
         
         for i in range(n_samples):
@@ -431,6 +427,7 @@ class TestAssembler(unittest.TestCase):
         
     
     
+    def test_assemble_ipform(self):
         # =====================================================================
         # Test 7: Assemble Kernel
         # =====================================================================
@@ -440,10 +437,11 @@ class TestAssembler(unittest.TestCase):
         dofhandler = DofHandler(mesh, Q1)
         dofhandler.distribute_dofs()
         
-        phi = Basis(Q1,'u')
+        phi = Basis(dofhandler,'u')
         
-        kernel = IKernel(lambda x,y:x*y,1,symmetric=True, dofhandler=dofhandler)
-        form = IForm(kernel, test=phi, trial=phi, form_type='projection')
+        k = Explicit(lambda x,y:x*y, n_variables=2, dim=1)
+        kernel = Kernel(k)
+        form = IPForm(kernel, test=phi, trial=phi)
         
         assembler = Assembler(form, mesh)
         assembler.assemble()
@@ -455,29 +453,43 @@ class TestAssembler(unittest.TestCase):
         #plt.imshow(M)
         #plt.show()
         
-        u = Function(lambda x: x, 'nodal', dofhandler=dofhandler)
-        v = Function(lambda x: 1-x, 'nodal', dofhandler=dofhandler)
+        u = Nodal(lambda x: x, dofhandler=dofhandler)
+        v = Nodal(lambda x: 1-x, dofhandler=dofhandler)
         
-        u_vec = u.fn()
-        v_vec = v.fn()
+        u_vec = u.data()
+        v_vec = v.data()
             
         self.assertAlmostEqual(v_vec.dot(M.dot(u_vec)), 1/18)
-    
-        form = IForm(kernel, test=phi, trial=phi, \
-                     form_type='interpolation')
         
+    
+    def test_assemble_iiform(self):
+        
+        mesh = Mesh1D(resolution=(10,))
+        
+        Q1 = QuadFE(1,'DQ1')
+        dofhandler = DofHandler(mesh, Q1)
+        dofhandler.distribute_dofs()
+        
+        phi = Basis(dofhandler,'u')
+        
+        k = Explicit(lambda x,y:x*y, n_variables=2, dim=1)
+        kernel = Kernel(k)
+        
+        form = IIForm(kernel, test=phi, trial=phi)
+                     
         assembler = Assembler(form, mesh)
         assembler.assemble()
         
-        Ku = Function(lambda x: 1/3*x, 'nodal', dofhandler=dofhandler)
+        Ku = Nodal(lambda x: 1/3*x, dofhandler=dofhandler)
          
          
         af = assembler.af[0]['bilinear']
         M = af.get_matrix().toarray()
         
-        
-        self.assertTrue(np.allclose(M.dot(u_vec), Ku.fn()))
-        
+        u = Nodal(lambda x: x, dofhandler=dofhandler)
+        u_vec = u.data()
+        self.assertTrue(np.allclose(M.dot(u_vec), Ku.data()))
+
         
     def test_assemble_2d(self):
         """

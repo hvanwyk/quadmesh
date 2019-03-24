@@ -359,7 +359,7 @@ class Kernel(object):
     """
     Kernel (combination of Functions) to be used in Forms
     """
-    def __init__(self, f, F=None, subsample=None):
+    def __init__(self, f, derivatives=None, F=None, subsample=None):
         """
         Constructor
         
@@ -387,30 +387,44 @@ class Kernel(object):
         n_functions = len(self.__f)
         
         #
+        # Parse function derivatives
+        # 
+        dfdx = []
+        if derivatives is None:
+            #
+            # No derivatives specified
+            # 
+            dfdx = [None for dummy in self.__f]
+        elif type(derivatives) is list:
+            #
+            # derivatives specified in list
+            # 
+            assert len(derivatives)==n_functions, \
+            'The size of input "derivatives" incompatible with '+\
+            'that of input "f".'
+            dfdx = derivatives
+        else:
+            #
+            # Single derivative applies to all functions
+            # 
+            dfdx = parse_derivative_info(derivatives)
+            dfdx = [dfdx for dummy in self.__f]
+        self.__dfdx = dfdx
+        
+        #
         # Store meta function F
         # 
         # Check that F takes the right number of inputs
-        if F is not None:
-            assert F.__code__.co_argcount==n_functions
-        else:
+        if F is None:
             # Store metafunction F
             assert n_functions == 1, \
                 'If input "F" not specified, only one function allowed.'
             F = lambda f: f
         self.__F = F
         
-        #
-        # Check that samples are compatible with functions
-        #
-        if subsample is not None:
-            for f in self.__f:
-                f.set_subsample(subsample)
-                
-        #
-        # Store samples
-        # 
-        self.__subsample = subsample
-        self.__n_samples = len(subsample)    
+        # Store subsample
+        self.set_subsample(subsample)
+                    
     
     def set_subsample(self, subsample):
         """
@@ -419,20 +433,59 @@ class Kernel(object):
         Input:
         
             subsample: int, numpy array specifying subsample indices
+            
+        
+        Note: For stochastic functions, the default subsample is the entire 
+            range. For deterministic functions, the subsample can only be None.
         """
+        #
+        # Parse subsample
+        # 
+        if subsample is None:
+            #
+            # Check whether there is a stochastic function in the list 
+            # 
+            for f in self.__f:
+                if f.n_samples() is not None:
+                    f.set_subsample(subsample)
+                    subsample = f.subsample()
+                    break 
+        #
+        # Set same subsample for all functions
+        # 
         for f in self.__f:
             f.set_subsample(subsample)
+            if subsample is not None:
+                assert np.allclose(f.subsample(),subsample), \
+                    'Incompatible subsample.'
+                    
         self.__subsample = subsample
     
     
-    def subsample(self):
+    def n_subsample(self):
         """
         Returns the subsample of functions used
         """
-        return self.__subsample 
+        if self.__subsample is not None:
+            return len(self.__subsample) 
     
     
-    def eval(self, x=None):
+    def f(self):
+        """
+        Returns the list of functions 
+        """
+        return self.__f
+    
+    
+    def is_symmetric(self):
+        """
+        Returns True if all functions in the kernel are symmetric.
+        """
+        return all([f.is_symmetric() for f in self.f()])
+            
+    
+    
+    def eval(self, x):
         """
         Evaluate the kernel at the points stored in x 
         
@@ -449,8 +502,11 @@ class Kernel(object):
         # Evaluate constituent functions 
         # 
         f_vals = []
-        for f in self.__f:
-            fv = f.eval(x=x)
+        for f, dfdx in zip(self.__f, self.__dfdx):
+            if dfdx is not None and isinstance(f, Nodal):
+                fv = f.eval(x=x, derivative=dfdx)
+            else:
+                fv = f.eval(x=x)
             f_vals.append(fv)
                
         #
@@ -489,7 +545,7 @@ class Form(object):
         # Parse test function
         # 
         if test is not None:
-            dim = test.element.dim()
+            dim = test.dofhandler().element.dim()
             
             assert isinstance(test, Basis), \
             'Input "test" must be of type "Basis".'
@@ -504,7 +560,7 @@ class Form(object):
             'Input "trial" must be of type "Basis".'
             
             # Check that dimensions are compatible
-            assert dim==trial.element.dim(), \
+            assert dim==trial.dofhandler().element.dim(), \
             'Test and trial functions should be defined over the same '+\
             ' dimensional domain.'  
         self.trial = trial
@@ -577,79 +633,23 @@ class Form(object):
 
         
 
-    def shape_info(self, compatible_functions=set()):
+    def basis(self):
         """
-        Determine all shape functions that must be evaluated (f, trial, and test)
+        Returns a list of the form's basis functions (trial, and test)
         
-        Inputs:
-        
-            compatible_functions: set, of Functions that are defined on the 
-                current mesh cell.
-            
         Output: 
         
-            info: dictionary, containing information about the form's shape fns
-                with the following keys:
-                
-                    etype: str, finite element type ('Q1'-'Q3', or 'DQ0'-'DQ3') 
-                        
-                    element: QuadFE, element associated with etype
-                    
-                    derivatives: set, of all derivatives to be computed for
-                        given etype (in tuple form).
-                            
+            basis: Basis, list of basis functions.                 
         """
-        info = {}
-        if self.trial is not None:
-            #
-            # Add derivatives associated with trial function
-            # 
-            etype = self.trial.element.element_type()
-            if etype not in info:
-                #
-                # Add element type of trial function
-                # 
-                info[etype] = {'element': self.trial.element,
-                               'derivatives': set()}
-            D = self.trial.derivative
-            info[etype]['derivatives'].add(D)
+        basis = []
         if self.test is not None:
-            #
-            # Add derivatives associated with the test function
-            # 
-            etype = self.test.element.element_type()
-            if etype not in info:
-                #
-                # Add element type of test function 
-                #
-                info[etype] = {'element': self.test.element,
-                               'derivatives': set()}
-            D = self.test.derivative
-            info[etype]['derivatives'].add(D)
-        if self.kernel is not None:
-            #
-            # Add derivatives associated with the kernel function
-            #     
-            for (f, dfdx) in zip(self.kernel.f(), self.kernel.derivatives()):
-                #
-                # Iterate over constituent functions
-                # 
-                if f in compatible_functions:
-                    # 
-                    # function is compatible with mesh
-                    # 
-                    etype = f.dofhandler().element.element_type()
-                    if etype not in info:
-                        #
-                        # Add element type of kernel function
-                        # 
-                        info[etype] = {'element': f.dofhandler().element,
-                                       'derivatives': set()}
-                    info[etype]['derivatives'].add(dfdx)
-        return info
-        
+            basis.append(self.test)
+        if self.trial is not None:
+            basis.append(self.trial)
+        return basis
     
-    def integration_regions(self, cell):
+    
+    def regions(self, cell):
         """
         Determine the regions over which the form is integrated, using
         information from dmu and markers
@@ -694,7 +694,7 @@ class Form(object):
         return regions
         
     
-    def eval(self, cell, xg, wg, phi=None, dofs=None, compatible_functions=set()):
+    def eval(self, cell, xg, wg, phi):
         """
         Evaluates the local kernel, test, (and trial) functions of a (bi)linear
         form on a given entity.
@@ -707,14 +707,7 @@ class Form(object):
             
             wg: dict, Gaussian quadrature weights, indexed by regions.
             
-            phi: shape functions evaluated at the Gauss quadrature points
             
-            *dofs: int, global degrees of freedom associated with cell 
-                (and elements), used to possibly evaluate Kernel 
-                
-            *compatible_functions: set, of functions compatible with the 
-                underlying mesh and dofhandlers
-        
         Outputs:
         
             Constant-, linear-, or bilinear forms and their associated local
@@ -725,18 +718,20 @@ class Form(object):
         Note: This method should be run in conjunction with the Assembler class                  
         """
         # Determine regions over which form is defined
-        regions = self.integration_regions(cell)
+        regions = self.regions(cell)
         
         # Number of samples (if any)
-        n_samples = self.kernel.n_samples
+        n_samples = self.kernel.n_subsample()
         
         f_loc = None
         for region in regions: 
+            x = xg[region]
+            
             #
             # Compute kernel, weight by quadrature weights    
             #
             kernel = self.kernel
-            Ker = kernel.eval(x=xg[region])
+            Ker = kernel.eval(x=x)
             wKer = (wg[region]*Ker.T).T        
     
             if self.type=='constant':
@@ -759,16 +754,11 @@ class Form(object):
                 #
                 # Linear form
                 #
-                # Check that phi is given
-                assert phi is not None,\
-                'Evaluating (bi)linear form. Require shape functions'
                 
-                # Define test function
-                test_der = self.test.derivative
-                test_etype = self.test.element.element_type()
-                n_dofs_test = self.test.element.n_dofs()
-                test = phi[region][test_etype][test_der]
-                
+                # Test functions evaluated at Gauss nodes
+                n_dofs_test = self.test.dofhandler().element.n_dofs()
+                test = phi[region][self.test]     
+                           
                 # Initialize forms if necessary
                 if f_loc is None:
                     if n_samples is None:
@@ -783,22 +773,14 @@ class Form(object):
                 #
                 # Bilinear form
                 # 
+
+                # Test functions evaluated at Gauss nodes
+                n_dofs_test = self.test.dofhandler().element.n_dofs()
+                test = phi[region][self.test]
                 
-                # Check that phi is given
-                assert phi is not None, \
-                'Evaluating (bi)linear form. Require shape functions'
-          
-                # Define the test function
-                test_der = self.test.derivative
-                test_etype = self.test.element.element_type()
-                n_dofs_test = self.test.element.n_dofs()
-                test = phi[region][test_etype][test_der]
-                
-                # Define the trial function
-                trial_der = self.trial.derivative
-                trial_etype = self.trial.element.element_type()
-                n_dofs_trial = self.trial.element.n_dofs()
-                trial = phi[region][trial_etype][trial_der]
+                # Trial functions evaluated at Gauss nodes
+                n_dofs_trial = self.trial.dofhandler().element.n_dofs()
+                trial = phi[region][self.trial]
                 
                 #
                 # Initialize local matrix if necessary
@@ -860,7 +842,7 @@ class Form(object):
                 #
                 # Linear form
                 #
-                n_dofs_test = self.test.element.n_dofs()
+                n_dofs_test = self.test.dofhandler().element.n_dofs()
                 if n_samples is None:
                     #
                     # Deterministic form
@@ -876,8 +858,8 @@ class Form(object):
                 #
                 # Bilinear form
                 # 
-                n_dofs_test = self.test.element.n_dofs()
-                n_dofs_trial = self.trial.element.n_dofs()
+                n_dofs_test = self.test.dofhandler().element.n_dofs()
+                n_dofs_trial = self.trial.dofhandler().element.n_dofs()
                 if n_samples is None:
                     #
                     # Deterministic form
@@ -954,7 +936,7 @@ class Form(object):
         """
   
   
-class FormII(Form):
+class IIForm(Form):
     """
     Bilinear form arising from the interpolatory approximation of an integral
     operator.
@@ -995,10 +977,8 @@ class FormII(Form):
         assert trial is not None and test is not None,\
         'Both trial and test functions should be specified.'
         
-        #assert kernel.n_inputs()==2, 'Integral kernel must be bivariate.'
-        
-    
-    def eval(self, cell, x, xg, wg, phi):
+            
+    def eval(self, cell, xg, wg, phi):
         """
         Evaluate the local bilinear form 
         
@@ -1018,28 +998,25 @@ class FormII(Form):
             
             phi: shape functions evaluated at quadrature points
         """
+        # =====================================================================
+        # Interpolate in the test function component
+        # =====================================================================
+        test = self.test
+        x = test.dofhandler().get_dof_vertices(test.subforest_flag())
         n = x.shape[0] 
-         
-        # Determine the integration regions
-        reg = self.integration_regions(cell)
         
         # =====================================================================
-        # Specify the test and trial functions 
+        # Specify trial function 
         # =====================================================================
-        # Derivatives of trial functions
-        der = self.trial.derivative
+        trial = self.trial
         
         # Number of dofs 
-        n_dofs = self.trial.element.n_dofs()
-         
-        # Element types 
-        trl_etype = self.trial.element.element_type()
-            
+        n_dofs = trial.dofhandler().element.n_dofs()
+             
         f_loc = None
-        for reg in self.integration_regions(cell):
+        for reg in self.regions(cell):
             # Get trial functions evaluated at Gauss nodes
-            trial = phi[reg][trl_etype][der]
-            
+            phi_g = phi[reg][trial]
             x_g = xg[reg]
             w_g = wg[reg]
             
@@ -1057,19 +1034,21 @@ class FormII(Form):
                 # 
                 n_gauss = x_g.shape[0]
                 ii,jj = np.meshgrid(np.arange(n),np.arange(n_gauss), indexing='ij')
+                x = (x[ii.ravel(),:],x_g[jj.ravel(),:])
+                """
                 if self.dim == 1:
                     x1, x2 = x[ii.ravel()], x_g[jj.ravel()]
                 elif self.dim == 2:
-                    x1, x2 = x[ii.ravel(),:],x_g[jj.ravel(),:]
-        
-                C_loc = self.kernel.eval(x1,x2)
+                    
+                """
+                C_loc = self.kernel.eval(x)
                 C_loc = C_loc.reshape(n,n_gauss)
         
                 #
                 # Compute local integral                   
                 # 
                 # Weight shape functions 
-                Wphi = np.diag(w_g).dot(trial)
+                Wphi = np.diag(w_g).dot(phi_g)
                 
                 # Combine
                 f_loc += C_loc.dot(Wphi)
@@ -1077,7 +1056,7 @@ class FormII(Form):
         
     
     
-class FormIP(Form):
+class IPForm(Form):
     """
     Bilinear form arising from the projection based approximation of an integral
     operator.
@@ -1113,7 +1092,7 @@ class FormIP(Form):
         #
         # Initialize form
         # 
-        Form.__init__(kernel=kernel, trial=trial, test=test, dmu=dmu, flag=flag)
+        Form.__init__(self, kernel=kernel, trial=trial, test=test, dmu=dmu, flag=flag)
         
         #
         # Checks
@@ -1121,8 +1100,8 @@ class FormIP(Form):
         assert trial is not None and test is not None,\
         'Integral forms have both test and trial functions'
         
-        assert kernel.n_inputs()==2, \
-        'Integral kernel must be bivariate.'
+        for f in kernel.f():
+            assert f.n_variables()==2, 'Integral kernel must be bivariate.'
         
     
     
@@ -1148,32 +1127,28 @@ class FormIP(Form):
         ci, cj = cells
         
         # Determine integration regions
-        regi = self.integration_regions(ci)
-        regj = self.integration_regions(cj)
+        regi = self.regions(ci)
+        regj = self.regions(cj)
         
         # =====================================================================
         # Specify the test and trial functions 
         # =====================================================================
-        # Derivatives of test functions
-        deri, derj = self.test.derivative, self.trial.derivative
+        test = self.test
+        trial = self.trial
         
-        # Element types 
-        etypei = self.test.element.element_type()
-        etypej = self.trial.element.element_type()
-         
         # Degrees of freedom
-        n_dofsi = self.test.element.n_dofs()
-        n_dofsj = self.trial.element.n_dofs()
+        n_dofsi = self.test.dofhandler().element.n_dofs()
+        n_dofsj = self.trial.dofhandler().element.n_dofs()
         
         # Sample size
-        n_samples = self.kernel.n_samples 
+        n_samples = self.kernel.n_subsample() 
         
         f_loc = None
-        for regi in self.integration_regions(ci):
-            for regj in self.integration_regions(cj):
+        for regi in self.regions(ci):
+            for regj in self.regions(cj):
                 # Access test(i) and trial(j) functions
-                phii = phi[0][regi][etypei][deri]
-                phij = phi[1][regj][etypej][derj]
+                phii = phi[0][regi][test]
+                phij = phi[1][regj][trial]
                 
                 # Get quadrature nodes
                 xi_g = xg[0][regi] 
@@ -1201,12 +1176,14 @@ class FormIP(Form):
                 ig = np.arange(n_gauss)
                 ii,jj = np.meshgrid(ig,ig,indexing='ij')
                 
+                x = (xi_g[ii.ravel(),:],xj_g[jj.ravel(),:])
+                """
                 if self.dim() == 1:
                     x1, x2 = xi_g[ii.ravel()], xj_g[jj.ravel()]
                 elif self.dim() == 2:
                     x1, x2 = xi_g[ii.ravel(),:],xj_g[jj.ravel(),:]
-        
-                C_loc = self.kernel.eval(x1,x2)
+                """
+                C_loc = self.kernel.eval(x)
                 C_loc = C_loc.reshape(n_gauss,n_gauss)
         
                 #
@@ -1229,7 +1206,7 @@ class IForm(Form):
     
         Cu(x) = I_D k(x,y) u(y) dy
         
-    TODO: Replace with FormII and FormIP
+    TODO: Replace with IIForm and IPForm
     """
     def __init__(self, kernel, trial=None, test=None, dmu='dx', flag=None,
                  form_type='projection'):
@@ -1526,7 +1503,6 @@ class Assembler(object):
                         
             n_gauss: int tuple, number of quadrature nodes in 1d and 2d respectively
         
-        
         TODO: We make a big production of recording whether there is a single problem
             and or form, but never use it.
         """
@@ -1604,7 +1580,7 @@ class Assembler(object):
         # =====================================================================
         # Initialize Dofhandlers   
         # =====================================================================
-        self.initialize_dofhandlers()
+        #self.set_dofhandlers()
         
         """
         #
@@ -1617,10 +1593,10 @@ class Assembler(object):
         #
         # Initialize dictionaries for storing assembled forms
         #
-        self.initialize_assembled_forms()
+        self.set_assembled_forms()
     
     
-    def initialize_assembled_forms(self):
+    def set_assembled_forms(self):
         """
         Initialize list of AssembledForm's encoding the assembled forms associated
         with each problem
@@ -1687,8 +1663,8 @@ class Assembler(object):
         # 
         self.af = af 
         
- 
-    def initialize_dofhandlers(self):
+    '''
+    def set_dofhandlers(self):
         """
         Identify and initialize dofhandlers necessary to assemble problem
         
@@ -1704,59 +1680,26 @@ class Assembler(object):
             dofhandlers: dictionary, dofhandlers[etype] containing the 
                 dofhandler for the type of finite element.
                 
-            compatible_functions: set, of functions that are compatible with
-                the current mesh and elements. These can be readily evaluated
-                over each mesh cell through the use of shape functions.
+        TODO: Delete
         """
         #
         # Extract all elements
         # 
         elements = set()
         dofhandlers = {}
-        compatible_functions = set()
         for problem in self.problems:
-            for form in problem:
-                
+            for form in problem:                
                 if form.trial is not None:
                     #
                     # Add elements associated with trial functions
-                    #  
-                    elements.add(form.trial.element)
+                    #
+                    elements.add(form.trial.dofhandler().element)
                     
                 if form.test is not None:
                     #
                     # Add elements associated with test functions
                     # 
-                    elements.add(form.test.element)
-                
-                #
-                # Add elements associated with kernels
-                #
-                if not isinstance(form, IForm):
-                    #
-                    # For now, mesh compatibility only valid for traditional
-                    # kernels. 
-                    # 
-                    for f in form.kernel.f():
-                        if f.mesh_compatible(self.mesh, \
-                                             subforest_flag=self.subforest_flag):
-                            #
-                            # Function is nodal and defined over submesh
-                            # 
-                            compatible_functions.add(f)
-                            element = f.dofhandler().element 
-                            elements.add(element)
-                            etype = element.element_type()
-                            if etype not in dofhandlers:
-                                #
-                                # Add existing dofhandler to list of dofhandlers
-                                # 
-                                dofhandlers[etype] = f.dofhandler()
-        #
-        # Store the set of functions that are compatible with the mesh/subforest
-        #  
-        self.compatible_functions = compatible_functions        
-        
+                    elements.add(form.test.dofhandler().element)
         #             
         # Define new DofHandlers not already used by functions
         # 
@@ -1769,7 +1712,7 @@ class Assembler(object):
                 dofhandlers[etype] = DofHandler(self.mesh, element)
                 dofhandlers[etype].distribute_dofs()
         self.dofhandlers = dofhandlers
-            
+    '''        
             
             
     def assemble(self, clear_cell_data=True):
@@ -1807,24 +1750,22 @@ class Assembler(object):
             #
             # Get global cell dofs for each element type  
             #
-            ci_dofs = self.cell_dofs(ci)
-            ci_addr = ci.get_node_address()
             
             #
             # Determine what shape functions and Gauss rules to 
             # compute on current cells
             # 
-            ci_sinfo = self.shape_info(ci)
+            ci_shape_info = self.shape_info(ci)
             
             # 
             # Compute Gauss nodes and weights on cell
             # 
-            xi_g, wi_g = self.gauss_rules(ci_sinfo)
+            xi_g, wi_g = self.gauss_rules(ci_shape_info)
             
             #
             # Compute shape functions on cell
             #  
-            phii = self.shape_eval(ci_sinfo, xi_g, ci)
+            phii = self.shape_eval(ci_shape_info, xi_g, ci)
             
             #
             # Assemble local forms and assign to global dofs
@@ -1838,44 +1779,21 @@ class Assembler(object):
                     #
                     # Evaluate form
                     #
-                    if isinstance(form, FormII):
+                    if isinstance(form, IPForm):
                         # =====================================================
-                        # Integral form by interpolation
-                        # =====================================================
-                        # DOF vertices 
-                        dh = form.kernel.dofhandler()
-                        x_dofs = dh.get_dof_vertices(subforest_flag=sf)
-                        
-                        # DOFs
-                        dofs_tst = dh.get_region_dofs(subforest_flag=sf)
-                        
-                        # Get local trial dofs
-                        etype_trl = form.trial.element.element_type()
-                        dofs_trl = ci_dofs[etype_trl]
-                        
-                        # Evaluate local 
-                        form_loc = form.eval_interpolation(ci, x_dofs, xi_g, wi_g, phii)
-                        
-                        # Store dofs and values in assembled form
-                        af = self.af[i_problem]['bilinear']  
-                        af.update(ci_addr, form_loc, 
-                                  row_dofs=dofs_tst, col_dofs=dofs_trl)
-                        
-                    elif isinstance(form, FormIP):
-                        # =====================================================
-                        # Integral form by projection
+                        # Form is Double Integral
                         # =====================================================
                         #
                         # Determine the number of cells in inner loop
                         #
                         if form.kernel.is_symmetric():
                             # Symmetric kernel
-                            n_ocells = i
+                            n_ocells = i+1
                         else:
                             # Non-symmetric kernel 
                             n_ocells = n_cells
                         
-                        for j in range(n_ocells+1):
+                        for j in range(n_ocells):
                             #
                             # Other cell
                             #
@@ -1884,8 +1802,6 @@ class Assembler(object):
                             #
                             # Get other cell's dofs and address
                             # 
-                            cj_dofs = self.cell_dofs(cj)
-                            cj_addr = cj.get_node_address()
                             
                             #
                             # Shape function info on ocell
@@ -1908,21 +1824,25 @@ class Assembler(object):
                             form_loc = form.eval((ci,cj), (xi_g,xj_g), \
                                                  (wi_g,wj_g), (phii,phij))
                                                         
-                            # 
-                            # Store in Assembled form
-                            # 
-                            # Test dof indices
-                            etype_tst = form.test.element.element_type()
-                            etype_trl = form.trial.element.element_type()
                             
-                            # Trial dof indices
-                            dofs_tst = ci_dofs[etype_tst]
-                            dofs_trl = cj_dofs[etype_trl]    
+                            #
+                            # Update Assembled Form
+                            # 
+
+                            # Test and trial dofs
+                            dofs_tst = form.test.dofs(ci)
+                            dofs_trl = form.trial.dofs(cj)
                             
+                            # Cell addresses
+                            cj_addr = cj.get_node_address()
+                            ci_addr = ci.get_node_address()
+                            
+                            # Store in assembled form
                             af = self.af[i_problem]['bilinear']
                             af.update((ci_addr, cj_addr), form_loc,  
                                       row_dofs = dofs_tst, col_dofs = dofs_trl)
                             
+
                             if form.kernel.is_symmetric() and ci!=cj:
                                 #
                                 # Symmetric kernel, store the transpose
@@ -1932,51 +1852,40 @@ class Assembler(object):
                             
                     else:  
                         # =====================================================
-                        # Not integral form
+                        # Not a double integral
                         # =====================================================
                         #
-                        # Evaluate form 
-                        # 
-                        form_loc = form.eval(ci, xi_g, wi_g, phii, ci_dofs, \
-                                             self.compatible_functions)                   
+                        # Evaluate local form 
+                        #
+                        form_loc = form.eval(ci, xi_g, wi_g, phii)                   
                         
-                        if form.type=='constant':
-                            #
-                            # Constant form
-                            #
-                             
-                            # Increment value
+                        #
+                        # Update assembled form
+                        #
+                        # cell address
+                        ci_addr = ci.get_node_address()
+                        
+                        if form.type=='constant':    
                             af = self.af[i_problem]['constant'] 
                             af.update(ci_addr, form_loc) 
                             
-                            
                         elif form.type=='linear':
-                            # 
-                            # Linear form
-                            # 
-                            
-                            # Extract test dof indices
-                            etype_tst = form.test.element.element_type()
-                            dofs_tst  = ci_dofs[etype_tst]
+                            # Test dofs
+                            dofs_tst = form.test.dofs(ci)
                                     
                             # Store dofs and values in assembled_form
                             af = self.af[i_problem]['linear'] 
                             af.update(ci_addr, form_loc, row_dofs=dofs_tst)
                             
-                            
                         elif form.type=='bilinear':
-                            #
-                            # Bilinear Form
-                            # 
-                                                    
-                            # Test dof indices
-                            etype_tst = form.test.element.element_type()
-                            etype_trl = form.trial.element.element_type()
-                            
-                            # Trial dof indices
-                            dofs_tst = ci_dofs[etype_tst]
-                            dofs_trl = ci_dofs[etype_trl]    
-                            
+                            # Test and trial dofs
+                            if isinstance(form, IIForm):
+                                # Interpolatory Integral forms use all dofs
+                                dofs_tst = form.test.dofs(None) 
+                            else:
+                                dofs_tst = form.test.dofs(ci)
+                            dofs_trl = form.trial.dofs(ci)
+
                             # Store dofs and values in assembled form
                             af = self.af[i_problem]['bilinear']  
                             af.update(ci_addr, form_loc, 
@@ -1994,7 +1903,7 @@ class Assembler(object):
                 
                 #
                 # Consolidate assembly
-                ## 
+                #
                 af.consolidate(clear_cell_data=clear_cell_data)
                 
         
@@ -2623,10 +2532,11 @@ class Assembler(object):
         n_samples = None   
         for form in self.problems[i_problem]:
             if form.type==form_type:
+                n_kernel_sample = form.kernel.n_subsample()
                 #
                 # Consider only forms of given type
                 # 
-                if form.kernel.n_samples is not None:
+                if n_kernel_sample is not None:
                     #
                     # Sampling in effect
                     # 
@@ -2634,17 +2544,17 @@ class Assembler(object):
                         #
                         # New trivial sample size
                         # 
-                        n_samples = form.kernel.n_samples
+                        n_samples = n_kernel_sample
                     else: 
                         #
                         # There exists a nontrivial sample size
                         # 
-                        if form.kernel.n_samples > 1:
+                        if n_kernel_sample > 1:
                             #
                             # Kernel contains more than one sample. 
                             # Check for consistency
                             # 
-                            assert n_samples == form.kernel.n_samples,\
+                            assert n_samples == n_kernel_sample,\
                         '    Inconsistent sample sizes in kernels'
         return n_samples    
                 
@@ -2656,13 +2566,9 @@ class Assembler(object):
         within a particular cell.
         
         Inputs:
-        
-            problems: list of problems (described in 'assemble' method)
-            
+                    
             cell: cell over which to assemble
-            
-            subforest_flag: str/int/tuple marks submesh over which to assemble
-            
+                        
             
         Output:
         
@@ -2673,6 +2579,14 @@ class Assembler(object):
         info = {}
         for problem in self.problems:
             for form in problem:
+                basis = form.basis()
+                for region in form.regions(cell):
+                    if not region in info.keys():
+                        info[region] = set()
+                    info[region].update(basis)
+        return info
+    
+        """    
                 if form.dmu == 'dx':
                     # 
                     # Integral over cell
@@ -2779,35 +2693,7 @@ class Assembler(object):
                 info[region][etype]['derivatives'] = \
                     list(info[region][etype]['derivatives'])
         return info
-                
-    
-    def cell_dofs(self, cell):
-        """
-        Returns the global degrees of freedom assciated with cell for all 
-        elements considered
-        
-        Input:
-        
-            cell: Cell, indexing a dictionary with stored dofs 
-        
-        Output:
-        
-            cell_dofs: dict, consisting of the dofs associated with a cell.
-        """
-        subforest_flag = self.subforest_flag
-        cell_dofs = {}
-        for etype in self.dofhandlers.keys():
-            
-            # Get Dofhandler for etype
-            dh = self.dofhandlers[etype]
-            
-            # Get cell dofs 
-            cd = dh.get_cell_dofs(cell, subforest_flag=subforest_flag)
-            
-            # Turn into an array
-            cell_dofs[etype] = np.array(cd)
-            
-        return cell_dofs
+      """          
 
     
     def gauss_rules(self, shape_info):
@@ -2851,7 +2737,7 @@ class Assembler(object):
                 #
                 # Vertex
                 # 
-                xg[region], wg[region] = region.coordinates(), 1
+                xg[region], wg[region] = convert_to_array(region.coordinates()), 1
             else:
                 raise Exception('Only Intervals, HalfEdges, Vertices, & QuadCells supported')  
         return xg, wg
@@ -2866,57 +2752,40 @@ class Assembler(object):
         
         Inputs:
         
-            shape_info: dictionary, regions: list of regions (QuadCell, Interval, or HalfEdge) over 
-                which gaussian quadrature rules and shape functions are sought. 
+            shape_info: dictionary, whose keys are the integration regions 
+                (QuadCell, Interval, or HalfEdge) over which to integrate and 
+                whose values are the basis functions to be integrated. 
             
-            derivatives: dictionary, containing a list of shape function 
-                derivatives sought over each region. 
+            xg: dictionary of Gauss nodes, one set for each region
              
-            etypes: 
-        
+            cell: cell over which to integrate
+                    
+                    
         Output:
         
-            phi: dictionary, of the form phi[region][derivative]
-            
-            xg: dictionary, of the form xg[region]
-            
-            wg: dictionary, of the form wg[region]
+            phi: dictionary phi[region][basis] of shape functions evaluated at
+                the Gauss points.
         """
         phi = {}
         for region in shape_info.keys():
             #
-            # Evaluate shape functions at quadrature points
+            # Iterate over regions
             #
             phi[region] = {}
-            for etype in shape_info[region].keys():
+            for basis in shape_info[region]:
                 #
-                # Add etype key to phi if necessary
+                # Iterate over basis functions 
                 # 
-                if etype not in phi[region]:
-                    phi[region][etype] = {}
-                
-                #
-                # Compute shape functions
-                # 
-                element = shape_info[region][etype]['element']
-                D = shape_info[region][etype]['derivatives']
-                p = element.shape(xg[region], derivatives=D, cell=cell)
-                
-                # Convert list to dictionary
-                count = 0
-                for drv in shape_info[region][etype]['derivatives']:
-                    phi[region][etype][drv] = p[count]
-                    count += 1
-                
+                if basis not in phi[region]:
+                    #
+                    # Evaluate basis functions over regions
+                    #
+                    element = basis.dofhandler().element
+                    D = basis.derivative()
+                    p = element.shape(xg[region], derivatives=D, cell=cell)
+                    phi[region][basis] = p
         return phi        
             
-    
-        
-        
-            
-    
-    
-        
           
     def interpolate(self, marker_coarse, marker_fine, u_coarse=None):
         """
@@ -3061,7 +2930,7 @@ class AssembledForm(object):
         # Check that input is a Form
         # 
         assert isinstance(form, Form), 'Input "form" should be a "Form" object'
-            
+        self.__form = form    
         
         # Record form type    
         self.type = form.type
@@ -3090,7 +2959,7 @@ class AssembledForm(object):
             self.cell_vals = []
             
             # Element type (test function)
-            self.test_etype = form.test.element.element_type()
+            self.test_etype = form.test.dofhandler().element.element_type()
             
         elif self.type == 'bilinear':
             #
@@ -3107,14 +2976,14 @@ class AssembledForm(object):
             self.cell_vals = []
             
             # Element types (test and trial)
-            self.test_etype = form.test.element.element_type()
-            self.trial_etype = form.trial.element.element_type()
+            self.test_etype = form.test.dofhandler().element.element_type()
+            self.trial_etype = form.trial.dofhandler().element.element_type()
             
         #
         # Record the sample size for the assembled form, ensuring that 
         # it is compatible with that of the form   
         # 
-        fn_samples = form.kernel.n_samples
+        fn_samples = form.kernel.n_subsample()
         if n_samples is None:
             #
             # No sample size provided, use sample that of form
@@ -3142,7 +3011,14 @@ class AssembledForm(object):
         # Initialize subsample       
         # 
         self.sub_sample = None
-        
+    
+    
+    def form(self):
+        """
+        Returns generic form on which the AssembledForm is based
+        """    
+        return self.__form
+    
             
     def check_compatibility(self, form):
         """
@@ -3158,23 +3034,37 @@ class AssembledForm(object):
             update_sample_size: bool, if assembled form has sample size 1 or 
                 None and form has a sample size greater than 
         """
-        assert isinstance(form, Form), 'Input "form" must be a "Form" object.'
-        assert self.type == form.type, 'Input "form" should have the same '+\
-            'type as AssembledForm.'
-        if self.type == 'linear':
-            assert self.test_etype == form.test.element.element_type(),\
-                'Test element types not compatible.'
-        elif self.type == 'bilinear':
-            assert self.test_etype == form.test.element.element_type(),\
-                'Test element types not compatible.'
-            assert self.trial_etype == form.trial.element.element_type(),\
-                'Trial element types not compatible.'
+        incompatible_type = 'Input "form" should be of type %s.'%(self.form().type)
+        incompatible_test = 'Test functions incompatible.'    
+        incompatible_trial = 'Trial functions incompatible.'
         
+        assert isinstance(form, Form), 'Input "form" must be a "Form" object.'
+        assert self.type == form.type, incompatible_type
+        
+        if self.type == 'linear':
+            #
+            # Linear Form
+            # 
+            assert   self.form().test.dofhandler() == form.test.dofhandler() and \
+                self.form().test.subforest_flag()==form.test.subforest_flag(),\
+                incompatible_test
+                
+        elif self.type == 'bilinear':
+            #
+            # Bilinear Form
+            #
+            assert   self.form().test.dofhandler() == form.test.dofhandler() and \
+                self.form().test.subforest_flag()==form.test.subforest_flag(),\
+                incompatible_test    
+            
+            assert   self.form().trial.dofhandler() == form.trial.dofhandler() and \
+                self.form().trial.subforest_flag()==form.trial.subforest_flag(),\
+                incompatible_trial
         #
         # Check sample size
         # 
         sample_error = 'Sample size incompatible with that of form.'
-        fn_samples = form.kernel.n_samples
+        fn_samples = form.kernel.n_subsample()
         n_samples = self.n_samples
         if n_samples is None:
             assert fn_samples is None, sample_error
@@ -3427,6 +3317,9 @@ class AssembledForm(object):
             if clear_cell_data:
                 self.cell_vals = []
                 self.cell_address = []
+    
+    
+    
     
                 
     def set_subsample(self, subsample):
