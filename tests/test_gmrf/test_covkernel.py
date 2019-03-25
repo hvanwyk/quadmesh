@@ -1,6 +1,7 @@
 from gmrf import CovKernel
 from mesh import QuadMesh
 from mesh import Mesh1D
+from mesh import convert_to_array
 from fem import QuadFE
 from fem import DofHandler
 from function import Function
@@ -50,6 +51,8 @@ class TestCovKernel(unittest.TestCase):
                 X = np.array([v[:,0][M1].ravel(), v[:,1][M1].ravel()]).T
                 Y = np.array([v[:,0][M2].ravel(), v[:,1][M2].ravel()]).T
             
+            x = convert_to_array(X,dim=dim)
+            y = convert_to_array(Y,dim=dim)
             a_count = 0
             isotropic_label = ['isotropic','anisotropic']
             for M in anisotropies[dim]:
@@ -63,14 +66,11 @@ class TestCovKernel(unittest.TestCase):
                             'matern': {'sgm': 1, 'nu': 2, 'l': 0.5, 'M': M}, 
                             'rational': {'a': 3, 'M': M}}
                 
-                
-               
-        
                 c_count = 0
                 for cov_name in cov_names:
                     
                     C = CovKernel(cov_name, cov_pars[cov_name])
-                    Z = C.eval(X,Y).reshape(M1.shape)
+                    Z = C.eval((x,y)).reshape(M1.shape)
                     
                     col = int(m_count*2**1 + a_count*2**0)
                     row = c_count
@@ -90,7 +90,7 @@ class TestCovKernel(unittest.TestCase):
         fig.savefig('test_covkernel_eval.eps')
     
     
-    
+    '''
     def test_slice(self):
         """
         Test the slice method
@@ -162,5 +162,5 @@ class TestCovKernel(unittest.TestCase):
                 a_count += 1
             m_count += 1
         fig.savefig('test_covkernel_slice.eps')
+    '''
         
-       

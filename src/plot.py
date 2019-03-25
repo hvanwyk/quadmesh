@@ -6,6 +6,7 @@ Created on Feb 8, 2017
 
 import matplotlib.pyplot as plt
 from mesh import QuadCell, Cell, Interval
+from function import Map, Constant, Nodal, Explicit
 from matplotlib import colors as clrs
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
@@ -809,12 +810,12 @@ class Plot(object):
         #
         # Check function
         # 
-        assert isinstance(f, Function), 'Can only plot "Function" objects.'
+        assert isinstance(f, Map), 'Can only plot "Map" objects.'
         
         #
         # Make sure there's a mesh
         # 
-        if f.fn_type() in ['explicit', 'constant']:
+        if isinstance(f, Explicit) or isinstance(f, Constant):
             assert mesh is not None, \
             'For "explicit" or "constant" functions, mesh must be given.'
         else:
@@ -910,16 +911,12 @@ class Plot(object):
         #
         # Check function properties
         # 
-        assert isinstance(f, Function), 'Can only plot "Function" objects.'
+        assert isinstance(f, Map), 'Can only plot "Function" objects.'
         
         #
         # Ensure there's a mesh
-        # 
-        if f.fn_type() in ['explicit', 'constant']:
-            
-            if mesh is None:
-                mesh = f.mesh()
-            
+        #
+        if isinstance(f, Explicit) or isinstance(f, Constant):
             assert mesh is not None, \
             'For "explicit" or "constant" functions, mesh must be specified.'  
         else:
@@ -952,18 +949,17 @@ class Plot(object):
             #
             # Evaluate function on local interval
             # 
-            ff = f.eval(xx, cell=interval)
-                        
+            ff = f.eval(x=xx, cell=interval)
             #
             # Add x and y-values to list
             #  
             x.extend(xx.tolist())
-            fx.extend(ff.tolist())
+            fx.extend(ff[:,0].tolist())
             
             #
             # For discontinous elements, add a np.nan value
             # 
-            if f.fn_type()=='nodal':
+            if isinstance(f, Nodal):
                 if f.dofhandler().element.torn_element():
                     x.append(x1)
                     fx.append(np.nan)
@@ -973,6 +969,7 @@ class Plot(object):
         # 
         x = np.array(x)
         fx = np.array(fx)
+        print(fx)
         axis.plot(x, fx, linewidth=1.5)
         
         #

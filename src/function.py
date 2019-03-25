@@ -1,6 +1,6 @@
 from fem import DofHandler, QuadFE
 from fem import parse_derivative_info
-from mesh import convert_to_array, Vertex, Mesh
+from mesh import convert_to_array, Vertex, Mesh, Interval, Cell
 import numbers
 import numpy as np
 
@@ -2155,22 +2155,28 @@ class Nodal(Map):
                     bins.append(mesh.bin_points(xx[i], subforest_flag=sf))
             else:
                 #
-                # Cell given
+                # Cell(s) given - one for each variable
                 # 
-                cell = list(cell)  # Convert to list
-                
-                if len(cell)==1:
-                    # Same cell for each variable, enlarge list
-                    cell = cell*n_variables
+                if type(cell) is tuple:
+                    # Convert tuple to list
+                    cells = list(cell)
                 else:
-                    assert len(cell)==n_variables, \
+                    assert isinstance(cell, Cell) or isinstance(cell, Interval),\
+                    'Input "cell" should be a Cell object.'
+                    cells = [cell]  # Convert to list
+                
+                if len(cells)==1:
+                    # Same cell for each variable, enlarge list
+                    cells = cells*n_variables
+                else:
+                    assert len(cells)==n_variables, \
                     'Number of cells incompatible with number of variables'
                     
                 #
                 # Bin from cell
                 # 
                 bins = []
-                for i in range(n_variables):
+                for i, cell in zip(range(n_variables),cells):
                     bins.append(cell.bin_points(xx[i], subforest_flag=sf))
            
             
