@@ -359,7 +359,7 @@ class LinearSystem(object):
             #
             x_dir = convert_to_array(dirichlet_vertices)
             dirichlet_vals = dirichlet_function.eval(x_dir)
-        
+            
         constraints = dh.constraints
         for dof, val in zip(dirichlet_dofs, dirichlet_vals):
             constraints['constrained_dofs'].append(dof)

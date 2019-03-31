@@ -465,7 +465,7 @@ class Map(object):
         
             Currently, only univariate functions are supported.
         """
-        assert self.n_variables == 1, 'Only functions with 1 input variable '+\
+        assert self.n_variables() == 1, 'Only functions with 1 input variable '+\
             'can currently be interpolated.'
         
         if dofhandler is None:

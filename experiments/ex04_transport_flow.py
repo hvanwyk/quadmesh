@@ -31,9 +31,24 @@ Transport with Karhunen-Loève Expansions, Stochastic Collocation, and
 Sequential Gaussian Simulation
 """
 # Imports 
-from fem import Function, QuadFE, System
-from mesh import Mesh
+from assembler import Form
+from assembler import Kernel
+from assembler import Assembler
+
+from fem import QuadFE
+from fem import DofHandler
+from fem import Basis
+
+from mesh import QuadMesh
+from mesh import Mesh1D
+
+from function import Nodal
+from function import Explicit
+from function import Constant
+
 from plot import Plot
+from solver import LinearSystem
+
 import numpy as np
 from scipy.sparse import linalg as spla
 import matplotlib.pyplot as plt
@@ -54,48 +69,101 @@ K   = Constant(1)  # permeability
 # =============================================================================
 # Mesh and Elements
 # =============================================================================
-# Finite element mesh
-mesh = Mesh.newmesh(grid_size=(20,20))
-mesh.refine()
+# Mesh
+mesh = QuadMesh(resolution=(10,10))
  
+# Elements
 p_element = QuadFE(2,'Q2')  # element for pressure
 c_element = QuadFE(2,'Q2')  # element for concentration
 
-p_system = System(mesh, p_element)
-c_system = System(mesh, c_element)
+# Dofhandlers
+p_dofhandler = DofHandler(mesh, p_element)
+c_dofhandler = DofHandler(mesh, c_element)
 
+# Basis functions
+p_ux = Basis(p_dofhandler, 'ux')
+p_uy = Basis(p_dofhandler, 'uy')
+p_u = Basis(p_dofhandler, 'u')
 
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
-def bnd_inflow(x,y):
-    """
-    Inflow boundary: x = 0
-    """
-    return np.abs(x)<1e-10
-
-def bnd_outflow(x,y):
-    """
-    Outflow boundary: x = 1
-    """
-    return np.abs(x-1)<1e-10
 
 p_inflow = lambda x,y: np.ones(shape=x.shape)
 p_outflow = lambda x,y: np.zeros(shape=x.shape)
 c_inflow = lambda x,y: np.zeros(shape=x.shape)
 
 # =============================================================================
-# Assembly
+# Solve the steady state flow equations
 # =============================================================================
-#
-# Flow
-# 
+# Define problem
+flow_problem = [Form(1,test=p_ux,trial=p_ux), 
+                Form(1,test=p_uy,trial=p_uy), 
+                Form(0,test=p_u)] 
 
-# Bilinear forms
-bf_flow = [(K,'ux','vx'),(K,'uy','vy')]
+# Assembler
+assembler = Assembler(flow_problem, mesh)
+assembler.assemble()
 
-# Linear forms
-lf_flow = [(0,'v')]
+# Linear System
+system = LinearSystem(assembler, 0)
+
+# Dirichlet conditions
+mesh.mark_region('left', lambda x,y: np.abs(x)<1e-9, 
+                 entity_type='half_edge')
+
+mesh.mark_region('right', lambda x,y: np.abs(x-1)<1e-9, 
+                 entity_type='half_edge')
+#plot = Plot()
+#plot.mesh(mesh, regions=[('left','edge'), ('right','edge')])
+
+# Add Dirichlet constraints
+system.add_dirichlet_constraint('left', 1)
+system.add_dirichlet_constraint('right', 0)
+system.set_constraint_relation()
+
+# Solve linear system
+system.solve_system()
+u = system.get_solution()
+
+dh = DofHandler(mesh, QuadFE(2,'DQ2'))
+dh.distribute_dofs()
+x = dh.get_dof_vertices()
+y = u.eval(x, derivative='fx')
+
+# =============================================================================
+# Transport Equations
+# =============================================================================
+# Specify initial condition
+c0 = Constant(1)
+dt = 1e-1
+T  = 1
+N  = int(np.ceil(T/dt))
+
+c = Basis(c_dofhandler, 'c')
+cx = Basis(c_dofhandler, 'cx')
+cy = Basis(c_dofhandler, 'cy')
+
+k_phi = Kernel(f=phi)
+k_advx = Kernel(f=[K,u], derivatives=['k','ux'], F=lambda K,ux: -K*ux)
+k_advy = Kernel(f=[K,u], derivatives=['k','uy'], F=lambda K,uy: -K*uy)
+tht = 0.5
+for i in range(N):
+    print(i)
+    m = [Form(kernel=k_phi, test=c, trial=c)]
+    s = [Form(kernel=k_advx, test=c, trial=cx),
+         Form(kernel=k_advy, test=c, trial=cy),
+         Form(kernel=Kernel(D), test=cx, trial=cx),
+         Form(kernel=Kernel(D), test=cy, trial=cy)]
+    
+    problems = [m,s]
+    
+    assembler = Assembler(problems, mesh=mesh)
+    assembler.assemble()
+    
+
+
+
+
+
+"""
 
 # Boundary conditions
 bc_flow = {'dirichlet': [(bnd_inflow, p_inflow),(bnd_outflow, p_outflow)]}
@@ -180,3 +248,4 @@ def update_contour_plot(c_fn, pos, ax_c, fig, mesh, element):
     return im,
 '''
 print('done')
+"""

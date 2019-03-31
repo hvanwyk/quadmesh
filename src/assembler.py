@@ -485,7 +485,7 @@ class Kernel(object):
             
     
     
-    def eval(self, x):
+    def eval(self, x, region=None):
         """
         Evaluate the kernel at the points stored in x 
         
@@ -731,7 +731,7 @@ class Form(object):
             # Compute kernel, weight by quadrature weights    
             #
             kernel = self.kernel
-            Ker = kernel.eval(x=x)
+            Ker = kernel.eval(x=x, region=region)
             wKer = (wg[region]*Ker.T).T        
     
             if self.type=='constant':
@@ -1041,7 +1041,7 @@ class IIForm(Form):
                 elif self.dim == 2:
                     
                 """
-                C_loc = self.kernel.eval(x)
+                C_loc = self.kernel.eval(x, region=reg)
                 C_loc = C_loc.reshape(n,n_gauss)
         
                 #
@@ -1183,7 +1183,7 @@ class IPForm(Form):
                 elif self.dim() == 2:
                     x1, x2 = xi_g[ii.ravel(),:],xj_g[jj.ravel(),:]
                 """
-                C_loc = self.kernel.eval(x)
+                C_loc = self.kernel.eval(x, region=(regi, regj))
                 C_loc = C_loc.reshape(n_gauss,n_gauss)
         
                 #
