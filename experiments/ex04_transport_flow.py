@@ -170,6 +170,8 @@ for i in range(N):
     system.set_constraint_relation()
     system.solve_system()
     cp = system.get_solution(as_function=False)
+    print(cp.shape)
+    print(ca.data().shape)
     c0 = cp
     ca.add_data(data=cp)
     

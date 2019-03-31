@@ -4,7 +4,7 @@ from mesh import convert_to_array, Vertex, Mesh, Interval, Cell
 import numbers
 import numpy as np
 
-
+# TODO: Default sample size is 1 (not None)
 
 class Map(object):
     """
@@ -225,7 +225,7 @@ class Map(object):
         Returns size of the subsample
         """
         if self.__subsample is None:
-            return None
+            return self.n_samples()
         else:
             return len(self.__subsample)
         
@@ -302,8 +302,6 @@ class Map(object):
         
             xx: n_variables list of (n_points, dim) arrays (one for each 
                 variable).  
-            
-            is_singleton: bool, True if the input is a singleton 
         """
         n_variables = self.n_variables()
         if n_variables > 1:
@@ -321,118 +319,61 @@ class Map(object):
             # 
             x = (x,)
             
-            
         # Convert to usable format
         xx = []
-        for i in range(n_variables):
-            if i==0:
-                xi, is_singleton = \
-                    convert_to_array(x[i], dim=self.dim(),\
-                                     return_is_singleton=True)
-                xx.append(xi)
-                n_points = xi.shape[0]
-            else:
-                xx.append(convert_to_array(x[i], dim=self.dim()))
-                assert xx[i].shape[0]==n_points, \
-                'Each variable should have the same number of points.'
-        return xx, is_singleton
+        for i in range(n_variables):    
+            xx.append(convert_to_array(x[i], dim=self.dim()))
+        
+        n_points = xx[0].shape[0]
+        assert all([x.shape[0]==n_points for x in xx]), \
+            'Each variable should have the same number of points.'
+        return xx
         
     
-    def parse_fx(self, fx, is_singleton):
+    def parse_fx(self, fx):
         """
         Returns output appropriate for singleton points
         
         Input:
         
             fx: double, (n_points, n_samples) array of points
-            
-            is_singleton: bool, True if input was a singleton
-            
+        
         
         Output:
         
-            fx: double, function output - possibly modified to account 
-                for the singleton.
+            fx: double, (n_points, n_samples) function output
         """
         #
         # Parse fx (n_points, n_samples)   
         # 
         n_samples = self.n_samples()
-        if n_samples is None:
+        if n_samples==1 and self.subsample() is not None:
             #
-            # Deterministic function
-            #
-            if self.subsample() is not None:
-                #
-                # Nontrivial subsample
-                # 
-                n_subsample = self.n_subsample()
-                if is_singleton:
-                    #
-                    # Singleton input
-                    #
-                    return fx[0]*np.ones(n_subsample)
-                else:
-                    #
-                    # Vector input
-                    # 
-                    if len(fx.shape)==1:
-                        #
-                        # (n_points,) vector
-                        #
-                        return np.tile(fx[:,np.newaxis], (1,n_subsample))
-                    elif len(fx.shape)==2:
-                        #
-                        # (n_points,1) vector
-                        #
-                        assert len(fx.shape[1])==1, \
-                        'Number of columns should be 1.'
-                        return np.tile(fx, (1, n_subsample))
-            else:
-                #
-                # No subsample
-                #
-                if is_singleton:
-                    return fx[0]
-                else:
-                    return fx
-        else:
-            #
-            # Sampled function
+            # Copy output n_subsample times
             # 
-            if is_singleton:
-                return fx[0]
-            else:
-                return fx
-        
-        """        
-        repeat = False
-        if self.n_samples() is None and self.subsample() is not None:
-            #
-            # Deterministic function with non-trivial subsample
-            #  
-            repeat = True
             n_subsample = self.n_subsample()
-          
-        if is_singleton:
+            
             #
-            # Singleton input
-            #  
-            if repeat:
-                return fx[0]*np.ones(n_subsample)
-            else:
-                return fx[0]
-        else:
-            #
-            # Vector output
+            # Vector input
             # 
-            if repeat:
-                print(fx)
-                return np.tile(fx, (1,n_subsample))
-            else:
-                return fx
-        """
-
+            if len(fx.shape)==1:
+                #
+                # (n_points,) vector
+                #
+                return np.tile(fx[:,np.newaxis], (1,n_subsample))
+            elif len(fx.shape)==2:
+                #
+                # (n_points,1) vector
+                #
+                if fx.shape[1]!=1:
+                    print(fx.shape)
+                assert fx.shape[1]==1, \
+                'Number of columns should be 1.'
+                return np.tile(fx, (1, n_subsample))
+        else:    
+            return fx
+        
+        
     def eval(self):
         """
         Container function for subclasses
@@ -1518,7 +1459,7 @@ class Explicit(Map):
        
         # Subsample index should not exceed sample size
         if self.subsample() is not None:
-            if self.n_samples() is not None:
+            if self.n_samples() > 1:
                 assert self.subsample().max()<self.n_samples(), \
                 'Subsample index out of bounds.'
 
@@ -1526,11 +1467,7 @@ class Explicit(Map):
         """
         Determine the number of samples
         """
-        f = self.__f
-        if type(f) is list: 
-            return len(f)
-        else:
-            return None
+        return len(self.__f)
     
     
     def parameters(self):
@@ -1542,7 +1479,9 @@ class Explicit(Map):
     
     def set_parameters(self, parameters, pos=None):
         """
-        Modify function's parameters
+        Modify function's parameters 
+        
+        
         """
         assert type(parameters) is dict, 'Input parameters must be a dict.'
         
@@ -1550,10 +1489,7 @@ class Explicit(Map):
             #
             # No position specified, modify all parameters
             # 
-            if type(self.parameters()) is dict:
-                self.__parameters = parameters
-            else: 
-                self.__parameters = [parameters for dummy in self.parameters()]
+            self.__parameters = [parameters for dummy in self.parameters()]
         else:
             #
             # Position specified
@@ -1582,86 +1518,76 @@ class Explicit(Map):
             *pos [None]: int, position at which to set the function 
         """            
         #
-        # Check function inputs
+        # Check whether to insert a single function/parameters pair
         # 
-        if type(f) is list:
-            assert all([callable(fi) for fi in f]), \
-            'Input "f" should be a (list of) functions.'
-            
-            # Check no position specified 
-            assert pos is None, \
-            'Can only add individual functions at specific positions.'
-        else:
+        if pos is not None:
             assert callable(f), 'Input "f" should be callable.'
-
-        # 
-        # Check parameters input
-        # 
-        if type(parameters) is list:
-            # Check that all parameters are dictionaries
-            assert all([type(p) is dict for p in parameters]), \
-            'Input "parameters" should be a list of dictionaries.'
+            assert type(parameters) is dict, \
+            'Input "parameters" should be a dict.'
+            assert self.n_sample()>pos, \
+            'Input "pos" incompatible with sample size.'
+            self.__f[pos] = f
+            self.__parameters[pos] = parameters
         else:
-            # Check that parameters are a dictionary
-            assert type(parameters) is dict, \
-            'Input "parameters" should be a dictionary.' 
-
-        #
-        # Parse f - parameter compatibility   
-        # 
-        is_list = True
-        if type(f) is list and type(parameters) is list:
             #
-            # Both are lists
-            #
-            assert len(f)==len(parameters), \
-            'Inputs "f" and "parameters" should have the same length'
-        elif type(f) is list:
-            #
-            # f=list, parameter=dict
-            #
-            assert type(parameters) is dict, \
-            'Input "parameters" should be passed as dictionary'
-            
-            # Extend parameters
-            parameters = [parameters for dummy in f]
-            
-        elif type(parameters) is list:
-            #
-            # f=callable, parameters=list
+            # Check function inputs
             # 
-            assert callable(f), 'Input "f" should be callable.'
-            
-            # Extend f
-            f = [f for dummy in parameters]
-        else:
-            #
-            # f=callable, parameters=dict
+            if type(f) is list:
+                assert all([callable(fi) for fi in f]), \
+                'Input "f" should be a (list of) functions.'
+                
+                # Check no position specified 
+                assert pos is None, \
+                'Can only add individual functions at specific positions.'
+            else:
+                assert callable(f), 'Input "f" should be callable.'
+                f = [f]
+                
             # 
-            assert callable(f), 'Input "f" should be callable.'
-            assert type(parameters) is dict, \
-            'Input "parameters" should be a dictionary.'
-            is_list = False
-        
-        # 
-        # Store functions
-        #
-        if is_list or pos is None:
+            # Check parameters input
+            # 
+            if type(parameters) is list:
+                # Check that all parameters are dictionaries
+                assert all([type(p) is dict for p in parameters]), \
+                'Input "parameters" should be a list of dictionaries.'
+            else:
+                # Check that parameters are a dictionary
+                assert type(parameters) is dict, \
+                'Input "parameters" should be a dictionary.' 
+                parameters = [parameters]
+                
+            #
+            # Parse f - parameter compatibility   
+            # 
+            if len(f)>1 and len(parameters)>1:
+                #
+                # More than one function, more than one parameter set
+                #
+                assert len(f)==len(parameters), \
+                'Inputs "f" and "parameters" should have the same length'
+            elif len(f)>1:
+                #
+                # More than one function, single set of parameters
+                #
+                
+                # Extend parameters
+                p0 = parameters[0]
+                parameters = [p0 for dummy in f]
+                
+            elif len(parameters)>1:
+                #
+                # One function, more than one set of parameters
+                # 
+                
+                # Extend f
+                f0 = f[0]
+                f = [f0 for dummy in parameters]
+            # 
+            # Store functions
+            #
             self.__f = f
             self.__parameters = parameters
-        else:
-            #
-            # Insert function at pos in list
-            # 
-            n_samples = self.n_samples()
-            assert n_samples is not None and n_samples>pos, \
-            'Input "pos" out of bounds.'
-            
-            # Store at specific position
-            self.__f[pos] = f
-            self.__paramters[pos] = parameters
-            
-                    
+                            
             
     def add_rule(self, f, parameters={}):
         """
@@ -1680,20 +1606,11 @@ class Explicit(Map):
         assert callable(f), 'Input "f" should be callable.'
         assert type(parameters) is dict, \
             'Input "parameters" should be a dictionary.'
-        
-        if self.n_samples() is None:
-            #
-            # Append single deterministic function
-            # 
-            self.__f = [self.__f, f]
-            self.__parameters = [self.__parameters, parameters]
-        else:
-            #
-            # Append to list
-            # 
-            self.__f.append(f)
-            self.__parameters.append(parameters)
-
+        #
+        # Append to list
+        # 
+        self.__f.append(f)
+        self.__parameters.append(parameters)
     
     
     def eval(self, x):
@@ -1714,52 +1631,36 @@ class Explicit(Map):
                 f(x) is an (n_points, ) numpy array. Otherwise, f(x) is an 
                 (n_points, n_samples) numpy array of outputs   
         """ 
-        x, is_singleton = self.parse_x(x)
-            
+        x = self.parse_x(x)
         n_points = x[0].shape[0]
                 
         # =====================================================================
         # Parse sample size
         # =====================================================================
-        n_samples = self.n_samples()
-        if n_samples is not None:
-            #
-            # Only stochastic functions can be sampled
-            # 
-            if self.subsample() is None:
-                subsample = np.array(range(n_samples))
-            else:
-                subsample = self.subsample()
-                
-                
-            # Subsample size       
-            n_subsample = len(subsample)
-        else:
-            n_subsample = 1
+        subsample = self.subsample()
+        n_subsample = len(subsample)
         
         # =====================================================================
         # Evaluate function(s)
         # =====================================================================
-        if n_samples is None:
+        if self.n_samples()>1:
             #
-            # Deterministic function
-            # 
-            fx = self.__f(*x, **self.__parameters)
-            
-            # Fix output shape (depends on how lambda function was passed)
-            if fx.shape==(n_points,1):
-                fx = fx[:,0]
-        else:
-            #
-            # Stochastic function
+            # Subsample is proper
             # 
             fx = np.empty((n_points, n_subsample))
             for i in subsample:
                 fi, pi = self.__f[i], self.__parameters[i]   
                 fx[:,i] = fi(*x, **pi).ravel()
-        
+        else:
+            #
+            # Subsample
+            # 
+            fx = np.empty((n_points, 1))
+            f, p = self.__f[0], self.__parameters[0]
+            fx[:,0] = f(*x, **p).ravel()
+            
         # Returns function value   
-        return self.parse_fx(fx, is_singleton)
+        return self.parse_fx(fx)
             
             
 class Nodal(Map):
@@ -1818,12 +1719,7 @@ class Nodal(Map):
         """
         Returns the number of samples 
         """
-        if self.n_variables()==len(self.__data.shape):
-            # Determinimistic function
-            return None
-        else:
-            # Sampled function
-            return self.__data.shape[-1]
+        return self.__data.shape[-1]
     
     
     def data(self):
@@ -1854,9 +1750,13 @@ class Nodal(Map):
             n_dofs = self.dofhandler().n_dofs(subforest_flag=sf)
             assert data.shape[0]==n_dofs, \
             'Shape of input "values" inconsistent with dofhandler.'
+            if len(data.shape)<2:
+                # Data passed as a 1D array, convert to matrix 
+                data = data[:,None]
             
             # Store data
             self.__data = data
+            
         elif f is not None:
             #
             # Function (or list of functions) given
@@ -1888,30 +1788,18 @@ class Nodal(Map):
                 cols, rows = np.mgrid[0:n_dofs,0:n_dofs]
                 x1,x2 = x[rows.ravel(),:], x[cols.ravel(),:]
                 
-                n_samples = fn.n_samples()
-                if n_samples is None:
-                    #
-                    # Deterministic
-                    # 
-                    data = fn.eval((x1,x2)).reshape((n_dofs,n_dofs))
-                else:
-                    #
-                    # Sampled function
-                    # 
-                    data = fn.eval((x1,x2)).reshape((n_dofs,n_dofs,n_samples))
+                n_samples = fn.n_samples()                
+                #
+                # Sampled function
+                # 
+                data = fn.eval((x1,x2)).reshape((n_dofs,n_dofs,n_samples))
             self.__data = data    
         else:
             raise Exception('Specify either "data" or "f".')
 
         # Check that dimensions are consistent
-        if self.n_samples() is None:
-            # Deterministic function
-            assert self.n_variables()==len(data.shape), \
-            'Deterministic function data dimension incorrect.'
-        else:
-            # Sampled function
-            assert self.n_variables()+1==len(data.shape), \
-            'Sampled function data dimension incorrect'
+        assert self.n_variables()+1==len(data.shape), \
+        'Sampled function data dimension incorrect'
     
     
     def add_data(self, data=None, f=None, parameters=None):
@@ -1931,7 +1819,7 @@ class Nodal(Map):
             sf = self.subforest_flag()
             assert n_dofs==self.dofhandler().n_dofs(subforest_flag=sf),\
                 'Data size is not consistent'
-            assert n_samples>=1, 's'
+            
             new_data = np.append(self.data(),data,axis=1)
             self.set_data(new_data)
             
@@ -2057,7 +1945,7 @@ class Nodal(Map):
             #
             # Add sub-sample information   
             #                
-            if n_samples is not None:
+            if n_samples>1:
                 i_f.append(self.subsample())
             #
             # Get local array (n1,...,nk,n_samples)  
@@ -2101,7 +1989,7 @@ class Nodal(Map):
             #
             # Parse fx (n_points, n_samples)   
             # 
-            return self.parse_fx(fx, is_singleton)   
+            return self.parse_fx(fx)   
         else:        
             # =====================================================================
             # First Evaluate Shape functions
@@ -2131,7 +2019,7 @@ class Nodal(Map):
             # Parse x input
             # 
             if x is not None:
-                xx, is_singleton = self.parse_x(x)
+                xx = self.parse_x(x)
                 n_points = xx[0].shape[0]
             else:
                 assert phi is not None, \
@@ -2224,7 +2112,7 @@ class Nodal(Map):
             #
             # Compute f(x) using the shape functions and dofs 
             #  
-            fx = self.eval(phi=Phi, dofs=udofs, is_singleton=is_singleton)
+            fx = self.eval(phi=Phi, dofs=udofs)
             return fx
         """
                
@@ -2532,7 +2420,14 @@ class Constant(Map):
         is_array = type(data) is np.ndarray
         assert is_number or is_array,  \
         'Input "data" should be a number of a one dimensional array'     
-        if is_array: 
+        
+        
+        if isinstance(data, numbers.Real):
+            #
+            # Data is a single number
+            # 
+            data = np.array([data])
+        elif type(data) is np.ndarray: 
             assert len(data.shape)==1, \
             '"data" array should be one dimensional.'
         self.__data = data
@@ -2549,12 +2444,7 @@ class Constant(Map):
         """
         Returns the sample size 
         """
-        data = self.data()
-        if isinstance(data, np.ndarray):
-            n_samples = len(data)
-        else:
-            n_samples = None
-        return n_samples
+        return len(self.data())
     
     
     def eval(self, x):
@@ -2567,18 +2457,18 @@ class Constant(Map):
                 or tuple
         """
         # Parse input
-        x, is_singleton = self.parse_x(x)
+        x = self.parse_x(x)
         n_points = x[0].shape[0]
         n_sample = self.n_samples()        
-        if n_sample is None:
+        if n_sample==1:
             #
             # Deterministic function, copied 
             #
-            fx = np.ones(n_points)*self.data()
+            fx = np.ones((n_points,n_sample))*self.data()
         else:
             #
             # Stochastic function 
             # 
             fx = np.outer(np.ones(n_points), self.data()[self.subsample()])
                 
-        return self.parse_fx(fx, is_singleton)
+        return self.parse_fx(fx)

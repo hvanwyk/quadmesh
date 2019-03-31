@@ -150,21 +150,21 @@ class TestMap(unittest.TestCase):
                 xn = x[dim][n_variables]
                 
                 # Explicit
-                self.assertEqual(len(fe.eval(xn)),len(subsample))
-                self.assertEqual(fe.eval(xn)[0],vals[dim][n_variables])
-                self.assertEqual(fe.eval(xn)[1],vals[dim][n_variables])
+                self.assertEqual(fe.eval(xn).shape[1],len(subsample))
+                self.assertEqual(fe.eval(xn)[0,0],vals[dim][n_variables])
+                self.assertEqual(fe.eval(xn)[0,1],vals[dim][n_variables])
                 
                 
                 # Nodal
-                self.assertEqual(len(fn.eval(xn)),len(subsample))
-                self.assertAlmostEqual(fn.eval(xn)[0],vals[dim][n_variables])
-                self.assertAlmostEqual(fn.eval(xn)[1],vals[dim][n_variables])
+                self.assertEqual(fn.eval(xn).shape[1],len(subsample))
+                self.assertAlmostEqual(fn.eval(xn)[0,0],vals[dim][n_variables])
+                self.assertAlmostEqual(fn.eval(xn)[0,1],vals[dim][n_variables])
                 
                 
                 # Constant
-                self.assertEqual(len(fc.eval(xn)),len(subsample))
-                self.assertAlmostEqual(fc.eval(xn)[0],1)
-                self.assertAlmostEqual(fc.eval(xn)[1],1)
+                self.assertEqual(fc.eval(xn).shape[1],len(subsample))
+                self.assertAlmostEqual(fc.eval(xn)[0,0],1)
+                self.assertAlmostEqual(fc.eval(xn)[0,1],1)
                 
                 # Vector input
                 xn = xv[dim][n_variables]
@@ -259,6 +259,7 @@ class TestExplicit(unittest.TestCase):
         """
         f = Explicit(lambda x, a: a*x**2, parameters={'a':1}, 
                      dim=1, n_variables=1)
+        f.eval(1)
         self.assertAlmostEqual(f.eval(1),1)
         
         #
@@ -319,7 +320,7 @@ class TestExplicit(unittest.TestCase):
         for i in range(3):
             
             #(*(x,),**{'a':1}))
-            self.assertEqual(f.eval(x)[i],vals[i])
+            self.assertEqual(f.eval(x)[0,i],vals[i])
         
         
     def test_set_parameters(self):
@@ -397,8 +398,8 @@ class TestExplicit(unittest.TestCase):
                              n_variables=n_variables, dim=dim)
                 
                 xn = x[dim][n_variables]
-                self.assertEqual(f.eval(xn)[0],vals[dim][n_variables])
-                self.assertEqual(f.eval(xn)[1],2*vals[dim][n_variables])
+                self.assertEqual(f.eval(xn)[0][0],vals[dim][n_variables])
+                self.assertEqual(f.eval(xn)[0][1],2*vals[dim][n_variables])
         
         #
         # 2 points
@@ -449,7 +450,7 @@ class TestNodal(unittest.TestCase):
         
         f = Nodal(data=data, mesh=mesh, element=element)
         self.assertEqual(f.dim(),2)
-        self.assertTrue(np.allclose(f.data(),data))
+        self.assertTrue(np.allclose(f.data().ravel(),data))
         
         # Now change the data -> Error
         false_data = np.arange(0,6)
@@ -492,7 +493,7 @@ class TestNodal(unittest.TestCase):
             n_dofs = dofhandler.n_dofs()
             
             # Determine the shapes of the data
-            det_shapes = {1: (n_dofs,),  2: (n_dofs,n_dofs)}
+            det_shapes = {1: (n_dofs, 1),  2: (n_dofs,n_dofs, 1)}
             smp_shapes = {1: (n_dofs, 2), 2: (n_dofs, n_dofs, 2)}
             
             # Get a vertex
@@ -580,7 +581,7 @@ class TestNodal(unittest.TestCase):
                 f = Nodal(f=fn,  
                           mesh=mesh, element=element, 
                           dim=dim, n_variables=n_variables)
-                self.assertIsNone(f.n_samples())
+                self.assertEqual(f.n_samples(),1)
                 
                 #
                 # Sampled
@@ -612,11 +613,11 @@ class TestNodal(unittest.TestCase):
                        2: [(1,0), (1,1), (2,0,0)]}
         
         
-        dfdx_exact = {1: [lambda x: 4*x[:,0], 
-                          lambda x: 4*np.ones(x.shape[0])],
-                      2: [lambda x: 2*x[:,0], 
-                          lambda x: np.ones(x.shape[0]),
-                          lambda x: 2*np.ones(x.shape[0])]}
+        dfdx_exact = {1: [lambda x: 4*x[:,0][:,None], 
+                          lambda x: 4*np.ones(x.shape)],
+                      2: [lambda x: 2*x[:,0][:,None], 
+                          lambda x: np.ones(x.shape),
+                          lambda x: 2*np.ones(x.shape)]}
                 
         # n_samples = 2
         parms = {1: [{},{}], 
@@ -662,10 +663,11 @@ class TestNodal(unittest.TestCase):
             for derivative in derivatives[dim]:
                 # Evaluate the derivative
                 dfdx = f.differentiate(derivative)
+                
                 self.assertTrue(np.allclose(dfdx.eval(x=x)[:,0], 
-                                            dfdx_exact[dim][count](x)))
+                                            dfdx_exact[dim][count](x)[:,0]))
                 self.assertTrue(np.allclose(dfdx.eval(x=x)[:,1], 
-                                            dfdx_exact[dim][count](x)))
+                                            dfdx_exact[dim][count](x)[:,0]))
                 count += 1
     
     
@@ -702,7 +704,7 @@ class TestNodal(unittest.TestCase):
         
         # Evaluate and check dimensions
         fx = f.eval(phi=phi, dofs=dofs) 
-        self.assertEqual(fx.shape, (n_points,))
+        self.assertEqual(fx.shape, (n_points,1))
         
         #
         # Sampled Data
@@ -720,12 +722,12 @@ class TestNodal(unittest.TestCase):
         #
         # Bivariate deterministic
         # 
-        data = np.random.rand(n_dofs, n_dofs)
+        data = np.random.rand(n_dofs, n_dofs, 1)
         
         # Define deterministic function
         f = Nodal(data=data, dofhandler=dofhandler, n_variables=2)
         fx = f.eval(phi=(phi,phi), dofs=(dofs,dofs))
-        self.assertEqual(fx.shape, (n_points,))
+        self.assertEqual(fx.shape, (n_points,1))
         
         #
         # Bivariate sampled
@@ -740,7 +742,7 @@ class TestNodal(unittest.TestCase):
         #
         # Trivariate deterministic
         # 
-        data = np.random.rand(n_dofs, n_dofs, n_dofs)
+        data = np.random.rand(n_dofs, n_dofs, n_dofs,1)
         f = Nodal(data=data, dofhandler=dofhandler, n_variables=3)
         
     
