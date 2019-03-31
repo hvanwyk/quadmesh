@@ -1026,7 +1026,7 @@ class Basis(object):
         return self.__derivative
     
     
-    def dofs(self, cell):
+    def dofs(self, cell=None):
         """
         Returns the dofs of the shape functions defined over a cell. 
         """

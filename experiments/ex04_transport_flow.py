@@ -48,6 +48,7 @@ from function import Constant
 
 from plot import Plot
 from solver import LinearSystem
+from solver import LS
 
 import numpy as np
 from scipy.sparse import linalg as spla
@@ -145,18 +146,36 @@ k_phi = Kernel(f=phi)
 k_advx = Kernel(f=[K,u], derivatives=['k','ux'], F=lambda K,ux: -K*ux)
 k_advy = Kernel(f=[K,u], derivatives=['k','uy'], F=lambda K,uy: -K*uy)
 tht = 0.5
+m = [Form(kernel=k_phi, test=c, trial=c)]
+s = [Form(kernel=k_advx, test=c, trial=cx),
+     Form(kernel=k_advy, test=c, trial=cy),
+     Form(kernel=Kernel(D), test=cx, trial=cx),
+     Form(kernel=Kernel(D), test=cy, trial=cy)]
+problems = [m,s]
+assembler = Assembler(problems, mesh=mesh)
+assembler.assemble()
+M = assembler.af[0]['bilinear'].get_matrix()
+S = assembler.af[1]['bilinear'].get_matrix()
+
+c_dofhandler.distribute_dofs(subforest_flag=None)
+ca = c0.interpolant(dofhandler=c_dofhandler)
+c0 = ca.data()
+plot = Plot(5)
 for i in range(N):
-    print(i)
-    m = [Form(kernel=k_phi, test=c, trial=c)]
-    s = [Form(kernel=k_advx, test=c, trial=cx),
-         Form(kernel=k_advy, test=c, trial=cy),
-         Form(kernel=Kernel(D), test=cx, trial=cx),
-         Form(kernel=Kernel(D), test=cy, trial=cy)]
+    A = M + tht*dt*S
+    b = M.dot(c0)-(1-tht)*dt*S.dot(c0)
+    b = b[:,np.newaxis]
+    system = LS(c, A=A, b=b)
+    system.add_dirichlet_constraint('left',0)
+    system.set_constraint_relation()
+    system.solve_system()
+    cp = system.get_solution(as_function=False)
+    c0 = cp
+    ca.add_data(data=cp)
     
-    problems = [m,s]
+
     
-    assembler = Assembler(problems, mesh=mesh)
-    assembler.assemble()
+    
     
 
 

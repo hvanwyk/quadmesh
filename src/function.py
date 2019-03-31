@@ -9,8 +9,6 @@ import numpy as np
 class Map(object):
     """
     Function Class 
-    
-    TODO: Rename to Function later
     """
     def __init__(self, mesh=None, element=None, dofhandler=None, \
                  subforest_flag=None, subregion_flag=None, \
@@ -442,8 +440,7 @@ class Map(object):
         pass
         
             
-    def interpolant(self, mesh=None, element=None, dofhandler=None, \
-                    subforest_flag=None):
+    def interpolant(self, dofhandler, subforest_flag=None):
         """
         Return the interpolant of the function on a (new) mesh/element pair 
         
@@ -468,16 +465,6 @@ class Map(object):
         assert self.n_variables() == 1, 'Only functions with 1 input variable '+\
             'can currently be interpolated.'
         
-        if dofhandler is None:
-            if mesh is None:
-                mesh = self.dofhandler.mesh
-                
-            if element is None:
-                element = self.dofhandler.element
-        #
-        # Determine dof vertices
-        # 
-        dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs(subforest_flag=subforest_flag)
         dofs = dofhandler.get_region_dofs(subforest_flag=subforest_flag)
         x = dofhandler.get_dof_vertices(dofs)       
@@ -1939,8 +1926,15 @@ class Nodal(Map):
             
             parameters: (compatible list of) function parameters  
         """
-        pass
-       
+        if data is not None:
+            n_dofs, n_samples = data.shape
+            sf = self.subforest_flag()
+            assert n_dofs==self.dofhandler().n_dofs(subforest_flag=sf),\
+                'Data size is not consistent'
+            assert n_samples>=1, 's'
+            new_data = np.append(self.data(),data,axis=1)
+            self.set_data(new_data)
+            
     
     def eval(self, x=None, cell=None, phi=None, dofs=None, \
              derivative=None, is_singleton=False):

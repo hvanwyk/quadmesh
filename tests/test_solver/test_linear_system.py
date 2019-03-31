@@ -17,6 +17,7 @@ from function import Explicit
 from function import Constant
 
 from solver import LinearSystem
+from solver import LS
 #from plot import Plot
 
 
@@ -69,6 +70,11 @@ class TestLinearSystem(unittest.TestCase):
             # Form linear system
             # 
             system = LinearSystem(assembler, 0)
+            A = assembler.af[0]['bilinear'].get_matrix()
+            b = assembler.af[0]['linear'].get_matrix()
+            
+            ls = LS(u, A=A, b=b)
+            
             
             #
             # Dirichlet conditions 
@@ -86,21 +92,28 @@ class TestLinearSystem(unittest.TestCase):
             system.add_dirichlet_constraint('left', ue)
             system.add_dirichlet_constraint('right', ue)
     
+            ls.add_dirichlet_constraint('left',ue)
+            ls.add_dirichlet_constraint('right',ue)
             
             #
             # Solve system
             # 
             system.solve_system()
-            
+            ls.solve_system()
             
             #
             # Get solution
             # 
             ua = system.get_solution(as_function=True)
+            uaa = ls.get_solution(as_function=True)
+            uaa = uaa.data().ravel()
+            
             
             # Compare with exact solution
             self.assertTrue(np.allclose(ua.data(), ue.data()))
-        
+            self.assertTrue(np.allclose(uaa, ue.data()))
+            
+            
     def test02_1d_dirichlet_higher_order(self):
         mesh = Mesh1D()
         for etype in ['Q2','Q3']:
