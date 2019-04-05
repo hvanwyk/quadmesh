@@ -26,7 +26,25 @@ class TestLinearSystem(unittest.TestCase):
     Test Linear System class.
     """
     
+    def test_constructor(self):
+        """
+        Initialization
+        """
+        pass
     
+    def test_set_constraint_relation(self):
+        pass
+    
+    def test_constrain_matrix(self):
+        pass
+    
+    def test_constrain_rhs(self):
+        pass
+    
+    def test_resolve_constraints(self):
+        pass
+        
+        
     def test01_1d_dirichlet_linear(self):
         """
         Solve one dimensional boundary value problem with dirichlet 
@@ -72,8 +90,8 @@ class TestLinearSystem(unittest.TestCase):
             system = LinearSystem(assembler, 0)
             A = assembler.af[0]['bilinear'].get_matrix()
             b = assembler.af[0]['linear'].get_matrix()
-            print(A)
-            ls = LS(u, A=A, b=b)
+          
+            system = LS(u, A=A, b=b)
             
             
             #
@@ -92,25 +110,23 @@ class TestLinearSystem(unittest.TestCase):
             system.add_dirichlet_constraint('left', ue)
             system.add_dirichlet_constraint('right', ue)
     
-            ls.add_dirichlet_constraint('left',ue)
-            ls.add_dirichlet_constraint('right',ue)
             
             #
             # Solve system
             # 
+            #system.solve_system()
             system.solve_system()
-            ls.solve_system()
             
             #
             # Get solution
             # 
-            ua = system.get_solution(as_function=True)
-            uaa = ls.get_solution(as_function=True)
+            #ua = system.get_solution(as_function=True)
+            uaa = system.get_solution(as_function=True)
             #uaa = uaa.data().ravel()
             
             
             # Compare with exact solution
-            self.assertTrue(np.allclose(ua.data(), ue.data()))
+            #self.assertTrue(np.allclose(ua.data(), ue.data()))
             self.assertTrue(np.allclose(uaa.data(), ue.data()))
             
             
@@ -140,8 +156,12 @@ class TestLinearSystem(unittest.TestCase):
             assembler = Assembler(problem, mesh)
             assembler.assemble()
             
+            A = assembler.af[0]['bilinear'].get_matrix()
+            b = assembler.af[0]['linear'].get_matrix()
+            
             # Set up linear system
-            system = LinearSystem(assembler, 0)
+            #system = LinearSystem(assembler, 0)
+            system = LS(u, A=A, b=b)
             
             # Boundary functions
             bnd_left = lambda x: np.abs(x)<1e-9 
@@ -202,21 +222,23 @@ class TestLinearSystem(unittest.TestCase):
         problem = [a, L, Ln]
         assembler = Assembler(problem, mesh)
         assembler.assemble()
+        A = assembler.af[0]['bilinear'].get_matrix()
+        b = assembler.af[0]['linear'].get_matrix() 
         
         #
         # Linear System
         #
-        system = LinearSystem(assembler, 0)
+        system = LS(u, A=A, b=b)
         
         # Add Dirichlet constraints
         system.add_dirichlet_constraint('left',0)
         system.set_constraint_relation()
         
+        
         #
         # Solve
         # 
         system.solve_system()
-
         
         # Compare solution with exact solution
         ua = system.get_solution(as_function=True)
@@ -264,11 +286,13 @@ class TestLinearSystem(unittest.TestCase):
         problem = [a,L]
         assembler = Assembler(problem, mesh)
         assembler.assemble()
+        A = assembler.af[0]['bilinear'].get_matrix()
+        b = assembler.af[0]['linear'].get_matrix()
         
         #
         # Linear System
         #
-        system = LinearSystem(assembler,0)
+        system = LS(u, A=A, b=b)
         
         # Add dirichlet constraint
         system.add_dirichlet_constraint('left',0, on_boundary=False)
@@ -338,9 +362,15 @@ class TestLinearSystem(unittest.TestCase):
             assembler.assemble()
             
             #
+            # Get system matrices
+            # 
+            A = assembler.af[0]['bilinear'].get_matrix()
+            b = assembler.af[0]['linear'].get_matrix()
+            
+            #
             # Linear System
             # 
-            system = LinearSystem(assembler, 0)
+            system = LS(u, A=A, b=b)
             
             #
             # Constraints
@@ -408,8 +438,14 @@ class TestLinearSystem(unittest.TestCase):
             
             assembler = Assembler(problem, mesh)
             assembler.assemble()
-           
-            system = LinearSystem(assembler,0)
+            
+            #
+            # System Matrices
+            # 
+            A = assembler.af[0]['bilinear'].get_matrix()
+            b = assembler.af[0]['linear'].get_matrix()
+            
+            system = LS(u, A=A, b=b)
             
             #
             # Add constraints
@@ -482,9 +518,15 @@ class TestLinearSystem(unittest.TestCase):
         assembler.assemble()
         
         #
+        # System Matrices
+        # 
+        A = assembler.af[0]['bilinear'].get_matrix()
+        b = assembler.af[0]['linear'].get_matrix()
+        
+        #
         # System
         # 
-        system = LinearSystem(assembler, 0)
+        system = LS(u, A=A, b=b)
         
         #
         # Dirichlet Constraints
@@ -569,11 +611,12 @@ class TestLinearSystem(unittest.TestCase):
         # 
         assembler = Assembler(problem, mesh)
         assembler.assemble()
-        
+        A = assembler.af[0]['bilinear'].get_matrix()
+        b = assembler.af[0]['linear'].get_matrix()
         #
         # Linear System
         # 
-        system = LinearSystem(assembler, 0)
+        system = LS(u, A=A, b=b)
         
         # Set constraints
         system.add_dirichlet_constraint('left',0)
@@ -654,10 +697,13 @@ class TestLinearSystem(unittest.TestCase):
         assembler = Assembler(problem, mesh)
         assembler.assemble()
         
+        A = assembler.af[0]['bilinear'].get_matrix()
+        #b = assembler.af[0]['linear'].get_matrix()
+        
         #
         # Linear System
         # 
-        system = LinearSystem(assembler, 0)
+        system = LS(u, A=A)
         
         # Set constraints
         system.add_dirichlet_constraint('left',0)
