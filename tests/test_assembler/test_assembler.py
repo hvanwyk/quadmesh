@@ -249,7 +249,7 @@ class TestAssembler(unittest.TestCase):
         cols = np.array(system.af[0]['bilinear'].cols)
         vals = np.array(system.af[0]['bilinear'].vals)
         
-        A = sp.coo_matrix((vals,(rows, cols)))
+        A = sp.coo_matrix((vals.ravel(),(rows, cols)))
         
         # Use bilinear form to integrate x^2 over [0,1]
         f = Nodal(lambda x: x, dofhandler=dhQ1)
@@ -290,7 +290,7 @@ class TestAssembler(unittest.TestCase):
         for row, bv in zip(rows, bb):
             b[row] += bv
         
-        self.assertAlmostEqual(b.dot(fv), 1/3)
+        self.assertAlmostEqual(b.dot(fv)[0], 1/3)
         
         
         # ======================================================================
@@ -447,7 +447,7 @@ class TestAssembler(unittest.TestCase):
         assembler.assemble()
         
         af = assembler.af[0]['bilinear']
-        M = af.get_matrix().toarray()
+        M = af.get_matrix()[0].toarray()
         
         
         #plt.imshow(M)
@@ -458,8 +458,8 @@ class TestAssembler(unittest.TestCase):
         
         u_vec = u.data()
         v_vec = v.data()
-            
-        self.assertAlmostEqual(v_vec.dot(M.dot(u_vec)), 1/18)
+        
+        self.assertAlmostEqual(v_vec.T.dot(M.dot(u_vec)), 1/18)
         
     
     def test_assemble_iiform(self):
@@ -484,7 +484,7 @@ class TestAssembler(unittest.TestCase):
          
          
         af = assembler.af[0]['bilinear']
-        M = af.get_matrix().toarray()
+        M = af.get_matrix()[0].toarray()
         
         u = Nodal(lambda x: x, dofhandler=dofhandler)
         u_vec = u.data()

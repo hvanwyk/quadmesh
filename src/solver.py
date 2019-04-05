@@ -358,7 +358,7 @@ class LinearSystem(object):
             # Nonhomogeneous, nonconstant Dirichlet boundary conditions 
             #
             x_dir = convert_to_array(dirichlet_vertices)
-            dirichlet_vals = dirichlet_function.eval(x_dir)
+            dirichlet_vals = dirichlet_function.eval(x_dir).ravel()
             
         constraints = dh.constraints
         for dof, val in zip(dirichlet_dofs, dirichlet_vals):
@@ -1663,7 +1663,7 @@ class LS(object):
             # Nonhomogeneous, nonconstant Dirichlet boundary conditions 
             #
             x_dir = convert_to_array(dirichlet_vertices)
-            dirichlet_vals = dirichlet_function.eval(x_dir)
+            dirichlet_vals = dirichlet_function.eval(x_dir).ravel()
             
         constraints = dh.constraints
         for dof, val in zip(dirichlet_dofs, dirichlet_vals):
@@ -1981,10 +1981,7 @@ class LS(object):
         A = A.tocsc()
         b = sparse.csc_matrix(b)
         self.__u = self.__invA.solve(b.toarray())    
-            
-        if self.n_samples is None:
-            self.__u = self.__u.ravel()
-            
+                    
             
     def set_rhs(self, rhs):
         """
@@ -1992,64 +1989,25 @@ class LS(object):
         
         Inputs:
         
-            rhs: AssembledForm, numpy array, or sparse array
+            rhs: None, numpy array
         """
         dofs_error = 'Right hand side incompatible with system shape'
-        if rhs is None:
+        
+        if rhs is not None:
             #
-            # Rhs is not specified
+            # Non-trivial rhs
             #
-            b = rhs
-            n_samples = None        
-        elif isinstance(rhs, AssembledForm):
-            #
-            # Rhs given as linear form
-            #
-            assert rhs.type == 'linear', \
-            'Right hand side must be linear form'
-            
-            assert np.allclose(self.dofs(), rhs.row_dofs), \
-            'Test and trial dofs should be the same.'
-                
-            assert self.etype()==rhs.test_etype,\
-           'Test and trial spaces must have same element type.'
-            
-            b = rhs.get_matrix()    
-            n_samples = rhs.n_samples
-                   
-        elif type(rhs) is np.ndarray:
-            #
-            # Rhs given as (full) array
-            #
+            assert type(rhs) is np.ndarray or sparse.issparse(rhs), \
+            'Right hand side should be a numpy array.'
+                 
             assert rhs.shape[0] == len(self.get_dofs()), dofs_error
-            
-            b = sparse.csc_matrix(rhs)
             
             if len(rhs.shape)==1:
-                #
-                # One dimensional array
-                #
-                n_samples = None
-            elif len(rhs.shape)==2:
-                #
-                # Two dimensional array
-                #
-                n_samples = rhs.shape[1]
-                
-        elif sparse.issparse(rhs):
-            #
-            # Rhs is a sparse matrix   
-            # 
-            assert rhs.shape[0] == len(self.get_dofs()), dofs_error
-            
-            b = rhs
-            n_samples = rhs.shape[1]
-        
-        #
-        # Store information
-        #  
-        self.__b = b
-        self.n_samples = n_samples 
+                # 
+                # Convert to 2d array
+                # 
+                rhs = rhs[:,None]
+        self.__b = sparse.csc_matrix(rhs)
         self.__b_is_constrained = False
         
     
@@ -2107,7 +2065,7 @@ class LS(object):
             #
             # Modify columns
             # 
-            one = sparse.csc_matrix(np.ones(self.n_samples))
+            one = sparse.csc_matrix(np.ones(self.n_rhs()))
             b -= d[k]*ak.dot(one)
             
             #
@@ -2150,50 +2108,22 @@ class LS(object):
         # 
         C, d = self.get_C(), self.get_d()
         
-        n_samples = self.n_samples
-        if n_samples is not None:
-            #
-            # Sampled right hand side
-            # 
-            drep = np.tile(d[:, np.newaxis], (1,n_samples))
+        n_samples = self.n_rhs()
+        drep = np.tile(d[:, np.newaxis], (1,n_samples))
         
         #
         # Modify dofs that don't depend on others
         # 
         n_dofs = self.get_dofhandler().n_dofs()
         ec_dofs = [i for i in range(n_dofs) if C.getrow(i).nnz==0]        
-        n_samples = self.n_samples
-        if n_samples is None:
+        if type(u) is not np.ndarray:
             #
-            # Deterministic
+            # Convert to ndarray if necessary
             # 
-            u[ec_dofs] = d[ec_dofs]
-        else:
-            # 
-            # Sampled
-            #
-            if type(u) is not np.ndarray:
-                #
-                # Convert to ndarray if necessary
-                # 
-                u = u.toarray()
-            u[ec_dofs,:] = drep[ec_dofs,:]
-                
-        #
-        # Modify other dofs
-        # 
-        if n_samples is None:
-            #
-            # Deterministic
-            # 
-            u = C.dot(u) + d
-        else:
-            #
-            # Sampled
-            # 
-            u = C.dot(u) + drep
+            u = u.toarray()
+        u[ec_dofs,:] = drep[ec_dofs,:]
+        u = C.dot(u) + drep
               
-        
         #
         # Store or return result       
         # 

@@ -71,7 +71,7 @@ K   = Constant(1)  # permeability
 # Mesh and Elements
 # =============================================================================
 # Mesh
-mesh = QuadMesh(resolution=(10,10))
+mesh = QuadMesh(resolution=(20,20))
  
 # Elements
 p_element = QuadFE(2,'Q2')  # element for pressure
@@ -94,6 +94,8 @@ c_inflow = lambda x,y: np.zeros(shape=x.shape)
 # =============================================================================
 # Solve the steady state flow equations
 # =============================================================================
+print('Solving flow equations')
+
 # Define problem
 flow_problem = [Form(1,test=p_ux,trial=p_ux), 
                 Form(1,test=p_uy,trial=p_uy), 
@@ -102,9 +104,11 @@ flow_problem = [Form(1,test=p_ux,trial=p_ux),
 # Assembler
 assembler = Assembler(flow_problem, mesh)
 assembler.assemble()
+A = assembler.af[0]['bilinear'].get_matrix()
+b = assembler.af[0]['linear'].get_matrix()
 
 # Linear System
-system = LinearSystem(assembler, 0)
+system = LS(p_u, A=A, b=b)
 
 # Dirichlet conditions
 mesh.mark_region('left', lambda x,y: np.abs(x)<1e-9, 
@@ -135,13 +139,14 @@ y = u.eval(x, derivative='fx')
 # Specify initial condition
 c0 = Constant(1)
 dt = 1e-1
-T  = 1
+T  = 5
 N  = int(np.ceil(T/dt))
 
 c = Basis(c_dofhandler, 'c')
 cx = Basis(c_dofhandler, 'cx')
 cy = Basis(c_dofhandler, 'cy')
 
+print('assembling transport equations')
 k_phi = Kernel(f=phi)
 k_advx = Kernel(f=[K,u], derivatives=['k','ux'], F=lambda K,ux: -K*ux)
 k_advy = Kernel(f=[K,u], derivatives=['k','uy'], F=lambda K,uy: -K*uy)
@@ -157,24 +162,30 @@ assembler.assemble()
 M = assembler.af[0]['bilinear'].get_matrix()
 S = assembler.af[1]['bilinear'].get_matrix()
 
+
 c_dofhandler.distribute_dofs(subforest_flag=None)
 ca = c0.interpolant(dofhandler=c_dofhandler)
 c0 = ca.data()
 plot = Plot(5)
+print('time stepping')
 for i in range(N):
+    print(i)
     A = M + tht*dt*S
     b = M.dot(c0)-(1-tht)*dt*S.dot(c0)
-    b = b[:,np.newaxis]
-    system = LS(c, A=A, b=b)
+    if i==0:
+        system = LS(c, A=A, b=b)
+    else:
+        system.set_matrix(A)
+        system.set_rhs(b)
+        
     system.add_dirichlet_constraint('left',0)
     system.set_constraint_relation()
     system.solve_system()
     cp = system.get_solution(as_function=False)
-    print(cp.shape)
-    print(ca.data().shape)
     c0 = cp
     ca.add_data(data=cp)
     
+print(ca.data().shape)
 
     
     

@@ -41,7 +41,7 @@ class TestKernel(unittest.TestCase):
         self.assertTrue(np.allclose(f1(x), k.eval(x).ravel()))
         
         # Check shape of kernel
-        self.assertEqual(k.eval(x).shape, (n_points,))
+        self.assertEqual(k.eval(x).shape, (n_points,1))
         
         #
         # Kernel consists of a combination of two explicit functions
@@ -56,7 +56,7 @@ class TestKernel(unittest.TestCase):
         self.assertTrue(np.allclose(f_t(x), k.eval(x).ravel()))
         
         # Check shape 
-        self.assertEqual(k.eval(x).shape, (n_points,))
+        self.assertEqual(k.eval(x).shape, (n_points,1))
         
 
         #
@@ -206,8 +206,8 @@ class TestIKernel(unittest.TestCase):
         kernel = Kernel(k)
         
         # Evaluation points
-        x = np.ones(11)
-        y = np.linspace(0,1,11)
+        x = np.ones((11,1))
+        y = np.linspace(0,1,11)[:,None]
         
         # Check accuracy
         self.assertTrue(np.allclose(kernel.eval((x,y)), x*y+1))

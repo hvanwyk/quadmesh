@@ -70,7 +70,7 @@ class TestLinearSystem(unittest.TestCase):
             # Form linear system
             # 
             system = LinearSystem(assembler, 0)
-            A = assembler.af[0]['bilinear'].get_matrix()
+            A = assembler.af[0]['bilinear'].get_matrix()[0]
             b = assembler.af[0]['linear'].get_matrix()
             
             ls = LS(u, A=A, b=b)
@@ -106,12 +106,12 @@ class TestLinearSystem(unittest.TestCase):
             # 
             ua = system.get_solution(as_function=True)
             uaa = ls.get_solution(as_function=True)
-            uaa = uaa.data().ravel()
+            #uaa = uaa.data().ravel()
             
             
             # Compare with exact solution
             self.assertTrue(np.allclose(ua.data(), ue.data()))
-            self.assertTrue(np.allclose(uaa, ue.data()))
+            self.assertTrue(np.allclose(uaa.data(), ue.data()))
             
             
     def test02_1d_dirichlet_higher_order(self):

@@ -673,9 +673,6 @@ class Gmrf(object):
     TODO: Check: For sparse matrix A, Ax is computed by A.dot(x), not np.dot(A,x) 
     
     """
-
-    
-    
     @staticmethod
     def matern_precision(mesh, element, alpha, kappa, tau=None, 
                          boundary_conditions=None):

@@ -600,7 +600,7 @@ class Plot(object):
         #
         # Check function
         # 
-        assert isinstance(f, Function), 'Can only plot "Function" objects.'
+        assert isinstance(f, Map), 'Can only plot "Map" objects.'
         
         
         #
@@ -969,7 +969,6 @@ class Plot(object):
         # 
         x = np.array(x)
         fx = np.array(fx)
-        print(fx)
         axis.plot(x, fx, linewidth=1.5)
         
         #

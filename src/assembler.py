@@ -446,7 +446,7 @@ class Kernel(object):
             # Check whether there is a stochastic function in the list 
             # 
             for f in self.__f:
-                if f.n_samples() is not None:
+                if f.n_samples()>1:
                     f.set_subsample(subsample)
                     subsample = f.subsample()
                     break 
@@ -468,7 +468,9 @@ class Kernel(object):
         """
         if self.__subsample is not None:
             return len(self.__subsample) 
-    
+        else:
+            return 1
+        
     
     def f(self):
         """
@@ -1165,7 +1167,7 @@ class IPForm(Form):
                     #
                     # Initialize form
                     # 
-                    if n_samples is None:
+                    if n_samples==1:
                         f_loc = np.zeros((n_dofsi,n_dofsj))
                     else:
                         f_loc = np.zeros((n_dofsi,n_dofsj,n_samples))
@@ -3386,11 +3388,11 @@ class AssembledForm(object):
             #
             # Bilinear Form
             # 
-            if self.n_samples is None:
+            if self.n_samples==1:
                 #
                 # Single sample -> deterministic form
                 # 
-                A = sparse.coo_matrix((self.vals, (self.rows, self.cols)))
+                A = sparse.coo_matrix((self.vals[:,0], (self.rows, self.cols)))
                 return A.tocsr()
             else:
                 #

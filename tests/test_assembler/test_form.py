@@ -122,7 +122,7 @@ class TestIForm(unittest.TestCase):
             
             # Evaluate Ici Icj k(x,y) y dy (1-x)dx
             fa = form_loc[ci_dofs].dot(uj)
-            fe = vals[ktype] 
+            fe = vals[ktype][:,None] 
             
             self.assertTrue(np.allclose(fa, fe))
 
