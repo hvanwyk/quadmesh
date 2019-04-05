@@ -459,6 +459,8 @@ class TestAssembler(unittest.TestCase):
         u_vec = u.data()
         v_vec = v.data()
         
+        print(v_vec.shape, u_vec.shape, M.shape)
+        print(M.dot(u_vec).shape)
         self.assertAlmostEqual(v_vec.T.dot(M.dot(u_vec)), 1/18)
         
     
