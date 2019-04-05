@@ -70,9 +70,9 @@ class TestLinearSystem(unittest.TestCase):
             # Form linear system
             # 
             system = LinearSystem(assembler, 0)
-            A = assembler.af[0]['bilinear'].get_matrix()[0]
+            A = assembler.af[0]['bilinear'].get_matrix()
             b = assembler.af[0]['linear'].get_matrix()
-            
+            print(A)
             ls = LS(u, A=A, b=b)
             
             

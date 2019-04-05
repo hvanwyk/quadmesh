@@ -447,11 +447,8 @@ class TestAssembler(unittest.TestCase):
         assembler.assemble()
         
         af = assembler.af[0]['bilinear']
-        M = af.get_matrix()[0].toarray()
+        M = af.get_matrix().toarray()
         
-        
-        #plt.imshow(M)
-        #plt.show()
         
         u = Nodal(lambda x: x, dofhandler=dofhandler)
         v = Nodal(lambda x: 1-x, dofhandler=dofhandler)
@@ -459,14 +456,13 @@ class TestAssembler(unittest.TestCase):
         u_vec = u.data()
         v_vec = v.data()
         
-        print(v_vec.shape, u_vec.shape, M.shape)
-        print(M.dot(u_vec).shape)
-        self.assertAlmostEqual(v_vec.T.dot(M.dot(u_vec)), 1/18)
+        I = v_vec.T.dot(M.dot(u_vec))
+        self.assertAlmostEqual(I[0,0], 1/18)
         
     
     def test_assemble_iiform(self):
         
-        mesh = Mesh1D(resolution=(10,))
+        mesh = Mesh1D(resolution=(1,))
         
         Q1 = QuadFE(1,'DQ1')
         dofhandler = DofHandler(mesh, Q1)
@@ -481,18 +477,17 @@ class TestAssembler(unittest.TestCase):
                      
         assembler = Assembler(form, mesh)
         assembler.assemble()
-        
         Ku = Nodal(lambda x: 1/3*x, dofhandler=dofhandler)
          
          
         af = assembler.af[0]['bilinear']
-        M = af.get_matrix()[0].toarray()
+        M = af.get_matrix().toarray()
         
         u = Nodal(lambda x: x, dofhandler=dofhandler)
         u_vec = u.data()
         self.assertTrue(np.allclose(M.dot(u_vec), Ku.data()))
-
         
+                
     def test_assemble_2d(self):
         """
         Test Assembly of some 2D systems

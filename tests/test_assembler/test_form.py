@@ -32,9 +32,17 @@ class TestForm(unittest.TestCase):
     
     def test_eval(self):
         pass
+
+class TestIPForm(unittest.TestCase):
+    def test_constructor(self):
+        pass
+    
+    def test_eval(self):
+        pass
     
     
-class TestIForm(unittest.TestCase):
+  
+class TestIIForm(unittest.TestCase):
     """
     Test Integral Form
     """ 
