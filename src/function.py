@@ -1825,7 +1825,7 @@ class Nodal(Map):
             
     
     def eval(self, x=None, cell=None, phi=None, dofs=None, \
-             derivative=None, is_singleton=False):
+             derivative=None):
         """
         Evaluate function at an array of points x
         

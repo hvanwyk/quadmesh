@@ -637,7 +637,140 @@ class Precision(object):
     Precision Matrix for 
     """
     pass
+    
+    def __init__(self, Q):
+        """
+        Constructor
+        """
+        self.__Q = Q
 
+        self.__chol = cholesky(Q)
+        
+        
+    def matrix(self):
+        """
+        Returns precision matrix
+        """
+        return self.__Q
+
+    
+    
+    def L(self, b=None):
+        """
+        Return lower triangular Cholesky factor L or compute L*b
+        
+            Inputs: 
+            
+                b: double, compatible vector
+                    
+                    
+            Output:
+            
+                L: double, (sparse) lower triangular left Cholesky 
+                    factor (if no b is specified) 
+                    
+                    or 
+                
+                y = L*b: double, vector.
+                
+        """
+        #
+        # Precision Matrix
+        # 
+        assert self.__f_prec is not None, \
+            'Precision matrix not specified.'
+        if sp.isspmatrix(self.__Q):
+            #
+            # Sparse matrix, use CHOLMOD
+            #  
+            P = self.matrix().P()
+            L = self.matrix().L()[P,:][:,P]
+        else:
+            #
+            # Cholesky Factor stored as full matrix
+            # 
+            L = self.__f_prec
+
+        #
+        # Parse b   
+        # 
+        if b is None:
+            return L 
+        else: 
+            return L.dot(b) 
+    
+    
+    
+    def solve(self, b):
+        """
+        Return the solution x of Qx = b by successively solving 
+        Ly = b for y and hence L^T x = y for x.
+        
+        """
+        if sp.isspmatrix(self.matrix()):
+            return self.__f_prec(b)
+        else:
+            y = np.linalg.solve(self.__f_prec, b)
+            return np.linalg.solve(self.__f_prec.transpose(),y)
+    
+    
+    
+    def L_solve(self, b, mode='precision'):
+        """
+        Return the solution x of Lx = b, where Q = LL' (or S=LL')
+        
+        Note: The 'L' CHOLMOD's solve_L is the one appearing in the 
+            factorization LDL' = PQP'. We first rewrite it as 
+            Q = WW', where W = P'*L*sqrt(D)*P
+        """
+        assert self.mode_supported(mode),\
+            'Mode "'+ mode + '" not supported for this random field.'
+        if mode == 'precision':
+            if sp.isspmatrix(self.__Q):
+                # Sparse
+                f = self.__f_prec
+                sqrtDinv = sp.diags(1/np.sqrt(f.D()))
+                return f.apply_Pt(sqrtDinv*f.solve_L(f.apply_P(b))) 
+            else: 
+                # Full
+                return np.linalg.solve(self.__f_prec,b)
+        elif mode == 'covariance':
+            if sp.isspmatrix(self.__Sigma):
+                # Sparse
+                f = self.__f_cov
+                sqrtDinv = sp.diags(1/np.sqrt(f.D()))
+                return f.apply_Pt(sqrtDinv*f.solve_L(f.apply_P(b)))
+            else:
+                # Full
+                return np.linalg.solve(self.__f_cov,b)
+            
+    
+    def Lt_solve(self, b):
+        """
+        Return the solution x, of L'x = b, where Q = LL'
+        
+        Note: The 'L' CHOLMOD's solve_L is the one appearing in the 
+            factorization LDL' = PQP'. We first rewrite it as 
+            Q = WW', where W' = P'*sqrt(D)*L'*P.
+        """
+         
+        if sp.isspmatrix(self.matrix()):
+            # Sparse
+            f = self.__f_prec
+            sqrtDinv = sp.diags(1/np.sqrt(f.D()))
+            return f.apply_Pt(f.solve_Lt(sqrtDinv*(f.apply_P(b))))
+        else:
+            # Full
+            return np.linalg.solve(self.__f_prec.transpose(),b)
+        
+
+
+class MaternPrecision(Precision):
+    """
+    Precision matrix related to the Matern precision.
+    """
+    pass
+    
 # =============================================================================
 # Gaussian Markov Random Field Class
 # =============================================================================
@@ -757,8 +890,7 @@ class Gmrf(object):
         return Q
  
  
-    def __init__(self, mesh, mu=None, kernel=None, precision=None, 
-                 covariance=None, element=None):
+    def __init__(self, mean=None, precision=None, covariance=None):
         """
         Constructor
         
@@ -805,11 +937,18 @@ class Gmrf(object):
         #
         # Need at least one
         #
+        if covariance is not None:
+            assert isinstance(covariance, Covariance), 'Input "covariance" '+\
+                'must be a "Covariance" object.'
+                
+            self.__covariance = covariance
+        
         if precision is None and covariance is None:
             raise Exception('Specify precision or covariance (or both).')  
         #
         # Precision matrix
         # 
+        
         Q = None
         if precision is not None:    
             if sp.isspmatrix(precision):
@@ -875,8 +1014,8 @@ class Gmrf(object):
         #
         # Mean
         # 
-        if mu is not None:
-            assert len(mu) == n, 'Mean incompatible with precision/covariance.'
+        if mean is not None:
+            assert len(mean) == n, 'Mean incompatible with precision/covariance.'
         else: 
             mu = np.zeros(n)
         self.__mu = mu
@@ -893,13 +1032,7 @@ class Gmrf(object):
         # Store size of matrix
         # 
         self.__n = n    
-        #
-        # Store mesh and elements if available
-        #
-        if mesh is not None:
-            self.mesh = mesh
-        if element is not None:
-            self.element = element
+        
         
     @classmethod
     def from_covariance_kernel(cls, cov_name, cov_par, mesh, \
@@ -1067,6 +1200,7 @@ class Gmrf(object):
                 
                 y = Lprec*b / y = Lcov*b: double, vector.
                 
+        TODO: Move to Precision/Covariance
         """
         #
         # Parse mode
@@ -1172,6 +1306,7 @@ class Gmrf(object):
         Return the solution x of Qx = b by successively solving 
         Ly = b for y and hence L^T x = y for x.
         
+        TODO: Move to precision
         """
         if sp.isspmatrix(self.__Q):
             return self.__f_prec(b)
@@ -1457,7 +1592,7 @@ class Gmrf(object):
         Returns a matrix whose columns are N(0,I) vectors of length n 
         """
         if n_samples == 1:
-            return np.random.normal(self.n())
+            return np.random.normal(self.n(),1)
         elif n_samples > 1:
             return np.random.normal(size=(self.n(),n_samples)) 
         

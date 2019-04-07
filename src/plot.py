@@ -352,18 +352,16 @@ class Plot(object):
                 c_count += 1
         """
         
-    def element(self, element, ax=None):
+    def element(self, element, axis=None):
         """
         Plot reference element
         """            
         #
         # Check axis
         # 
+        self.check_axis(axis)
         
         
-        if ax is None:
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
         
         
     def dofs(self, axis, dofhandler, doflabels=False, subforest_flag=None):
@@ -411,6 +409,7 @@ class Plot(object):
                             # 
                             axis.plot(xx,yy,'.k')
         return axis
+    
     
     def vertices(self, axis, mesh, subforest_flag=None, 
                  vertex_flag=None, color='k'):
@@ -570,9 +569,7 @@ class Plot(object):
         return axis
     
     
-    def contour(self, f, derivative=(0,),
-                colorbar=True, resolution=(100,100), 
-                axis=None):
+    def contour(self, f, colorbar=True, resolution=(100,100), axis=None):
         """
         Returns a contour plot of a function f
         
@@ -634,7 +631,6 @@ class Plot(object):
             z = f(x,y)  
             cm = axis.contourf(x,y,z.reshape(ny,nx),100)
         elif isinstance(f, Function):
-            t = time.time()
             xy = [(xi,yi) for xi,yi in zip(x.ravel(),y.ravel())]
             z = f.eval(xy)
             cm = axis.contourf(x,y,z.reshape(ny,nx),100)

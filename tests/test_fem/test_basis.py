@@ -3,7 +3,6 @@ from fem import DofHandler
 from fem import Basis
 
 from mesh import QuadMesh
-from mesh import Mesh1D
 
 import unittest
 
@@ -16,4 +15,5 @@ class TestBasis(unittest.TestCase):
         px = Basis(dofhandler, 'ux')
         p  = Basis(dofhandler, 'ux')
         
-        p_set = set([px, p])
+        self.assertNotEqual(px, p)
+        

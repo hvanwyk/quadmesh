@@ -31,7 +31,7 @@ class TestCovariance(unittest.TestCase):
             dofhandler = DofHandler(mesh, element)
             cov_kernel = CovKernel('gaussian', {'sgm': 1, 'l': 0.3, 'M': None}, dim)
             
-            covariance = Covariance(cov_kernel, dofhandler, method='projection')
+            covariance = Covariance(cov_kernel, dofhandler, method='interpolation')
             M = covariance.mass()
             C = covariance.covariance_matrix()
             

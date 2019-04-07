@@ -2007,7 +2007,9 @@ class LS(object):
                 # Convert to 2d array
                 # 
                 rhs = rhs[:,None]
-        self.__b = sparse.csc_matrix(rhs)
+            self.__b = sparse.csc_matrix(rhs)
+        else:
+            self.__b = None
         self.__b_is_constrained = False
         
     

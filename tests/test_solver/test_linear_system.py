@@ -24,26 +24,7 @@ from solver import LS
 class TestLinearSystem(unittest.TestCase):
     """
     Test Linear System class.
-    """
-    
-    def test_constructor(self):
-        """
-        Initialization
-        """
-        pass
-    
-    def test_set_constraint_relation(self):
-        pass
-    
-    def test_constrain_matrix(self):
-        pass
-    
-    def test_constrain_rhs(self):
-        pass
-    
-    def test_resolve_constraints(self):
-        pass
-        
+    """    
         
     def test01_1d_dirichlet_linear(self):
         """
@@ -698,7 +679,7 @@ class TestLinearSystem(unittest.TestCase):
         assembler.assemble()
         
         A = assembler.af[0]['bilinear'].get_matrix()
-        #b = assembler.af[0]['linear'].get_matrix()
+        b = assembler.af[1]['linear'].get_matrix()
         
         #
         # Linear System
@@ -708,40 +689,21 @@ class TestLinearSystem(unittest.TestCase):
         # Set constraints
         system.add_dirichlet_constraint('left',0)
         system.add_dirichlet_constraint('right',1)
-        #system.set_constraint_relation()
-        #system.incorporate_constraints()
+        system.solve_system(b[:,0])
         
-        
-        # Solve and resolve constraints
-        #b = assembler.af[1]['linear'].get_matrix()
-        
-        #system.factor()
-        #system.modify_rhs(b)
-        system.solve_system(assembler.af[1]['linear'])
-        
-        #system.resolve_constraints()
         
         # Extract finite element solution
         ua = system.get_solution(as_function=True)
         
-        system2 = LinearSystem(assembler, \
-                               bilinear_form=assembler.af[0]['bilinear'], 
-                               linear_form=assembler.af[1]['linear'])
+        system2 = LS(u, A=A, b=b)
+        
         # Set constraints
         system2.add_dirichlet_constraint('left',0)
         system2.add_dirichlet_constraint('right',1)
-        #system2.set_constraint_relation()
-        #system2.incorporate_constraints()
-        
         system2.solve_system()
-        #system2.resolve_constraints()
         u2 = system2.get_solution(as_function=True)
         
-        #plot = Plot()
-        #plot.line(ua)
-        #plot.line(u2)
-        #plot.line(ue)
-    
+        
         # Check that the solution is close
-        self.assertTrue(np.allclose(ue.data(), ua.data()))
+        self.assertTrue(np.allclose(ue.data()[:,0], ua.data()[:,0]))
         self.assertTrue(np.allclose(ue.data(), u2.data()))
