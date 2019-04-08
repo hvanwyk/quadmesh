@@ -569,7 +569,7 @@ class Plot(object):
         return axis
     
     
-    def contour(self, f, colorbar=True, resolution=(100,100), axis=None):
+    def contour(self, f, colorbar=True, derivative=(0,), resolution=(500,500), axis=None):
         """
         Returns a contour plot of a function f
         
@@ -616,24 +616,11 @@ class Plot(object):
         x0,x1,y0,y1 = f.mesh().bounding_box()
         nx, ny = resolution 
         x,y = np.meshgrid(np.linspace(x0,x1,nx),np.linspace(y0,y1,ny))
+        xy = np.array([x.ravel(), y.ravel()]).T
+        ff = f.eval(xy, derivative=derivative)
+        z  = ff.reshape(x.shape)
         
-        #xy = np.array([x.ravel(), y.ravel()]).T
-        
-        #ff = f.eval(xy, derivative=derivative)
-        #z  = ff.reshape(x.shape)
-        
-        #cm = axis.contourf(x,y,z,30)
-        
-        if callable(f):
-            #
-            # A function 
-            # 
-            z = f(x,y)  
-            cm = axis.contourf(x,y,z.reshape(ny,nx),100)
-        elif isinstance(f, Function):
-            xy = [(xi,yi) for xi,yi in zip(x.ravel(),y.ravel())]
-            z = f.eval(xy)
-            cm = axis.contourf(x,y,z.reshape(ny,nx),100)
+        cm = axis.contourf(x,y,z,100)
         
         if colorbar:
             plt.colorbar(cm, ax=axis, format='%g')

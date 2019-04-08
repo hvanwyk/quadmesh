@@ -340,21 +340,28 @@ class Covariance(object):
             # Construct integral kernel from interpolants
             #    
             c = IIForm(kernel=cov_kernel, test=u, trial=u)
-                                   
+            assembler = Assembler([[c]], mesh, subforest_flag=subforest_flag)
+            assembler.assemble()
+            
+            K = assembler.af[0]['bilinear'].get_matrix().toarray()
         elif method=='projection':
             #
             # Simple assembler for the mass matrix
             # 
             c = IPForm(kernel=cov_kernel, test=u, trial=u)
+            assembler = Assembler([[m],[c]], mesh, subforest_flag=subforest_flag)
+            assembler.assemble()
             
+            C = assembler.af[1]['bilinear'].get_matrix().tocsc()
+            M = assembler.af[0]['bilinear'].get_matrix().tocsc()
+            
+            K = spla.spsolve(M,C).toarray() 
         else:
             raise Exception('Only "interpolation", "projection",'+\
                             ' or "nystroem" supported for input "method"')
         
-        # Standard assembler
-        assembler = Assembler([[m],[c]], mesh, subforest_flag=subforest_flag)
-        assembler.assemble()
-        
+        self.__K = K
+        self.__method = method
         self.__assembler = assembler
         self.__subforest_flag = subforest_flag
     
@@ -373,34 +380,83 @@ class Covariance(object):
         return self.dofhandler.mesh.dim()
     
     
+    def size(self):
+        """
+        Returns the size of the covariance matrix
+        """
+        return self.cov().shape[0]
+    
+    
     def kernel(self):
         """
         Returns the covariance kernel
         """
-        return self.__kernel
+        return self.__kernel     
         
         
-    def mass(self):
-        """
-        Return the assembled mass matrix (first assembled "problem")
-        """
-        return self.assembler().af[0]['bilinear'].get_matrix()
-        
-        
-    def covariance_matrix(self):
+    def cov(self):
         """
         Return the covariance matrix
         """
-        return self.assembler().af[1]['bilinear'].get_matrix()
+        return self.__K
            
-        
-    def factor(self, method):
-        """
-        Factor covariance matrix
-        """
-        pass
     
- 
+    def method(self):
+        """
+        Returns the assembly/approximation method ('interpolation' or 'projection')
+        """
+        return self.__method
+
+    
+    def svd(self):
+        """
+        Compute the Karhunen-Loeve decomposition of the covariance matrix
+        """
+        U, S, dummy = linalg.svd(self.cov())
+        self.__eigenvalues = S
+        self.__eigenvectors = U
+          
+    
+    def eigenvalues(self):
+        """
+        Return the vector of covariance eigenvalues 
+        """
+        return self.__eigenvalues
+    
+    
+    def eigenvectors(self):
+        """
+        Return eigenvectors
+        """
+        return self.__eigenvectors
+    
+    
+    def iid_gauss(self, n_samples=1):
+        """
+        Returns a matrix whose columns are N(0,I) vectors of length n 
+        """
+        return np.random.normal(size=(self.size(),n_samples)) 
+    
+    
+    def sample(self, Z=None, n_samples=1):
+        """
+        Generate a random sample from a N(0,C), where C = M^{-1}S    
+        """
+        if Z is not None:
+            assert Z.shape[0]==self.size(), 'Incompatible shape' 
+        else:
+            Z = self.iid_gauss(n_samples=n_samples)
+        
+        S, V = self.eigenvalues(), self.eigenvectors()
+        U = V.dot( np.diag(np.sqrt(S)).dot(Z))
+        
+        return U    
+    
+    
+    def condition(self, mu):
+        """
+        Condition on 
+        """   
 '''   
 class Covariance(object):
     """
@@ -1587,12 +1643,9 @@ class Gmrf(object):
                             ' "pointwise", "hard", or "soft"')
     
     
-    def iid_gauss(self, n_samples):
+    def iid_gauss(self, n_samples=1):
         """
         Returns a matrix whose columns are N(0,I) vectors of length n 
         """
-        if n_samples == 1:
-            return np.random.normal(self.n(),1)
-        elif n_samples > 1:
-            return np.random.normal(size=(self.n(),n_samples)) 
+        return np.random.normal(size=(self.n(),n_samples)) 
         
