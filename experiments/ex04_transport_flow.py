@@ -56,7 +56,7 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 
 def test_ft():
-    plot = Plot(0.5)
+    plot = Plot(0.1)
     
     # =============================================================================
     # Parameters

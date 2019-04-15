@@ -31,6 +31,77 @@ import scipy.sparse as sp
 from scipy.sparse import linalg as spla
 from sksparse.cholmod import cholesky, cholesky_AAt, Factor  # @UnresolvedImport
 
+def modchol_ldlt(A,delta=None):
+    """
+    Modified Cholesky algorithm based on LDL' factorization.
+    [L D,P,D0] = modchol_ldlt(A,delta) computes a modified
+    Cholesky factorization P*(A + E)*P' = L*D*L', where 
+    P is a permutation matrix, L is unit lower triangular,
+    and D is block diagonal and positive definite with 1-by-1 and 2-by-2 
+    diagonal blocks.  Thus A+E is symmetric positive definite, but E is
+    not explicitly computed.  Also returned is a block diagonal D0 such
+    that P*A*P' = L*D0*L'.  If A is sufficiently positive definite then 
+    E = 0 and D = D0.  
+    The algorithm sets the smallest eigenvalue of D to the tolerance
+    delta, which defaults to sqrt(eps)*norm(A,'fro').
+    The LDL' factorization is compute using a symmetric form of rook 
+    pivoting proposed by Ashcraft, Grimes and Lewis.
+    
+    Reference:
+    S. H. Cheng and N. J. Higham. A modified Cholesky algorithm based
+    on a symmetric indefinite factorization. SIAM J. Matrix Anal. Appl.,
+    19(4):1097-1110, 1998. doi:10.1137/S0895479896302898,
+
+    Authors: Bobby Cheng and Nick Higham, 1996; revised 2015.
+    """
+    assert np.allclose(A, A.T, atol=1e-12), \
+    'Input "A" must be symmetric'    
+
+    if delta is None:
+        eps = np.finfo(float).eps
+        delta = np.sqrt(eps)*linalg.norm(A, 'fro')
+    else:
+        assert delta>0, 'Input "delta" should be positive.'
+
+    n = max(A.shape)
+
+    L,D,p = linalg.ldl(A) 
+    DMC = np.eye(n)
+
+    # Modified Cholesky perturbations.
+    k = 0
+    while k <= n:
+
+        if k == n or D[k,k+1] == 0: 
+            #            
+            # 1-by-1 block
+            #
+            if D[k,k] <= delta:
+                DMC[k,k] = delta
+            else:
+                DMC[k,k] = D[k,k]
+         
+            k += 1
+      
+        else:  
+            #            
+            # 2-by-2 block
+            #
+            E = D[k:k+1,k:k+1]
+            U,T = linalg.eig(E)
+            for ii in range(2):
+                if T[ii,ii] <= delta:
+                    T[ii,ii] = delta
+            
+            temp = np.dot(U,np.dot(T,U.T))
+            DMC[k:k+1,k:k+1] = (temp + temp.T)/2  # Ensure symmetric.
+            k += 2
+
+    P = np.eye(n) 
+    P = P[p,:]
+    
+    return L, DMC, P, D
+
 
 # =============================================================================
 # Covariance Functions
@@ -365,7 +436,22 @@ class Covariance(object):
         self.__assembler = assembler
         self.__subforest_flag = subforest_flag
     
-    
+        # 
+        # Initialize decompositions
+        #
+        
+        # SVD 
+        self.__svd_S = None  # singular values
+        self.__svd_U = None  # singular vectors
+        
+        # Cholesky
+        self.__schol_L = None  # sparse cholesky factor
+        self.__chol_L  = None  # full cholesky factor 
+        self.__chol_mD = None  # full modified block diagonal matrix >0
+        self.__chol_P  = None  # full permutation matrix
+        self.__chol_D  = None  # full unmodified block diagonal matrix >=0
+        
+        
     def assembler(self):
         """
         Returns the assemler
@@ -387,6 +473,19 @@ class Covariance(object):
         return self.cov().shape[0]
     
     
+    def rank(self):
+        """
+        Returns the rank of the covariance matrix
+        """
+        s = self.__svd_S
+        if s is not None: 
+            eps = np.finfo(float).eps
+            rank = np.sum(s>np.sqrt(eps))
+            return rank
+        
+        
+    
+        
     def kernel(self):
         """
         Returns the covariance kernel
@@ -408,29 +507,41 @@ class Covariance(object):
         return self.__method
 
     
-    def svd(self):
+    def compute_cholesky(self):
+        """
+        Computes the Cholesky decomposition of the matrix
+        """
+        K = self.cov()
+        if sp.issparse(K):
+            #
+            # Sparse covariance
+            # 
+            pass
+        else:
+            #
+            #
+            #
+            pass 
+            
+        
+    
+
+    def compute_svd(self):
         """
         Compute the Karhunen-Loeve decomposition of the covariance matrix
         """
         U, S, dummy = linalg.svd(self.cov())
-        self.__eigenvalues = S
-        self.__eigenvectors = U
+        self.__svd_S = S
+        self.__svd_U = U
           
     
-    def eigenvalues(self):
+    def get_svd(self):
         """
-        Return the vector of covariance eigenvalues 
+        Returns the SVD decomposition
         """
-        return self.__eigenvalues
+        return self.__svd_S, self.__svd_U
     
-    
-    def eigenvectors(self):
-        """
-        Return eigenvectors
-        """
-        return self.__eigenvectors
-    
-    
+        
     def iid_gauss(self, n_samples=1):
         """
         Returns a matrix whose columns are N(0,I) vectors of length n 
@@ -455,8 +566,9 @@ class Covariance(object):
     
     def condition(self, A, ):
         """
-        Condition on 
+        Compute the conditional covariance on 
         """
+        
          
 '''   
 class Covariance(object):
