@@ -55,8 +55,9 @@ from scipy.sparse import linalg as spla
 import matplotlib.pyplot as plt
 from matplotlib import animation
 
-@profile 
 def test_ft():
+    plot = Plot(0.5)
+    
     # =============================================================================
     # Parameters
     # =============================================================================
@@ -73,11 +74,11 @@ def test_ft():
     # Mesh and Elements
     # =============================================================================
     # Mesh
-    mesh = QuadMesh(resolution=(20,20))
+    mesh = QuadMesh(resolution=(10,10))
      
     # Elements
-    p_element = QuadFE(2,'Q2')  # element for pressure
-    c_element = QuadFE(2,'Q2')  # element for concentration
+    p_element = QuadFE(2,'Q1')  # element for pressure
+    c_element = QuadFE(2,'Q1')  # element for concentration
     
     # Dofhandlers
     p_dofhandler = DofHandler(mesh, p_element)
@@ -130,6 +131,8 @@ def test_ft():
     system.solve_system()
     u = system.get_solution()
     
+    plot.wire(u)
+    
     dh = DofHandler(mesh, QuadFE(2,'DQ2'))
     dh.distribute_dofs()
     x = dh.get_dof_vertices()
@@ -141,7 +144,7 @@ def test_ft():
     # Specify initial condition
     c0 = Constant(1)
     dt = 1e-1
-    T  = 5
+    T  = 4
     N  = int(np.ceil(T/dt))
     
     c = Basis(c_dofhandler, 'c')
@@ -152,7 +155,7 @@ def test_ft():
     k_phi = Kernel(f=phi)
     k_advx = Kernel(f=[K,u], derivatives=['k','ux'], F=lambda K,ux: -K*ux)
     k_advy = Kernel(f=[K,u], derivatives=['k','uy'], F=lambda K,uy: -K*uy)
-    tht = 0.5
+    tht = 1
     m = [Form(kernel=k_phi, test=c, trial=c)]
     s = [Form(kernel=k_advx, test=c, trial=cx),
          Form(kernel=k_advy, test=c, trial=cy),
@@ -169,7 +172,8 @@ def test_ft():
     ca = c0.interpolant(dofhandler=c_dofhandler)
     c0 = ca.data()
     #plot = Plot(5)
-    #print('time stepping')
+    plot.wire(ca)
+    print('time stepping')
     for i in range(N):
         print(i)
         A = M + tht*dt*S
@@ -186,7 +190,8 @@ def test_ft():
         cp = system.get_solution(as_function=False)
         c0 = cp
         ca.add_data(data=cp)
-    
+        
+        plot.wire(system.get_solution(as_function=True))
 
 if __name__ == '__main__':
     test_ft()

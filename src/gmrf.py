@@ -453,10 +453,11 @@ class Covariance(object):
         return U    
     
     
-    def condition(self, mu):
+    def condition(self, A, ):
         """
         Condition on 
-        """   
+        """
+         
 '''   
 class Covariance(object):
     """
@@ -825,7 +826,13 @@ class MaternPrecision(Precision):
     """
     Precision matrix related to the Matern precision.
     """
-    pass
+    def __init__(self):
+        """
+        Constructor
+        """
+        pass
+    
+    
     
 # =============================================================================
 # Gaussian Markov Random Field Class
