@@ -2,8 +2,8 @@ import numpy as np
 import numbers  
 from scipy import sparse, linalg 
 from mesh import Vertex, Interval, HalfEdge, QuadCell, convert_to_array
-from function import Function, Map, Nodal, Explicit, Constant
-from fem import DofHandler, parse_derivative_info, Basis
+from function import Map, Nodal, Constant
+from fem import parse_derivative_info, Basis
  
  
 class GaussRule(object):
