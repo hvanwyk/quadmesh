@@ -386,7 +386,122 @@ class CovKernel(Kernel):
         Kernel.__init__(self, f=k)
         
 
-class Covariance(object):
+class SpdOperator(object):
+    """
+    Symmetric positive definite operator
+    """
+    def __init__(self, K, M=None):
+        """
+        Constructor
+        
+            M^{-1}*K 
+            
+        Inputs: 
+        
+            K: double, (n,n) symmetric positive semidefinite kernel matrix
+            
+            M: double, (n,n) mass matrix
+        """
+        self.__M = M
+        self.__K = K
+    
+    
+    def size(self):
+        """
+        Return the number of rows (=columns) of K
+        """
+        return self.__K.shape[0]
+    
+    
+    def rank(self):
+        """
+        Return the rank of the matrix
+        """
+        pass
+    
+    
+    def issparse(self):
+        """
+        Return True if the matrix is sparse
+        """
+        pass
+    
+    
+    def chol_decomp(self):
+        """
+        Compute the cholesky factorization of the matrix
+        """
+        pass
+    
+    
+    def chol_solve(self, b):
+        """
+        Solve the system M^{-1}K x = b 
+        
+        
+        Input:
+        
+            b: double, (n,m) array
+        """
+        pass
+    
+    
+    def chol_L(self, b=None):
+        """
+        Returns the left Cholesky factor (times b).
+        """
+        pass 
+    
+    
+    def chol_Lsolve(self, b):
+        """
+        Solve the lower triangular system Lx=b
+        """
+        pass
+    
+    
+    def chol_Ltsolve(self):
+        """
+        Solve the upper triangular system L^Tx = b
+        """
+        pass
+    
+    
+    def eig_decomp(self):
+        """
+        Compute the singular value decomposition USV' of M^{-1}K
+        """ 
+        if self.issparse():
+            pass
+        else:
+            # Compute eigendecomposition
+            w, V = linalg.eigh(self.__K, self.__M)
+            
+            # Store eigendecomposition
+            self.__V = V
+            self.__w = w
+    
+    
+    def eig_solve(self,b):
+        """
+        Solve the linear system Kx = Mb by means of eigenvalue decomposition 
+        
+        Inputs:
+        
+            b: double, (n,m) array
+        """
+        pass
+    
+    
+    def eig_sqrtsolve(self, b):
+        """
+        Solve the system R x = b, where M^{-1}K = RR^T
+        """
+        pass
+    
+    
+    
+class Covariance(SpdOperator):
     """
     Covariance operator
     """
@@ -509,7 +624,7 @@ class Covariance(object):
         return self.__K
            
     
-    def discretization_method(self):
+    def discretization_type(self):
         """
         Returns the assembly/approximation method ('interpolation' or 'projection')
         """
@@ -532,7 +647,13 @@ class Covariance(object):
             #
             pass 
             
-        
+      
+     
+    def get_cholesky(self):
+        """
+        Returns the Cholesky factorization
+        """ 
+        pass      
     
 
     def compute_svd(self):
