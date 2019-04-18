@@ -65,14 +65,21 @@ def modchol_ldlt(A,delta=None):
 
     n = max(A.shape)
 
-    L,D,p = linalg.ldl(A) 
+    L,D,p = linalg.ldl(A)  # @UndefinedVariable
     DMC = np.eye(n)
-
+    
+    print(L, '\n', D, '\n', p)
+    
     # Modified Cholesky perturbations.
     k = 0
-    while k <= n:
-
-        if k == n or D[k,k+1] == 0: 
+    while k < n:
+        one_by_one = False
+        if k == n-1:
+            one_by_one = True
+        elif D[k,k+1] == 0:
+            one_by_one = True
+            
+        if one_by_one:
             #            
             # 1-by-1 block
             #
@@ -87,14 +94,16 @@ def modchol_ldlt(A,delta=None):
             #            
             # 2-by-2 block
             #
-            E = D[k:k+1,k:k+1]
-            U,T = linalg.eig(E)
+            E = D[k:k+2,k:k+2]
+            T,U = linalg.eigh(E)
+            T = np.diag(T)
             for ii in range(2):
                 if T[ii,ii] <= delta:
                     T[ii,ii] = delta
             
             temp = np.dot(U,np.dot(T,U.T))
-            DMC[k:k+1,k:k+1] = (temp + temp.T)/2  # Ensure symmetric.
+            print(temp)
+            DMC[k:k+2,k:k+2] = (temp + temp.T)/2  # Ensure symmetric.
             k += 2
 
     P = np.eye(n) 
@@ -500,7 +509,7 @@ class Covariance(object):
         return self.__K
            
     
-    def method(self):
+    def discretization_method(self):
         """
         Returns the assembly/approximation method ('interpolation' or 'projection')
         """
@@ -564,11 +573,17 @@ class Covariance(object):
         return U    
     
     
-    def condition(self, A, ):
+    def condition(self, A, Ko=0):
         """
-        Compute the conditional covariance on 
-        """
+        Computes the conditional covariance of X, given E ~ N(AX, Ko). 
         
+        Inputs:
+        
+            A: double, (k,n) 
+            
+            Ko: double symm, covariance matrix of E.
+        """
+        pass
          
 '''   
 class Covariance(object):

@@ -51,6 +51,8 @@ from solver import LinearSystem
 from solver import LS
 
 import numpy as np
+import scipy
+from scipy import linalg
 from scipy.sparse import linalg as spla
 import matplotlib.pyplot as plt
 from matplotlib import animation
@@ -194,9 +196,9 @@ def test_ft():
         plot.wire(system.get_solution(as_function=True))
 
 if __name__ == '__main__':
-    test_ft()
-    
-    
+    #test_ft()
+    print(scipy.__version__)
+    linalg.ldl(np.zeros((2,2)))
     
 
 
