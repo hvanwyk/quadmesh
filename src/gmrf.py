@@ -390,7 +390,7 @@ class SpdOperator(object):
     """
     Symmetric positive definite operator
     """
-    def __init__(self, K, M=None):
+    def __init__(self, K, M=None, lumped=True):
         """
         Constructor
         
@@ -424,7 +424,7 @@ class SpdOperator(object):
         """
         Return True if the matrix is sparse
         """
-        pass
+        return sp.issparse(self.__K)
     
     
     def chol_decomp(self):
@@ -436,15 +436,19 @@ class SpdOperator(object):
     
     def chol_solve(self, b):
         """
-        Solve the system M^{-1}K x = b 
+        Solve the system M^{-1}K x = b  by successively solving 
+        Ly = b for y and hence L^T x = y for x.
         
         
         Input:
         
             b: double, (n,m) array
         """
-        pass
-    
+        if self.issparse():
+            return self.__L(b)
+        else:
+            y = np.linalg.solve(self.__f_prec, b)
+            return np.linalg.solve(self.__f_prec.transpose(),y)
     
     def chol_L(self, b=None):
         """
@@ -455,17 +459,47 @@ class SpdOperator(object):
     
     def chol_Lsolve(self, b):
         """
-        Solve the lower triangular system Lx=b
+        Return the solution x of Lx = b, where Q = LL' (or S=LL')
+        
+        Note: The 'L' in CHOLMOD's solve_L 
+            is the one appearing in the factorization LDL' = PQP'. 
+            We first rewrite it as Q = WW', where W = P'*L*sqrt(D)*P
         """
-        pass
-    
-    
-    def chol_Ltsolve(self):
+        if self.issparse():
+            #
+            # Sparse Matrix
+            #
+            f = self.__L
+            sqrtDinv = sp.diags(1/np.sqrt(f.D()))
+            return f.apply_Pt(sqrtDinv*f.solve_L(f.apply_P(b)))
+        else:
+            #
+            # Full Matrix
+            # 
+            return np.linalg.solve(self.__L,b)
+        
+        
+    def chol_Ltsolve(self, b):
         """
-        Solve the upper triangular system L^Tx = b
+        Return the solution x, of L'x = b, where Q = LL' (or S=LL')
+        
+        Note: The 'L' CHOLMOD's solve_L is the one appearing in the 
+            factorization LDL' = PQP'. We first rewrite it as 
+            Q = WW', where W' = P'*sqrt(D)*L'*P.
         """
-        pass
-    
+        if self.issparse():
+            #
+            # Sparse Matrix
+            # 
+            f = self.__L
+            sqrtDinv = sp.diags(1/np.sqrt(f.D()))
+            return f.apply_Pt(f.solve_Lt(sqrtDinv*(f.apply_P(b))))
+        else:
+            #
+            # Full Matrix
+            # 
+            return np.linalg.solve(f.transpose(),b)
+        
     
     def eig_decomp(self):
         """
