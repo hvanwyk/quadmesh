@@ -6,9 +6,11 @@ Created on Mar 11, 2017
 
 import unittest
 
-from gmrf import Gmrf
+from gmrf import Gmrf, distance
 from mesh import QuadMesh, DCEL
-from fem import QuadFE, DofHandler, Assembler, Function
+from fem import QuadFE, DofHandler
+from assembler import Assembler
+from function import Function
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla

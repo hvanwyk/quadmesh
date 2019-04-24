@@ -67,9 +67,7 @@ def modchol_ldlt(A,delta=None):
 
     L,D,p = linalg.ldl(A)  # @UndefinedVariable
     DMC = np.eye(n)
-    
-    print(L, '\n', D, '\n', p)
-    
+        
     # Modified Cholesky perturbations.
     k = 0
     while k < n:
@@ -102,14 +100,43 @@ def modchol_ldlt(A,delta=None):
                     T[ii,ii] = delta
             
             temp = np.dot(U,np.dot(T,U.T))
-            print(temp)
             DMC[k:k+2,k:k+2] = (temp + temp.T)/2  # Ensure symmetric.
             k += 2
 
     P = np.eye(n) 
     P = P[p,:]
     
-    return L, DMC, P, D
+    return P, L, DMC, D
+
+    
+def diagonal_inverse(d, eps=None):
+    """
+    Compute the (approximate) pseudo-inverse of a diagonal matrix with
+    diagonal entries d. 
+    
+    Inputs:
+    
+        d: double, (n, ) vector of diagonal entries
+        
+        eps: cut-off tolerance for zero entries
+    """
+    if eps is None:
+        eps = np.finfo(float).eps
+    else:
+        assert eps > 0, 'Input "eps" should be positive.'
+    
+    if len(d.shape)==2:
+        #
+        # Matrix
+        # 
+        d = d.diagonal()
+        
+    d_inv = np.zeros(d.shape)
+    i_nz = np.abs(d)>eps
+    d_inv[i_nz] = 1/d[i_nz]
+    D_inv = np.diag(d_inv)
+    
+    return D_inv
 
 
 # =============================================================================
@@ -386,25 +413,30 @@ class CovKernel(Kernel):
         Kernel.__init__(self, f=k)
         
 
-class SpdOperator(object):
+class SPDMatrix(object):
     """
     Symmetric positive definite operator
     """
-    def __init__(self, K, M=None, lumped=True):
+    def __init__(self, K, M=None):
         """
         Constructor
-        
-            M^{-1}*K 
-            
+             
         Inputs: 
         
             K: double, (n,n) symmetric positive semidefinite kernel matrix
             
-            M: double, (n,n) mass matrix
         """
-        self.__M = M
+        # Save SPD matrix and mass matrix
         self.__K = K
-    
+        self.__M = M
+        
+        # Initialize eigendecomoposition
+        self.__d = None
+        self.__V = None
+        
+        # Initialize Cholesky decomposition
+        self.__L = None
+        
     
     def size(self):
         """
@@ -417,7 +449,10 @@ class SpdOperator(object):
         """
         Return the rank of the matrix
         """
-        pass
+        if self.issparse():
+            return 
+        else:
+            return np.linalg.matrix_rank(self.__K) 
     
     
     def issparse(self):
@@ -425,16 +460,92 @@ class SpdOperator(object):
         Return True if the matrix is sparse
         """
         return sp.issparse(self.__K)
-    
-    
+
+        
+        
     def chol_decomp(self):
         """
-        Compute the cholesky factorization of the matrix
+        Compute the cholesky factorization C = LL', where C=M^{-1}K.
+        
+        Decompositions are grouped as follows: 
+        
+                    Full Rank   Degenerate
+        Sparse      cholmod     modchol_ldlt
+        Full        cholesky    modchol_ldlt
+        
+        
+        The following quantities are stored:
+        
+        cholesky (full, non-degenerate): L, such that C = LL'
+        
+        cholmod (sparse): LDL' = PCP', where
+            P: permutation matrix
+            L: lower triangular matrix
+            D: diagonal matrix
+            
+        modchol_ldlt (degenerate): factorization  P*(C + E)*P' = L*D*L', where
+            P: permutation matrix
+            L: lower cholesky factor
+            D: diagonal matrix
+            D0: diagonal matrix so that P*C*P' = L*D0*L'
+        
         """
-        pass
+        modified_cholesky = False
+        if self.issparse():
+            #
+            # Sparse matrix
+            # 
+            try:
+                #
+                # Try Cholesky (will fail if not PD)
+                #
+                self.__L = cholesky(self.__K.tocsc())
+                self.__chol_type = 'sparse_cholesky'
+            except np.linalg.linalg.LinAlgError:
+                modified_cholesky = True
+        else:
+            #
+            # Full Matrix 
+            # 
+            try:
+                #
+                # Try Cholesky (will fail if not PD)
+                #
+                self.__L = linalg.cholesky(self.__K)
+                self.__chol_type = 'full_cholesky'
+            except np.linalg.linalg.LinAlgError:
+                modified_cholesky = True
+                
+        if modified_cholesky:
+            #
+            # Use modified Cholesky
+            # 
+            P, L, D, D0 = modchol_ldlt(self.__K)
+            self.__L = L
+            self.__D = D
+            self.__P = P
+            self.__D0 = D0
+            self.__chol_type = 'modified_cholesky'
+                
+        
+    def chol_type(self):
+        """
+        Returns the type of Cholesky decomposition
+        """
+        return self.__chol_type
+
+
+    def get_chol_decomp(self):
+        """
+        Returns the Cholesky decomposition of the matrix M^{-1}K
+        """
+        if self.chol_type()=='sparse_cholesky':
+            return self.__L
+        elif self.chol_type()=='full_cholesky':
+            return self.__L
     
     
-    def chol_solve(self, b):
+    def chol_solve(self, b=None):
         """
         Solve the system M^{-1}K x = b  by successively solving 
         Ly = b for y and hence L^T x = y for x.
@@ -450,12 +561,54 @@ class SpdOperator(object):
             y = np.linalg.solve(self.__f_prec, b)
             return np.linalg.solve(self.__f_prec.transpose(),y)
     
+    
     def chol_L(self, b=None):
         """
-        Returns the left Cholesky factor (times b).
+        Return lower triangular Cholesky factor L or compute L*b
+        
+            Inputs: 
+            
+                b: double, compatible vector
+                
+                mode: string, Specify the matrix for which to return the 
+                    Cholesky factor: 'precision' (default) or 'covariance'
+                    
+                    
+            Output:
+            
+                L: double, (sparse) lower triangular left Cholesky 
+                    factor (if no b is specified) 
+                    
+                    or 
+                
+                y = Lprec*b / y = Lcov*b: double, vector.
+                
         """
-        pass 
-    
+        #
+        # Precision Matrix
+        # 
+        assert self.__L is not None, \
+            'Cholesky factor not computed.'
+        if self.issparse():
+            #
+            # Sparse matrix, use CHOLMOD
+            #  
+            P = self.__L.P()
+            L = self.__L.L()[P,:][:,P]
+        else:
+            #
+            # Cholesky Factor stored as full matrix
+            # 
+            L = self.__L
+
+        #
+        # Parse b   
+        # 
+        if b is None:
+            return L 
+        else: 
+            return L.dot(b)     
+
     
     def chol_Lsolve(self, b):
         """
@@ -509,33 +662,57 @@ class SpdOperator(object):
             pass
         else:
             # Compute eigendecomposition
-            w, V = linalg.eigh(self.__K, self.__M)
+            d, V = linalg.eigh(self.__K, self.__M)
             
             # Store eigendecomposition
             self.__V = V
-            self.__w = w
+            self.__d = d
     
-    
+        
     def eig_solve(self,b):
         """
-        Solve the linear system Kx = Mb by means of eigenvalue decomposition 
+        Solve the linear system Kx = Mb by means of eigenvalue decomposition, 
+        i.e. x = V'Dinv*V*b 
         
         Inputs:
         
             b: double, (n,m) array
         """
-        pass
+        
+        V = self.__V  # eigenvectors
+        d = self.__d  # eigenvalues
+        D_inv = diagonal_inverse(d)
+        return V.dot(D_inv.dot(np.dot(V.T, b)))
+            
     
-    
-    def eig_sqrtsolve(self, b):
+    def eig_sqrtsolve(self, b, transpose=False):
         """
-        Solve the system R x = b, where M^{-1}K = RR^T
+        Solve the system Rx=b (or R'x=b if transpose) where R = V*sqrt(D) in 
+        the decomposition M^{-1}K = VDV' = RR' 
+        
+        Inputs:
+        
+            b: double, (n,k)  right hand side
+            
+            transpose: bool [False], specifies whether system or transpose is 
+                to be solved.
         """
-        pass
+        V = self.__V  # eigenvectors
+        d = self.__d  # eigenvalues
+        sqrtD_inv = diagonal_inverse(np.sqrt(d))
+        if transpose:
+            #
+            # Solve sqrtD*V'x = b
+            # 
+            return V.dot(sqrtD_inv.dot(b))
+        else:
+            #
+            # Solve V*sqrtD x = b
+            #
+            return sqrtD_inv.dot(np.dot(V.T, b))
+        
     
-    
-    
-class Covariance(SpdOperator):
+class Covariance(SPDMatrix):
     """
     Covariance operator
     """
@@ -1475,7 +1652,7 @@ class Gmrf(object):
             #
             # Adjust covariance
             #
-            Sigma = sp.diags(1/m_lumped)*Sigma
+            Sigma = sp.diags(1/m_lumped).dot(Sigma)
             
         return cls(mu=mu, covariance=Sigma, mesh=mesh, element=element, \
                    discretization=discretization)
