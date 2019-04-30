@@ -29,7 +29,7 @@ from scipy import linalg
 from scipy.special import kv, gamma
 import scipy.sparse as sp
 from scipy.sparse import linalg as spla
-from sksparse.cholmod import cholesky, cholesky_AAt, Factor  # @UnresolvedImport
+from sksparse.cholmod import cholesky, cholesky_AAt, Factor, CholmodNotPositiveDefiniteError  # @UnresolvedImport
 
 def modchol_ldlt(A,delta=None):
     """
@@ -103,11 +103,11 @@ def modchol_ldlt(A,delta=None):
             DMC[k:k+2,k:k+2] = (temp + temp.T)/2  # Ensure symmetric.
             k += 2
 
-    P = np.eye(n) 
-    P = P[p,:]
+    #P = np.eye(n) 
+    #P = P[p,:]
     
-    return P, L, DMC, D
-
+    return L, DMC, p, D
+    
     
 def diagonal_inverse(d, eps=None):
     """
@@ -462,16 +462,22 @@ class SPDMatrix(object):
         return sp.issparse(self.__K)
 
         
-        
+    def get_matrix(self):
+        """
+        Returns the underlying matrix
+        """
+        return self.__K
+    
+
     def chol_decomp(self):
         """
         Compute the cholesky factorization C = LL', where C=M^{-1}K.
         
         Decompositions are grouped as follows: 
         
-                    Full Rank   Degenerate
-        Sparse      cholmod     modchol_ldlt
-        Full        cholesky    modchol_ldlt
+                    Full Rank       Degenerate
+        Sparse      cholmod         modchol_ldlt
+        Full        modchol_ldlt    modchol_ldlt
         
         
         The following quantities are stored:
@@ -485,9 +491,9 @@ class SPDMatrix(object):
             
         modchol_ldlt (degenerate): factorization  P*(C + E)*P' = L*D*L', where
             P: permutation matrix
-            L: lower cholesky factor
+            P*L: lower cholesky factor
             D: diagonal matrix
-            D0: diagonal matrix so that P*C*P' = L*D0*L'
+            D0: diagonal matrix so that C = L*D0*L'
         
         """
         modified_cholesky = False
@@ -499,38 +505,44 @@ class SPDMatrix(object):
                 #
                 # Try Cholesky (will fail if not PD)
                 #
-                self.__L = cholesky(self.__K.tocsc())
-                self.__chol_type = 'sparse_cholesky'
-            except np.linalg.linalg.LinAlgError:
+                self.__L = cholesky(self.__K.tocsc(), mode='supernodal')
+                self.__chol_type = 'sparse'
+            except CholmodNotPositiveDefiniteError:
                 modified_cholesky = True
         else:
             #
             # Full Matrix 
             # 
-            try:
-                #
-                # Try Cholesky (will fail if not PD)
-                #
-                self.__L = linalg.cholesky(self.__K)
-                self.__chol_type = 'full_cholesky'
-            except np.linalg.linalg.LinAlgError:
-                modified_cholesky = True
+            modified_cholesky = True
                 
         if modified_cholesky:
             #
             # Use modified Cholesky
             # 
-            P, L, D, D0 = modchol_ldlt(self.__K)
-            self.__L = L
-            self.__D = D
-            self.__P = P
-            self.__D0 = D0
-            self.__chol_type = 'modified_cholesky'
+            if self.issparse():
+                #
+                # Sparse matrix - convert to full first :(
+                # 
+                L, D, p, D0 = modchol_ldlt(self.__K.toarray())
+            else:
+                #
+                # Full matrix
+                # 
+                L, D, p, D0 = modchol_ldlt(self.__K)
+            sqrtD  = np.sqrt(D.diagonal())
+            sqrtD0 = np.sqrt(D0.diagonal())
+            self.__L = L[p,:].dot(sqrtD)
+            self.__L0 = L[p,:].dot(sqrtD0)
+            
+            #self.__P = P
+            #self.__D0 = D0
+            self.__chol_type = 'full'
                 
         
     def chol_type(self):
         """
-        Returns the type of Cholesky decomposition
+        Returns the type of Cholesky decomposition 
+        (sparse_cholesky/full_cholesky)
         """
         return self.__chol_type
 
@@ -539,11 +551,12 @@ class SPDMatrix(object):
         """
         Returns the Cholesky decomposition of the matrix M^{-1}K
         """
-        if self.chol_type()=='sparse_cholesky':
+        if self.chol_type()=='sparse':
             return self.__L
-        elif self.chol_type()=='full_cholesky':
-            return self.__L
-    
+        elif self.chol_type()=='full':
+            return self.__L, self.__D, self.__P, self.__D0 
+        
+        
     
     def chol_solve(self, b=None):
         """
@@ -560,7 +573,8 @@ class SPDMatrix(object):
         else:
             y = np.linalg.solve(self.__f_prec, b)
             return np.linalg.solve(self.__f_prec.transpose(),y)
-    
+        
+        
     
     def chol_L(self, b=None):
         """
@@ -589,18 +603,18 @@ class SPDMatrix(object):
         # 
         assert self.__L is not None, \
             'Cholesky factor not computed.'
-        if self.issparse():
+        if self.chol_type()=='sparse':
             #
             # Sparse matrix, use CHOLMOD
             #  
             P = self.__L.P()
             L = self.__L.L()[P,:][:,P]
-        else:
+        elif self.chol_type()=='full':
             #
             # Cholesky Factor stored as full matrix
             # 
             L = self.__L
-
+        
         #
         # Parse b   
         # 

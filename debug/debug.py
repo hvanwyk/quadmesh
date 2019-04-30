@@ -14,6 +14,8 @@ import numpy as np
 from mesh import HalfEdge
 import matplotlib.pyplot as plt
 from scipy import linalg
+from sksparse.cholmod import cholesky, cholesky_AAt, Factor
+import scipy.sparse as sp
 
 A = np.array([[1, 1, 0, 1],
               [1, 1, 1, 0],
@@ -93,6 +95,20 @@ print('DMC',DMC)
 print('PAP.t', P.dot(A.dot(P.T)))
 print('LDL.t-A', L.dot(D.dot(L.T))-A)
 print('LD0L.t', L.dot(DMC.dot(L.T)))
+
+
+# Test Cholmod
+A = sp.diags(np.random.rand(5)-0.5)
+f = cholesky(A.tocsc(),mode='supernodal')
+print(A.toarray())
+L, D = f.L_D()
+print(L.toarray())
+print(D)
+
+U,S,VT = np.linalg.svd(A.toarray())
+print(S)
+print(U)
+print(VT)
 """
 Debug conditioning
 """
