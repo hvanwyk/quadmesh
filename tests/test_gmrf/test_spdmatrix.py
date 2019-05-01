@@ -218,8 +218,6 @@ class TestSPDMatrix(unittest.TestCase):
                         if rank == n-2:
                             self.assertFalse(np.allclose(D,D0))
                             
-                        
-                        
                     elif K.chol_type()=='sparse_cholesky':
                         # Get Cholesky factor
                         L = K.get_chol_decomp()
@@ -254,10 +252,11 @@ class TestSPDMatrix(unittest.TestCase):
 
                 # Compute
                 if K.chol_type()=='full':
+                    
                     #fig, axs = plt.subplots(2,2)
                     L, D, P, D0 = K.get_chol_decomp()
-                    
                     """
+                    
                     axs[0,0].imshow(P.dot(L))
                     axs[0,0].set_title('PL')
                     
@@ -272,6 +271,7 @@ class TestSPDMatrix(unittest.TestCase):
                     
                     plt.show()
                     """
+                    
                     self.assertTrue(np.allclose(np.diagonal(P.dot(L)),1))
                     """
                     fig, axs = plt.subplots(2,2)
@@ -287,7 +287,19 @@ class TestSPDMatrix(unittest.TestCase):
                     #plt.colorbar()
                     #plt.show()
                 elif K.chol_type()=='sparse':
-                    pass
+                    # Return the lower triangular matrix L so that PAP' = LL'
+                    L = K.chol_L()
+                    
+                    # Check that LL' = PAP'
+                    
+                    
+                    # Evaluate L*b, where PAP' = LL'
+                    b = np.random.rand(n)
+                    Lb = K.chol_L(b)
+                    
+                    # Check that b'(PA'P')b = (Lb)'(Lb)
+                
+                
                
 
     def test_chol_Lsolve(self):

@@ -58,7 +58,7 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 
 def test_ft():
-    plot = Plot(0.1)
+    plot = Plot(0.5)
     
     # =============================================================================
     # Parameters
@@ -196,7 +196,7 @@ def test_ft():
         plot.wire(system.get_solution(as_function=True))
 
 if __name__ == '__main__':
-    #test_ft()
+    test_ft()
     print(scipy.__version__)
     linalg.ldl(np.zeros((2,2)))
     

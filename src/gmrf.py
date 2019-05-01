@@ -103,10 +103,10 @@ def modchol_ldlt(A,delta=None):
             DMC[k:k+2,k:k+2] = (temp + temp.T)/2  # Ensure symmetric.
             k += 2
 
-    #P = np.eye(n) 
-    #P = P[p,:]
+    P = np.eye(n) 
+    P = P[p,:]
     
-    return L, DMC, p, D
+    return L, DMC, P, D
     
     
 def diagonal_inverse(d, eps=None):
@@ -491,7 +491,7 @@ class SPDMatrix(object):
             
         modchol_ldlt (degenerate): factorization  P*(C + E)*P' = L*D*L', where
             P: permutation matrix
-            P*L: lower cholesky factor
+            L: cholesky factor (P*L = lower triangular) 
             D: diagonal matrix
             D0: diagonal matrix so that C = L*D0*L'
         
@@ -523,19 +523,19 @@ class SPDMatrix(object):
                 #
                 # Sparse matrix - convert to full first :(
                 # 
-                L, D, p, D0 = modchol_ldlt(self.__K.toarray())
+                L, D, P, D0 = modchol_ldlt(self.__K.toarray())
             else:
                 #
                 # Full matrix
                 # 
-                L, D, p, D0 = modchol_ldlt(self.__K)
-            sqrtD  = np.sqrt(D.diagonal())
-            sqrtD0 = np.sqrt(D0.diagonal())
-            self.__L = L[p,:].dot(sqrtD)
-            self.__L0 = L[p,:].dot(sqrtD0)
-            
-            #self.__P = P
-            #self.__D0 = D0
+                L, D, P, D0 = modchol_ldlt(self.__K)
+            # 
+            # Store Cholesky decomposition
+            #  
+            self.__L = L
+            self.__D = D
+            self.__P = P 
+            self.__D0 = D0
             self.__chol_type = 'full'
                 
         
@@ -568,7 +568,7 @@ class SPDMatrix(object):
         
             b: double, (n,m) array
         """
-        if self.issparse():
+        if self.chol_type() == 'sparse':
             return self.__L(b)
         else:
             y = np.linalg.solve(self.__f_prec, b)
