@@ -1,17 +1,13 @@
 import unittest
 from gmrf import SPDMatrix
-from gmrf import CovKernel
-from gmrf import Covariance
 from gmrf import diagonal_inverse
 from gmrf import modchol_ldlt  
 import numpy as np
 import scipy.linalg as linalg
 import scipy.sparse as sp
-from scipy.sparse import linalg as spla
-import matplotlib.pyplot as plt
-from sksparse.cholmod import cholesky, cholesky_AAt, Factor, CholmodNotPositiveDefiniteError  # @UnresolvedImport
+from sklearn.datasets import make_sparse_spd_matrix
 
-def test_matrix(n, sparse=False, rank='full'):
+def test_matrix(n, sparse=False, d=-0.5):
     """
     Returns symmetric matrices on which to test algorithms
     
@@ -32,45 +28,18 @@ def test_matrix(n, sparse=False, rank='full'):
         #
         # Sparse matrix 
         # 
-        if rank=='full':
-            #
-            # Full rank sparse matrix 
-            # 
-            delta = 1e-3
-            L = sp.random(n,n,density=0.8, format='csr') 
-            A = L.dot(L.T) + delta*sp.eye(n)
-        else:
-            #
-            # Degenerate sparse matrix (at most rank=rank)
-            # 
-            L = sp.random(n,n,density=0.5, format='csr')
-            one = np.ones(n)
-            i_zeros = np.random.randint(n, size=n-rank)
-            one[i_zeros] = 0
-            D = sp.diags(one)
-            A = L.dot(D.dot(L.T))
+        A = make_sparse_spd_matrix(dim=n, alpha=0.95, norm_diag=False,
+                           smallest_coef=.1, largest_coef=.9);
+        A = sp.csc_matrix(A)
     else:
         #
         # Full matrix
-        # 
-        if rank=='full':
-            #
-            # Full rank matrix
-            #
-            delta = 1e-3
-            L = np.random.rand(n,n)
-            A = L.dot(L.T) + delta*np.eye(n)
-        else:
-            #
-            # Degenerate matrix
-            #
-            L = np.random.rand(n,n)
-            one = np.ones(n)
-            i_zeros = np.random.randint(n, size=n-rank)
-            one[i_zeros] = 0
-            D = sp.diags(one)
-            A = L.dot(D.dot(L.T))
-        
+        #
+        X = np.random.rand(n, n)
+        X = X + X.T
+        U, dummy, V = linalg.svd(np.dot(X.T, X))
+        A = np.dot(np.dot(U, d + np.diag(np.random.rand(n))), V)
+         
     return A
     
 
@@ -80,19 +49,6 @@ class TestSPDMatrix(unittest.TestCase):
     Test the storage, inversion and factorization of matrices of the 
     form M^{-1} K
     """
-    def test_neg_definite(self):
-        n = 40
-        neg_definite = 0
-        for dummy in range(10):
-            A = test_matrix(n, sparse=True, rank=30)
-            d = linalg.eigvalsh(A.toarray())
-            if any([dd<-1e-12 for dd in d]):
-                neg_definite += 1
-        if neg_definite > 0:
-            print('number of negative definite systems', neg_definite)
-        
-    
-    
     def test_modchol_ldlt(self):
         # Indefinite Matrix
         K = np.array([[1, 1, 0, 1], 
@@ -105,39 +61,27 @@ class TestSPDMatrix(unittest.TestCase):
         
         self.assertTrue(np.allclose(L.dot(D0.dot(L.T)),K))
         self.assertFalse(np.allclose(D0,D))
-            
-           
+              
         
     def test_constructor(self):
-        n = 5
+        n = 20
         for sparse in [True, False]:
-            for rank in ['full', 3]:
-                A = test_matrix(n, sparse, rank)
-                K = SPDMatrix(A)
-                
-                # Check size function
-                self.assertEqual(K.size(),5)
-                
-                # Check sparsity function
-                self.assertEqual(K.issparse(),sparse)
-                
-                # Check get_matrix function
-                if sparse:
-                    self.assertTrue(np.allclose(K.get_matrix().toarray(), A.toarray()))
-                else:
-                    self.assertTrue(np.allclose(K.get_matrix(), A))
-    
-    
-    def test_rank(self):
-        
-        A = np.array([[1, 1, 0, 1], 
-                  [1, 1, 1, 0], 
-                  [0, 1, 1, 1], 
-                  [1, 0, 1, 1]])
-        K = SPDMatrix(A)
-        P, L, U = linalg.lu(A)
-        x = linalg.solve(A,np.zeros(4))
-        
+            # Generate test matrix
+            A = test_matrix(n, sparse)
+            K = SPDMatrix(A)
+            
+            # Check size function
+            self.assertEqual(K.size(),n)
+            
+            # Check sparsity function
+            self.assertEqual(K.issparse(),sparse)
+            
+            # Check get_matrix function
+            if sparse:
+                self.assertTrue(np.allclose(K.get_matrix().toarray(), A.toarray()))
+            else:
+                self.assertTrue(np.allclose(K.get_matrix(), A))
+       
         
     def test_diag_inverse(self):
         #
@@ -155,34 +99,23 @@ class TestSPDMatrix(unittest.TestCase):
         
         n = 20        
         for sparsity in [False, True]:
-            #
-            # Cycle through sparsity
-            #
-            for rank in ['full', n-3]:
-                #
-                # Cycle through degeneracy
-                #
+            # Generate random SPD matrix
+            A = test_matrix(n, sparsity)
+            K = SPDMatrix(A)
+            
+            # Compute the Cholesky decomposition
+            K.chol_decomp()
+            
+            # Check that the right algorithm was used.
+            if sp.issparse(A):    
+                A = A.toarray()
                 
-                # Generate random SPD matrix
-                A = test_matrix(n, sparsity, rank)
-                K = SPDMatrix(A)
-                
-                # Compute the Cholesky decomposition
-                K.chol_decomp()
-                
-                # Check that the right algorithm was used.
-                if sp.issparse(A):    
-                    A = A.toarray()
-                    
-                rank = np.linalg.matrix_rank(A)
-                if rank < n:
-                    chol_type = 'full'
-                else:
-                    if K.issparse():
-                        chol_type = 'sparse'
-                    else:
-                        chol_type = 'full'
-                self.assertEqual(chol_type, K.chol_type())
+            # Check that matrix is full rank
+            rank = np.linalg.matrix_rank(A)    
+            self.assertEqual(rank, n)
+            
+            chol_type = 'sparse' if sparsity else 'full' 
+            self.assertEqual(chol_type, K.chol_type())
                 
                 
     def test_get_chol_decomp(self):
@@ -194,43 +127,48 @@ class TestSPDMatrix(unittest.TestCase):
                 #
                 # Cycle through sparsity
                 #
-                for rank in ['full', n-2]:
-                    #
-                    # Cycle through degeneracy
-                    #
                     
-                    # Generate random SPD matrix
-                    A = test_matrix(n, sparsity, rank)
-                    K = SPDMatrix(A)
-                    
-                    # Compute the Cholesky decomposition
-                    K.chol_decomp()
-    
-                    # Check that the decomposition reproduces the matrix
-                    if K.chol_type()=='full_cholesky':
-                        # Get Cholesky factor
-                        L, D, P, D0 = K.get_chol_decomp()
-                        
-                        # Check reconstruction
-                        self.assertTrue(np.allclose(L.dot(D.dot(L.T)),A))
-                        
-                        # Degenerate matrix: Diagonal matrices differ
-                        if rank < n:
-                            self.assertFalse(np.allclose(D,D0))
-
-                        # Check that P*L is lower triangular with ones on diagonal
-                        self.assertTrue(np.allclose(1, np.diagonal(L[P,:])))
-                        self.assertTrue(np.allclose(0, linalg.triu(L[P,:],1)))
-                        
-                    elif K.chol_type()=='sparse_cholesky':
-                        # Get Cholesky factor
-                        L = K.get_chol_decomp()
-                        P = L.P()
-                        LL = L.L()[P,:][:,P]
-                        
-                        # Check reconstruction
-                        self.assertTrue(np.allclose(LL.dot(LL.T).toarray(),A.toarray()))
+                # Generate random SPD matrix
+                A = test_matrix(n, sparsity)
+                K = SPDMatrix(A)
                 
+                # Compute the Cholesky decomposition
+                K.chol_decomp()
+
+                # Check that the decomposition reproduces the matrix
+                if K.chol_type()=='full':
+                    # Get Cholesky factor
+                    L, D, P, D0 = K.get_chol_decomp()
+                    
+                    if not np.allclose(D,D0):
+                        # Indefinite matrix - change to modified matrix
+                        A = L.dot(D.dot(L.T))
+                        
+                    # Check reconstruction
+                    self.assertTrue(np.allclose(L.dot(D.dot(L.T)),A))
+                    
+
+                    # Check that P*L is lower triangular with ones on diagonal
+                    self.assertTrue(np.allclose(1, np.diagonal(P.dot(L))))
+                    self.assertTrue(np.allclose(0, linalg.triu(P.dot(L),1)))
+                    
+                elif K.chol_type()=='sparse':
+                    # Get Cholesky factor
+                    L = K.get_chol_decomp()
+                    P = L.P()
+                    LL = L.L()
+                    
+                    # Build permutation matrix
+                    I = sp.diags([1],0, shape=(n,n), format='csc')
+                    PP = I[P,:]
+                    
+                    # Compute P'L
+                    LL = PP.T.dot(LL)
+                    
+                    # Check reconstruction LL' = PAP'
+                    self.assertTrue(np.allclose(LL.dot(LL.T).toarray(),
+                                                A.toarray()))                    
+                    
                 
     def test_chol_sqrt(self):
         """
@@ -242,178 +180,224 @@ class TestSPDMatrix(unittest.TestCase):
             #
             # Cycle through sparsity
             #
-            for rank in ['full', n-3]:
-                #
-                # Cycle through degeneracy
-                #
                 
-                # Generate random SPD matrix
-                A = test_matrix(n, sparsity, rank)
-                K = SPDMatrix(A)
+            # Generate random SPD matrix
+            A = test_matrix(n, sparsity)
+            K = SPDMatrix(A)
+            
+            # Compute the Cholesky decomposition
+            K.chol_decomp()
+            
+            # Compute R*b
+            if K.chol_type()=='full':
                 
-                # Compute the Cholesky decomposition
-                K.chol_decomp()
+                # Reconstruct (modified) matrix
+                B = K.chol_reconstruct()
                 
-                # Check rank
-                if rank == n-3:
-                    if sparsity:
-                        B = A.toarray()
-                    else:
-                        B = A
-                    self.assertTrue(np.allclose(np.linalg.matrix_rank(B),n-3))
-
-                # Compute R*b
-                if K.chol_type()=='full':
-                    
-                    #fig, axs = plt.subplots(2,2)
-                    L, D, P, D0 = K.get_chol_decomp()
-                    
-                    B = L.dot(D.dot(L.T))
-                    
-                    # Identity matrix
-                    I = np.eye(n)
-                    
-                    # Compute R*I
-                    z = K.chol_sqrt(I)
-                    
-                    # Check that R*R' = B
-                    self.assertTrue(np.allclose(z.dot(z.T),B))
-                    
-                    # Compute R'*b 
-                    b = np.random.rand(n)
-                    z = K.chol_sqrt(b,transpose=True)
-                    
-                    """
-                    
-                    axs[0,0].imshow(P.dot(L))
-                    axs[0,0].set_title('PL')
-                    
-                    axs[0,1].imshow(D)
-                    axs[0,1].set_title('D')
-                    
-                    axs[1,0].imshow(P)
-                    axs[1,0].set_title('P')
-                    
-                    axs[1,1].imshow(D0)
-                    axs[1,1].set_title('D0')
-                    
-                    plt.show()
-                    """
-                    
-                    """
-                    fig, axs = plt.subplots(2,2)
-                    im1 = axs[0,0].imshow(A-L.dot(D0.dot(L.T)))
-                    fig.colorbar(im1, ax=axs[0, 0])
-                    
-                    im2 = axs[0,1].imshow(A-L.dot(D.dot(L.T)))
-                    fig.colorbar(im2, ax=axs[0, 1])
-                    plt.show()
-                    """
-                    #plt.imshow(D)
-                    #plt.imshow(D0)
-                    #plt.colorbar()
-                    #plt.show()
-                elif K.chol_type()=='sparse':
-                    # Return the lower triangular matrix L so that PAP' = LL'
-                    #L = K.chol_L()
-                    
-                    # Check that LL' = PAP'
-                    
-                    
-                    # Evaluate L*b, where PAP' = LL'
-                    b = np.random.rand(n)
-                    Lb = K.chol_sqrt(b)
-                    
-                    # Check that b'(PA'P')b = (Lb)'(Lb)
+                # Identity matrix
+                I = np.eye(n)
                 
+                # Compute R*I
+                z = K.chol_sqrt(I)
                 
+                # Check that R*R' = B
+                self.assertTrue(np.allclose(z.dot(z.T),B))
+                
+                # Compute R'*b 
+                b = np.random.rand(n)
+                z = K.chol_sqrt(b,transpose=True)
+                
+                # Check that b'Ab = (Rb)'(Rb)
+                self.assertTrue(np.allclose(z.dot(z),b.T.dot(B.dot(b))))
+               
+                
+            elif K.chol_type()=='sparse':
+                # Identity matrix
+                I = np.eye(n)
+                
+                # Compute R*I
+                z = K.chol_sqrt(I)
+                
+                # Check that RR' = A
+                # print(np.linalg.norm(z.dot(z.T) - A.toarray()))
+                self.assertTrue(np.allclose(z.dot(z.T),A.toarray()))
+                
+                # Compute R'*b
+                b = np.random.rand(n)
+                z = K.chol_sqrt(b, transpose=True)
+                
+                # Check that b'Ab = (Rb)'(Rb)
+                self.assertTrue(np.allclose(z.dot(z),b.T.dot(A.dot(b))))
+                                  
                
 
-    def test_chol_Lsolve(self):
-        n = 5
+    def test_sqrt_solve(self):
+        n = 20
         
         for sparsity in [False, True]:
             #
             # Cycle through sparsity
             #
-            for rank in ['full', np.int(n/2)]:
-                #
-                # Cycle through degeneracy
-                #
+            
+            # Generate random SPD matrix
+            A = test_matrix(n, sparsity)
+            K = SPDMatrix(A)
+            
+            # Compute the Cholesky decomposition
+            K.chol_decomp()
+            
+            # Random vector
+            x = np.random.rand(n)
+            
+            for transpose in [False, True]:
+                # Compute b = Rx (or R'x)
+                b = K.chol_sqrt(x, transpose=transpose)  
+            
+                # Solve for x             
+                xx = K.chol_sqrt_solve(b, transpose=transpose)
                 
-                # Generate random SPD matrix
-                A = test_matrix(n, sparsity, rank)
-                K = SPDMatrix(A)
+                # Check that we've recovered the original x             
+                self.assertTrue(np.allclose(xx,x))
                 
-                # Compute the Cholesky decomposition
-                K.chol_decomp()
-
-    
-    def test_chol_Ltsolve(self):
-        n = 5
         
-        for sparsity in [False, True]:
-            #
-            # Cycle through sparsity
-            #
-            for rank in ['full', np.int(n/2)]:
-                #
-                # Cycle through degeneracy
-                #
-                
-                # Generate random SPD matrix
-                A = test_matrix(n, sparsity, rank)
-                K = SPDMatrix(A)
-                
-                # Compute the Cholesky decomposition
-                K.chol_decomp()
-
-    
     def test_chol_solve(self):
-        n = 5
+        n = 100
         
         for sparsity in [False, True]:
             #
             # Cycle through sparsity
             #
-            for rank in ['full', np.int(n/2)]:
-                #
-                # Cycle through degeneracy
-                #
-                
-                # Generate random SPD matrix
-                A = test_matrix(n, sparsity, rank)
-                K = SPDMatrix(A)
-                
-                # Compute the Cholesky decomposition
-                K.chol_decomp()
-
-    
+            
+            # Generate random SPD matrix
+            A = test_matrix(n, sparsity)
+            K = SPDMatrix(A)
+            
+            # Compute the Cholesky decomposition
+            K.chol_decomp()
+            
+            # Use modified A if necessary
+            A = K.chol_reconstruct()
+                    
+            # Generate random solution 
+            x = np.random.rand(n)
+            b = A.dot(x)
+            
+            # Solve using Cholesky decomposition
+            xx = K.chol_solve(b)
+            
+            # Check accuracy
+            self.assertTrue(np.allclose(xx,x))
+            
+            
     
     def test_eig(self):
         # Form SPD matrix
-        A = np.array([[1, 1, 0, 1], 
-                  [1, 1, 1, 0], 
-                  [0, 1, 1, 1], 
-                  [1, 0, 1, 1]])
+        n = 20
+        for sparse in range(False, True):
+            A = test_matrix(n,sparse,1)
         K = SPDMatrix(A)
         
+    
         # Compute eigendecomposition
         K.eig_decomp()
         
-        # Make up system
-        x = np.random.rand(K.size())
-        b = A.dot(x)
+        # Check reconstruction
+        d, V = K.get_eig_decomp()
+        AA = V.dot(np.diag(d).dot(V.T))
+        A = A.toarray() if sparse else A
+        self.assertTrue(np.allclose(AA,A))
+       
+        
+    def test_eigsolve(self):
+        n = 20
+        for sparse in range(False, True):
+            # Test matrix
+            A = test_matrix(n, sparse)
+            K = SPDMatrix(A)
+            
+            # Compute eigendecomposition
+            K.eig_decomp()
+            
+            # Reconstruct
+            A = K.eig_reconstruct()
+            
+            # Make up system
+            x = np.random.rand(K.size())
+            b = A.dot(x)
+        
+            # Solve it
+            xx = K.eig_solve(b)
+            xxx = np.linalg.solve(A,b)
+            
+            # Check 
+            self.assertTrue(np.allclose(xx,x))
+            self.assertTrue(np.allclose(xxx,x))
     
-        # Solve it
-        xx = K.eig_solve(b)
-        xxx = np.linalg.solve(A,b)
+    
+    def test_eig_sqrt(self):
+        n = 20
+        for sparse in range(False, True):
+            # Test matrix
+            A = test_matrix(n, sparse)
+            K = SPDMatrix(A)
+            
+            # Compute eigendecomposition
+            K.eig_decomp()               
+    
+            B = K.eig_reconstruct()
+            
+            #
+            # Test Rx
+            # 
+            
+            # Identity matrix
+            I = np.eye(n)
+            
+            # Compute R*I
+            z = K.eig_sqrt(I)
+            
+            # Check that R*R' = B
+            self.assertTrue(np.allclose(z.dot(z.T),B))
+            
+            #
+            # Compute R'*b
+            #  
+            b = np.random.rand(n)
+            z = K.eig_sqrt(b,transpose=True)
+            
+            # Check that b'Ab = (Rb)'(Rb)
+            self.assertTrue(np.allclose(z.dot(z),b.T.dot(B.dot(b))))
+
+            
+    def test_eig_sqrt_solve(self):
+        n = 20
         
-        # Check 
-        self.assertTrue(np.allclose(xx,x))
-        self.assertTrue(np.allclose(xxx,x))
-        
-        
+        for sparsity in [False, True]:
+            #
+            # Cycle through sparsity
+            #
+            
+            # Generate random SPD matrix
+            A = test_matrix(n, sparsity)
+            K = SPDMatrix(A)
+            
+            # Compute the Eigen decomposition
+            K.eig_decomp()
+            
+            # Random vector
+            x = np.random.rand(n)
+            
+            for transpose in [False, True]:
+                # Compute b = Rx (or R'x)
+                b = K.eig_sqrt(x, transpose=transpose)  
+            
+                # Solve for x             
+                xx = K.eig_sqrt_solve(b, transpose=transpose)
+                
+                # Check that we've recovered the original x             
+                self.assertTrue(np.allclose(xx,x))
+                        
+            
         
     def test_scalings(self):
         pass 

@@ -15,122 +15,57 @@ from mesh import HalfEdge
 import matplotlib.pyplot as plt
 from scipy import linalg
 from sksparse.cholmod import cholesky, cholesky_AAt, Factor
+from sklearn.datasets import make_sparse_spd_matrix
 import scipy.sparse as sp
+from gmrf import modchol_ldlt
 
-A = np.array([[1, 1, 0, 1],
-              [1, 1, 1, 0],
-              [0, 1, 1, 1],
-              [1, 0, 1, 1]])
-
-s, dummy = linalg.eigh(A)
-print('eigenvalues', s)
-
-delta = None
-
-if delta is None:
-    eps = np.finfo(float).eps
-    delta = np.sqrt(eps)*linalg.norm(A, 'fro')
-else:
-    assert delta>0, 'Input "delta" should be positive.'
-
-n = max(A.shape)
-
-print('n=', n)
-print('delta=',delta)
-
-
-L,D,p = linalg.ldl(A)  
-DMC = np.eye(n)
-
-print('L=', L)
-print('D=',D)
-print('p=',p)
-
-print('L(p)', L[p,:])
-print('A-LDL.t', A-L.dot(D.dot(L.T)))
-
-# Modified Cholesky perturbations.
-k = 0
-while k < n:
-    print('k=',k)
-    one_by_one = False
-    if k == n-1:
-        one_by_one = True
-    elif D[k,k+1] == 0:
-        one_by_one = True
-        
-    if one_by_one:
-        #            
-        # 1-by-1 block
-        #
-        print('1x1 block')
-        if D[k,k] <= delta:
-            DMC[k,k] = delta
-        else:
-            DMC[k,k] = D[k,k]
-     
-        k += 1
-  
-    else:  
-        print('2x2 block')
-        #            
-        # 2-by-2 block
-        #
-        E = D[k:k+2,k:k+2]
-        T,U = linalg.eigh(E)
-        T = np.diag(T)
-        for ii in range(2):
-            if T[ii,ii] <= delta:
-                T[ii,ii] = delta
-        
-        temp = np.dot(U,np.dot(T,U.T))
-        print(temp)
-        DMC[k:k+2,k:k+2] = (temp + temp.T)/2  # Ensure symmetric.
-        k += 2
-        
-P = np.eye(n) 
-P = P[p,:]
+def test_matrix(n, sparse=False):
+    """
+    Returns symmetric matrices on which to test algorithms
     
-print('DMC',DMC)
-print('PAP.t', P.dot(A.dot(P.T)))
-print('LDL.t-A', L.dot(D.dot(L.T))-A)
-print('LD0L.t', L.dot(DMC.dot(L.T)))
+    Inputs:
+    
+        n: int, matrix size
+        
+        sparse: bool (False), sparsity
+        
+        rank: str/int, if 'full', then rank=n, otherwise rank=r in {1,2,...,n}.
+        
+    Output:
+    
+        A: double, symmetric positive definite matrix with specified rank
+            (hopefully) and sparsity.
+    """    
+    if sparse:
+        #
+        # Sparse matrix 
+        # 
+        A = make_sparse_spd_matrix(dim=n, alpha=0.95, norm_diag=False,
+                           smallest_coef=.1, largest_coef=.9);
+        A = sp.csc_matrix(A)
+    else:
+        #
+        # Full matrix
+        #
+        X = np.random.rand(n, n)
+        X = X + X.T
+        U, s, V = linalg.svd(np.dot(X.T, X))
+        A = np.dot(np.dot(U, 0.5 + np.diag(np.random.rand(n))), V)
+         
+    return A
 
+n = 100
+A = test_matrix(n,True)
+s = linalg.eigvalsh(A.toarray())
+F = cholesky(A)
 
-# Test Cholmod
-A = sp.diags(np.random.rand(5)-0.5)
-f = cholesky(A.tocsc(),mode='supernodal')
-print(A.toarray())
-L, D = f.L_D()
-print(L.toarray())
-print(D)
+L = F.L()
+P = F.P()
 
-U,S,VT = np.linalg.svd(A.toarray())
-print(S)
-print(U)
-print(VT)
-"""
-Debug conditioning
-"""
-"""
+AA = L.dot(L.T)
+A = A.toarray()
+AAA = A[P[:, np.newaxis], P[np.newaxis, :]] 
+#print(AA.toarray())
 
-scipy_version()
-V = np.array([[0.5, 1/np.sqrt(2), 0, 0.5], 
-              [0.5, 0, -1/np.sqrt(2), -0.5],
-              [0.5, -1/np.sqrt(2), 0, 0.5], 
-              [0.5, 0, 1/np.sqrt(2), -0.5]])
+print(np.allclose(AA.toarray(),AAA))
 
-s = np.array([4,3,2,0])
-S = V.dot(np.dot(np.diag(s),V.T))
-
-# Generate a sample of x
-Z = np.random.normal(size=(4,1))
-X = V.dot(np.dot(np.diag(np.sqrt(s)),Z))
-
-
-
-Vk = V[:,:3]
-Pi = np.dot(Vk, Vk.T)
-
-A = np.eye(4,4)[0,None]
-"""
