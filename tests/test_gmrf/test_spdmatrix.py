@@ -215,9 +215,13 @@ class TestSPDMatrix(unittest.TestCase):
                         self.assertTrue(np.allclose(L.dot(D.dot(L.T)),A))
                         
                         # Degenerate matrix: Diagonal matrices differ
-                        if rank == n-2:
+                        if rank < n:
                             self.assertFalse(np.allclose(D,D0))
-                            
+
+                        # Check that P*L is lower triangular with ones on diagonal
+                        self.assertTrue(np.allclose(1, np.diagonal(L[P,:])))
+                        self.assertTrue(np.allclose(0, linalg.triu(L[P,:],1)))
+                        
                     elif K.chol_type()=='sparse_cholesky':
                         # Get Cholesky factor
                         L = K.get_chol_decomp()
@@ -228,9 +232,9 @@ class TestSPDMatrix(unittest.TestCase):
                         self.assertTrue(np.allclose(LL.dot(LL.T).toarray(),A.toarray()))
                 
                 
-    def test_chol_L(self):
+    def test_chol_sqrt(self):
         """
-        Return L or L*b, where K = LL'
+        Return R*b, where K = R*R'
         """
         n = 20
         b = np.random.rand(n)
@@ -249,12 +253,36 @@ class TestSPDMatrix(unittest.TestCase):
                 
                 # Compute the Cholesky decomposition
                 K.chol_decomp()
+                
+                # Check rank
+                if rank == n-3:
+                    if sparsity:
+                        B = A.toarray()
+                    else:
+                        B = A
+                    self.assertTrue(np.allclose(np.linalg.matrix_rank(B),n-3))
 
-                # Compute
+                # Compute R*b
                 if K.chol_type()=='full':
                     
                     #fig, axs = plt.subplots(2,2)
                     L, D, P, D0 = K.get_chol_decomp()
+                    
+                    B = L.dot(D.dot(L.T))
+                    
+                    # Identity matrix
+                    I = np.eye(n)
+                    
+                    # Compute R*I
+                    z = K.chol_sqrt(I)
+                    
+                    # Check that R*R' = B
+                    self.assertTrue(np.allclose(z.dot(z.T),B))
+                    
+                    # Compute R'*b 
+                    b = np.random.rand(n)
+                    z = K.chol_sqrt(b,transpose=True)
+                    
                     """
                     
                     axs[0,0].imshow(P.dot(L))
@@ -272,7 +300,6 @@ class TestSPDMatrix(unittest.TestCase):
                     plt.show()
                     """
                     
-                    self.assertTrue(np.allclose(np.diagonal(P.dot(L)),1))
                     """
                     fig, axs = plt.subplots(2,2)
                     im1 = axs[0,0].imshow(A-L.dot(D0.dot(L.T)))
@@ -288,14 +315,14 @@ class TestSPDMatrix(unittest.TestCase):
                     #plt.show()
                 elif K.chol_type()=='sparse':
                     # Return the lower triangular matrix L so that PAP' = LL'
-                    L = K.chol_L()
+                    #L = K.chol_L()
                     
                     # Check that LL' = PAP'
                     
                     
                     # Evaluate L*b, where PAP' = LL'
                     b = np.random.rand(n)
-                    Lb = K.chol_L(b)
+                    Lb = K.chol_sqrt(b)
                     
                     # Check that b'(PA'P')b = (Lb)'(Lb)
                 

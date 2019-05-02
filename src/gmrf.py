@@ -103,10 +103,10 @@ def modchol_ldlt(A,delta=None):
             DMC[k:k+2,k:k+2] = (temp + temp.T)/2  # Ensure symmetric.
             k += 2
 
-    P = np.eye(n) 
-    P = P[p,:]
+    #P = np.eye(n) 
+    #P = P[p,:]
     
-    return L, DMC, P, D
+    return L, DMC, p, D
     
     
 def diagonal_inverse(d, eps=None):
@@ -558,9 +558,9 @@ class SPDMatrix(object):
         
         
     
-    def chol_solve(self, b=None):
+    def chol_solve(self, b):
         """
-        Solve the system M^{-1}K x = b  by successively solving 
+        Solve the system C*x = b  by successively solving 
         Ly = b for y and hence L^T x = y for x.
         
         
@@ -569,38 +569,37 @@ class SPDMatrix(object):
             b: double, (n,m) array
         """
         if self.chol_type() == 'sparse':
+            #
+            # Use CHOLMOD
+            #
             return self.__L(b)
         else:
-            y = np.linalg.solve(self.__f_prec, b)
-            return np.linalg.solve(self.__f_prec.transpose(),y)
+            #
+            # Use Modified Cholesky
+            # 
+            L, D, p, dummy = self.get_chol_decomp()
+            y = linalg.solve_triangular(L[p,:],b,lower=True, unit_diagonal=True)
+            Dinv = sp.diags(1./np.diagonal(D))
+            z = Dinv.dot(y)
+            x = linalg.solve_triangular(L[p,:].T,z,lower=False,unit_diagonal=True)
+            return x
         
         
     
-    def chol_L(self, b=None):
+    def chol_sqrt(self, b, transpose=False):
         """
-        Return lower triangular Cholesky factor L or compute L*b
+        Returns R*b, where A = R*R'
         
             Inputs: 
             
-                b: double, compatible vector
+                b: double, compatible vector/matrix
                 
-                mode: string, Specify the matrix for which to return the 
-                    Cholesky factor: 'precision' (default) or 'covariance'
-                    
                     
             Output:
             
-                L: double, (sparse) lower triangular left Cholesky 
-                    factor (if no b is specified) 
-                    
-                    or 
-                
-                y = Lprec*b / y = Lcov*b: double, vector.
+                y: double, array R*b
                 
         """
-        #
-        # Precision Matrix
-        # 
         assert self.__L is not None, \
             'Cholesky factor not computed.'
         if self.chol_type()=='sparse':
@@ -609,22 +608,36 @@ class SPDMatrix(object):
             #  
             P = self.__L.P()
             L = self.__L.L()[P,:][:,P]
+            if transpose:
+                #
+                # R'*b
+                # 
+                return L.T.dot(b)
+            else:
+                #
+                # R*b
+                # 
+                return L.dot(b)
+        
         elif self.chol_type()=='full':
             #
             # Cholesky Factor stored as full matrix
             # 
-            L = self.__L
+            L,D = self.__L, self.__D
+            sqrtD = sp.diags(np.sqrt(np.diagonal(D)))
+            if transpose:
+                #
+                # R'b
+                # 
+                return sqrtD.dot(L.T.dot(b))
+            else:
+                #
+                # Rb
+                # 
+                return L.dot(sqrtD.dot(b))
         
-        #
-        # Parse b   
-        # 
-        if b is None:
-            return L 
-        else: 
-            return L.dot(b)     
 
-    
-    def chol_Lsolve(self, b):
+    def chol_sqrt_solve(self, b, transpose=False):
         """
         Return the solution x of Lx = b, where Q = LL' (or S=LL')
         
@@ -646,7 +659,7 @@ class SPDMatrix(object):
             return np.linalg.solve(self.__L,b)
         
         
-    def chol_Ltsolve(self, b):
+    def chol_sqrtt_solve(self, b):
         """
         Return the solution x, of L'x = b, where Q = LL' (or S=LL')
         
@@ -692,7 +705,6 @@ class SPDMatrix(object):
         
             b: double, (n,m) array
         """
-        
         V = self.__V  # eigenvectors
         d = self.__d  # eigenvalues
         D_inv = diagonal_inverse(d)
