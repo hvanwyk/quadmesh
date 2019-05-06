@@ -1239,139 +1239,35 @@ class Precision(SPDMatrix):
         """
         Constructor
         """
-        self.__Q = Q
-
-        self.__chol = cholesky(Q)
-        
-        
-    def matrix(self):
-        """
-        Returns precision matrix
-        """
-        return self.__Q
-
-    
-    
-    def L(self, b=None):
-        """
-        Return lower triangular Cholesky factor L or compute L*b
-        
-            Inputs: 
-            
-                b: double, compatible vector
-                    
-                    
-            Output:
-            
-                L: double, (sparse) lower triangular left Cholesky 
-                    factor (if no b is specified) 
-                    
-                    or 
-                
-                y = L*b: double, vector.
-                
-        """
-        #
-        # Precision Matrix
-        # 
-        assert self.__f_prec is not None, \
-            'Precision matrix not specified.'
-        if sp.isspmatrix(self.__Q):
-            #
-            # Sparse matrix, use CHOLMOD
-            #  
-            P = self.matrix().P()
-            L = self.matrix().L()[P,:][:,P]
-        else:
-            #
-            # Cholesky Factor stored as full matrix
-            # 
-            L = self.__f_prec
-
-        #
-        # Parse b   
-        # 
-        if b is None:
-            return L 
-        else: 
-            return L.dot(b) 
-    
-    
-    
-    def solve(self, b):
-        """
-        Return the solution x of Qx = b by successively solving 
-        Ly = b for y and hence L^T x = y for x.
-        
-        """
-        if sp.isspmatrix(self.matrix()):
-            return self.__f_prec(b)
-        else:
-            y = np.linalg.solve(self.__f_prec, b)
-            return np.linalg.solve(self.__f_prec.transpose(),y)
-    
-    
-    
-    def L_solve(self, b, mode='precision'):
-        """
-        Return the solution x of Lx = b, where Q = LL' (or S=LL')
-        
-        Note: The 'L' CHOLMOD's solve_L is the one appearing in the 
-            factorization LDL' = PQP'. We first rewrite it as 
-            Q = WW', where W = P'*L*sqrt(D)*P
-        """
-        assert self.mode_supported(mode),\
-            'Mode "'+ mode + '" not supported for this random field.'
-        if mode == 'precision':
-            if sp.isspmatrix(self.__Q):
-                # Sparse
-                f = self.__f_prec
-                sqrtDinv = sp.diags(1/np.sqrt(f.D()))
-                return f.apply_Pt(sqrtDinv*f.solve_L(f.apply_P(b))) 
-            else: 
-                # Full
-                return np.linalg.solve(self.__f_prec,b)
-        elif mode == 'covariance':
-            if sp.isspmatrix(self.__Sigma):
-                # Sparse
-                f = self.__f_cov
-                sqrtDinv = sp.diags(1/np.sqrt(f.D()))
-                return f.apply_Pt(sqrtDinv*f.solve_L(f.apply_P(b)))
-            else:
-                # Full
-                return np.linalg.solve(self.__f_cov,b)
-            
-    
-    def Lt_solve(self, b):
-        """
-        Return the solution x, of L'x = b, where Q = LL'
-        
-        Note: The 'L' CHOLMOD's solve_L is the one appearing in the 
-            factorization LDL' = PQP'. We first rewrite it as 
-            Q = WW', where W' = P'*sqrt(D)*L'*P.
-        """
-         
-        if sp.isspmatrix(self.matrix()):
-            # Sparse
-            f = self.__f_prec
-            sqrtDinv = sp.diags(1/np.sqrt(f.D()))
-            return f.apply_Pt(f.solve_Lt(sqrtDinv*(f.apply_P(b))))
-        else:
-            # Full
-            return np.linalg.solve(self.__f_prec.transpose(),b)
-        
+        SPDMatrix.__init__(self, Q)
 
 
 class MaternPrecision(Precision):
     """
     Precision matrix related to the Matern precision.
     """
-    def __init__(self):
+    def __init__(self, dofhandler, alpha=1, tau=None):
         """
-        Constructor
+        Construct the precision matrix for the Matern random field defined on the 
+        spatial mesh. The field X satisfies
+        
+            (k^2 u - div[T(x)grad(u)])^{a/2} X = W
+        
+        Inputs: 
+        
+            dofhandler: DofHandler, 
+            
+            alpha: int, positive integer (doubles not yet implemented).
+            
+            kappa: double, positive regularization parameter.
+            
+            tau: (Axx,Axy,Ayy) symmetric tensor or diffusion coefficient function.
+            
+            boundary_conditions: tuple of boundary locator function and boundary value
+                function (viz. fem.Assembler)
+            
         """
         pass
-    
     
     
 # =============================================================================
@@ -1493,135 +1389,69 @@ class Gmrf(object):
         return Q
  
  
-    def __init__(self, mean=None, precision=None, covariance=None):
+    def __init__(self, dofhandler, subforest_flag=None, 
+                 mean=None, precision=None, covariance=None):
         """
         Constructor
         
         Inputs:
         
-            mesh: Mesh, Computational mesh
+            dofhandler: DofHandler, encoding mesh and element information
+            
+            subforest_flag: int/str/tuple, submesh indicator
         
-            mu: Function, random field expectation (default=0)
+            mean: Function, random field expectation (default=0)
             
-            precision: double, (n,n) sparse/full precision matrix
+            precision: SPDEMatrix, (n,n) sparse/full precision matrix
                     
-            covariance: double, (n,n) sparse/full covariance matrix
-                    
-            element: QuadFE, finite element
-                
-            
-        Attributes:
-        
-            __Q: double, precision matrix
-            
-            __Sigma: double, covariance matrix
-            
-            __mu: double, expected value
-            
-            __b: double, Q\mu (useful for sampling)
-            
-            __f_prec: double, lower triangular left cholesky factor of precision
-                If Q is sparse, then use CHOLMOD.
-                
-            __f_cov: double, lower triangular left cholesky factor of covariance
-                If Sigma is sparse, we use CHOLMOD.
-                
-            __dim: int, effective dimension
-            
-                
-            mesh: Mesh, Quadtree mesh
-            
-            element: QuadFE, finite element    
-            
-            discretization: str, 'finite_elements', or 'finite_differences' 
-            
+            covariance: SPDEMatrix, (n,n) sparse/full covariance matrix
+
         """   
-        n = None
-        #
-        # Need at least one
-        #
-        if covariance is not None:
-            assert isinstance(covariance, Covariance), 'Input "covariance" '+\
-                'must be a "Covariance" object.'
-                
-            self.__covariance = covariance
+        # ====================================================================
+        # Parse Finite Element Information
+        # ====================================================================
+        self.__dofhandler = dofhandler
+        self.__subforest_flag = subforest_flag
         
-        if precision is None and covariance is None:
-            raise Exception('Specify precision or covariance (or both).')  
-        #
-        # Precision matrix
-        # 
+        # Distribute dofs
+        self.dofhandler().distribute_dofs(subforest_flag=self.subforest_flag())
+            
+        # =====================================================================
+        # Parse Precision and Covariance
+        # =====================================================================
+        # Check that at least one is not None
+        assert precision is not None or covariance is not None, \
+            'Specify precision or covariance (or both).'  
         
-        Q = None
-        if precision is not None:    
-            if sp.isspmatrix(precision):
-                #
-                # Precision is sparse matrix
-                # 
-                n = precision.shape[0]
-                Q = precision
-                self.__f_prec = cholesky(Q.tocsc())
-                #
-                # Precision is cholesky factor
-                # 
-            elif type(precision) is Factor:
-                n = len(precision.P())
-                Q = (precision.L()*precision.L().transpose())
-                self.__f_prec = precision
-            else:
-                #
-                # Precision is full matrix
-                #
-                n = precision.shape[0]
-                Q = precision 
-                self.__f_prec = np.linalg.cholesky(precision)
-        self.__Q = Q
         #
-        # Covariance matrix
-        # 
-        self.__Sigma = covariance
-        if covariance is not None:
-            n = covariance.shape[0]
-            if sp.isspmatrix(covariance):
-                try:
-                    self.__f_cov = cholesky(covariance.tocsc())
-                except np.linalg.linalg.LinAlgError:
-                    print('It seems a linalg error occured') 
-            else:
-                # Most likely
-                try:
-                    self.__f_cov = np.linalg.cholesky(covariance)
-                except np.linalg.linalg.LinAlgError as ex:
-                    if ex.__str__() == 'Matrix is not positive definite':
-                        #
-                        # Rank deficient covariance
-                        # 
-                        # TODO: Pivoted Cholesky
-                        self.__f_cov = None
-                        self.__svd = np.linalg.svd(covariance)  
-                    else:
-                        raise Exception('I give up.')
+        # Store covariance
         #
-        # Check compatibility
-        # 
-        if covariance is not None and precision is not None:
-            n_cov = covariance.shape[0]
-            n_prc = precision.shape[0]
-            assert n_prc == n_cov, \
-                'Incompatibly shaped precision and covariance.'
-            isI = precision.dot(covariance)
-            if sp.isspmatrix(isI):
-                isI = isI.toarray()
-                assert np.allclose(isI, np.eye(n_prc),rtol=1e-10),\
-               'Covariance and precision are not inverses.' 
+        self.__covariance = covariance
+        
+        # Check covariance type
+        if self.covariance() is not None:
+            assert isinstance(covariance, SPDMatrix), 'Input "covariance" '+\
+                'must be an SPDMatrix object.'
+            assert self.covariance().size() == self.dofhandler().n_dofs()
         #
+        # Store precision
+        #
+        self.__precision = precision
+        if precision is not None:
+            assert isinstance(precision, SPDMatrix), 'Input "precision" '+\
+                'must be an SPDMatrix object.'   
+            assert self.precision().size() == self.dofhandler().n_dofs()
+        
+        # ===============================================================================
         # Mean
-        # 
+        # ===============================================================================
+        """
         if mean is not None:
             assert len(mean) == n, 'Mean incompatible with precision/covariance.'
         else: 
             mu = np.zeros(n)
         self.__mu = mu
+        
         # 
         # b = Q\mu
         # 
@@ -1635,7 +1465,7 @@ class Gmrf(object):
         # Store size of matrix
         # 
         self.__n = n    
-        
+        """
         
     @classmethod
     def from_covariance_kernel(cls, cov_name, cov_par, mesh, \
@@ -1768,18 +1598,18 @@ class Gmrf(object):
     
     
     
-    def Q(self):
+    def precision(self):
         """
         Return the precision matrix
         """
-        return self.__Q
+        return self.__precision
     
     
-    def Sigma(self):
+    def covariance(self):
         """
         Return the covariance matrix
         """
-        return self.__Sigma
+        return self.__covariance
         
     
     def L(self, b=None, mode='precision'):
