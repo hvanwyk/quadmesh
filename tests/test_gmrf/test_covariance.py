@@ -17,50 +17,11 @@ import unittest
 
 class TestCovariance(unittest.TestCase):
     """
-    Test class for covariance assembly
-    """
-    def test_modchol_ldlt(self):
-        A = np.array([[1, 1, 0, 1],
-                      [1, 1, 1, 0],
-                      [0, 1, 1, 1],
-                      [1, 0, 1, 1]])
-        
-        # A = randn(4); A = A + A';  % Or try random symemtrix A.
-        
-        A_eigs,dummy = linalg.eigh(A) # Check definitness of A.
-        print('Eigenvalues of A', A_eigs)
-        
-        L, D, P, D0 = modchol_ldlt(A) 
-        print('L',L)
-        print('D',D)
-        print('P',P)
-        print('D0',D0)
-        
-        print('L*D0*L.t', L.dot(D0.dot(L.T)))
-        print(P.dot(A.dot(P.T)) - L.dot(D0.dot(L.T)))
-        residual = linalg.norm(P.dot(A.dot(P.T)) - L.dot(D0.dot(L.T)),1)/linalg.norm(A,1) # Should be order rho*eps.
-        
-        print('Residual', residual)
-        A_pert = P.T.dot(L.dot(D.dot(L.T.dot(P))))     # Modified matrix: symmetric pos def.
-        A_pert_eigs, dummy = linalg.eigh(A_pert)  # Should all be >= sqrt(eps)*norm(A,'fro').
-        print('perturbed eigenvalues', A_pert_eigs)
-        
-        #L1, D1, P1, D01, rho = modchol_ldlt_m(A);
-        #rel_diffs = [
-        #norm(L-L1,1)/norm(L,1)
-        #norm(D-D1,1)/norm(D,1)
-        #norm(P-P1,1)/norm(P,1)
-        #norm(D0-D01,1)/norm(D0,1)];
-        
-        #fprintf('Max relative difference between matrices computed by\n')
-        #fprintf('modchol_ldlt and modchol_ldlt_m is %g\n', max(rel_diffs))
-        
-        A = np.array([[1,2,1],[2,0,1],[1,1,1]])
-        L,P,D,D0 = modchol_ldlt(A) 
-        #print(L,P,D,D0)
-        
+    Test class for covariance
+    """        
     def test_constructor(self):
         pass
+    
     
     
     def test_assembly(self):
@@ -78,7 +39,7 @@ class TestCovariance(unittest.TestCase):
             
             K = covariance.assembler().af[0]['bilinear'].get_matrix().toarray()
             
-            covariance.compute_svd()
+            covariance.eig_decomp()
          
             U = Nodal(data=covariance.sample(n_samples=1), dofhandler=dofhandler, dim=dim)
             plot = Plot()

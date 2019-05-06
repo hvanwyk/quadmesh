@@ -197,8 +197,6 @@ def test_ft():
 
 if __name__ == '__main__':
     test_ft()
-    print(scipy.__version__)
-    linalg.ldl(np.zeros((2,2)))
     
 
 

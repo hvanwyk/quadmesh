@@ -3,6 +3,8 @@ Created on Feb 8, 2017
 
 @author: hans-werner
 '''
+
+# Internal
 from assembler import Assembler
 from assembler import Kernel
 from assembler import IIForm
@@ -22,14 +24,21 @@ from function import Constant
 from mesh import Mesh1D
 from mesh import QuadMesh
 
-
+# Builtins 
 from numbers import Number, Real
 import numpy as np
 from scipy import linalg
 from scipy.special import kv, gamma
 import scipy.sparse as sp
 from scipy.sparse import linalg as spla
-from sksparse.cholmod import cholesky, cholesky_AAt, Factor, CholmodNotPositiveDefiniteError  # @UnresolvedImport
+
+
+# Cholesky decomposition
+from sksparse.cholmod import cholesky
+from sksparse.cholmod import cholesky_AAt 
+from sksparse.cholmod import Factor
+from sksparse.cholmod import  CholmodNotPositiveDefiniteError
+
 
 def modchol_ldlt(A,delta=None):
     """
@@ -843,7 +852,7 @@ class Covariance(SPDMatrix):
     """
     Covariance operator
     """
-    def __init__(self, cov_kernel, dofhandler, 
+    def __init__(self, cov_kernel, dofhandler, mass_lumping=False,
                  subforest_flag=None, method='interpolation'):
         """
         Constructor
@@ -888,7 +897,10 @@ class Covariance(SPDMatrix):
             C = assembler.af[1]['bilinear'].get_matrix().tocsc()
             M = assembler.af[0]['bilinear'].get_matrix().tocsc()
             
-            K = spla.spsolve(M,C).toarray() 
+            if mass_lumping:
+                print('Not implemented.')
+            else:
+                K = spla.spsolve(M,C).toarray() 
         else:
             raise Exception('Only "interpolation", "projection",'+\
                             ' or "nystroem" supported for input "method"')
@@ -901,17 +913,8 @@ class Covariance(SPDMatrix):
         # 
         # Initialize decompositions
         #
+        SPDMatrix.__init__(self, K)
         
-        # SVD 
-        self.__svd_S = None  # singular values
-        self.__svd_U = None  # singular vectors
-        
-        # Cholesky
-        self.__schol_L = None  # sparse cholesky factor
-        self.__chol_L  = None  # full cholesky factor 
-        self.__chol_mD = None  # full modified block diagonal matrix >0
-        self.__chol_P  = None  # full permutation matrix
-        self.__chol_D  = None  # full unmodified block diagonal matrix >=0
         
         
     def assembler(self):
@@ -926,27 +929,7 @@ class Covariance(SPDMatrix):
         Returns the dimension of the underlying domain
         """
         return self.dofhandler.mesh.dim()
-    
-    
-    def size(self):
-        """
-        Returns the size of the covariance matrix
-        """
-        return self.cov().shape[0]
-    
-    
-    def rank(self):
-        """
-        Returns the rank of the covariance matrix
-        """
-        s = self.__svd_S
-        if s is not None: 
-            eps = np.finfo(float).eps
-            rank = np.sum(s>np.sqrt(eps))
-            return rank
-        
-        
-    
+     
         
     def kernel(self):
         """
@@ -985,13 +968,13 @@ class Covariance(SPDMatrix):
         else:
             Z = self.iid_gauss(n_samples=n_samples)
         
-        S, V = self.eigenvalues(), self.eigenvectors()
-        U = V.dot( np.diag(np.sqrt(S)).dot(Z))
+        d, V = self.get_eig_decomp()
+        U = V.dot(np.diag(np.sqrt(d)).dot(Z))
         
         return U    
     
     
-    def condition(self, A, Ko=0):
+    def condition(self, A, Ko=0, output='sample', Z=None, n_samples=1):
         """
         Computes the conditional covariance of X, given E ~ N(AX, Ko). 
         
@@ -1000,8 +983,22 @@ class Covariance(SPDMatrix):
             A: double, (k,n) 
             
             Ko: double symm, covariance matrix of E.
+            
+            output: str, type of output desired [sample/covariance]
+            
+            Z: double, array whose columns are iid N(0,1) random vectors 
+                (ignored if output='covariance'
+            
+            n_samples: int, number of samples (ignored if Z is not None)
         """
-        pass
+        if output=='sample':
+            #
+            # Sample Z ~ N(0,1)
+            # 
+            if Z is None:
+                Z = self.iid_gauss(n_samples=n_samples)
+            
+            
          
 '''   
 class Covariance(object):
@@ -1234,12 +1231,10 @@ class Covariance(object):
 '''
   
     
-class Precision(object):
+class Precision(SPDMatrix):
     """
     Precision Matrix for 
     """
-    pass
-    
     def __init__(self, Q):
         """
         Constructor
