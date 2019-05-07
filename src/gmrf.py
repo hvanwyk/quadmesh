@@ -300,18 +300,18 @@ def linear(x,y,sgm=1, M=None):
         raise Exception('Only 1D and 2D supported.')
 
 
-def gaussian(x, y, sgm=1, l=1, M=None, periodic=False):
+def gaussian(x, y, sgm=1, l=1, M=None, periodic=False, box=None):
     """
     Squared exponential covariance function
     
         C(x,y) = exp(-|x-y|^2/(2l^2))
     
     """
-    d = distance(x, y, M, periodic=periodic)
+    d = distance(x, y, M, periodic=periodic, box=box)
     return sgm**2*np.exp(-d**2/(2*l**2))
 
 
-def exponential(x, y, sgm=1, l=0.1, M=None, periodic=False):
+def exponential(x, y, sgm=1, l=0.1, M=None, periodic=False, box=None):
     """
     Exponential covariance function
     
@@ -323,11 +323,11 @@ def exponential(x, y, sgm=1, l=0.1, M=None, periodic=False):
         
         l: range parameter
     """
-    d = distance(x, y, M, periodic=periodic)
+    d = distance(x, y, M, periodic=periodic, box=box)
     return sgm**2*np.exp(-d/l)
 
 
-def matern(x, y, sgm, nu, l, M=None, periodic=False):
+def matern(x, y, sgm, nu, l, M=None, periodic=False, box=None):
     """
     Matern covariance function
     
@@ -343,7 +343,7 @@ def matern(x, y, sgm, nu, l, M=None, periodic=False):
         
     Source: 
     """
-    d = distance(x, y, M, periodic=periodic)
+    d = distance(x, y, M, periodic=periodic, box=box)
     K = sgm**2*2**(1-nu)/gamma(nu)*(np.sqrt(2*nu)*d/l)**nu*\
         kv(nu,np.sqrt(2*nu)*d/l)
     #
@@ -353,21 +353,21 @@ def matern(x, y, sgm, nu, l, M=None, periodic=False):
     return K
     
     
-def rational(x, y, a, M=None, periodic=False):
+def rational(x, y, a, M=None, periodic=False, box=None):
     """
     Rational covariance
     
         C(x,y) = 1/(1 + |x-y|^2)^a
          
     """
-    d = distance(x, y, M, periodic=periodic)
+    d = distance(x, y, M, periodic=periodic, box=box)
     return (1/(1+d**2))**a   
 
 
 
            
     
-class CovKernel(Kernel):
+class CovarianceKernel(Kernel):
     """
     Integral kernel
     """
@@ -483,7 +483,7 @@ class SPDMatrix(object):
         return self.__K
     
 
-    def chol_decomp(self, beta=0):
+    def chol_decomp(self):
         """
         Compute the cholesky factorization C = LL', where C=M^{-1}K.
         
@@ -563,13 +563,34 @@ class SPDMatrix(object):
         return self.__chol_type
 
 
+    def has_chol_decomp(self):
+        """
+        Returns True is the Cholesky decomposition has been computed.
+        """
+        if self.__L is None:
+            return False
+        else:
+            return True
+        
+    
     def get_chol_decomp(self):
         """
         Returns the Cholesky decomposition of the matrix M^{-1}K
         """
-        if self.chol_type()=='sparse':
+        if self.__L is None:
+            #
+            # Return None if Cholesky decomposition not computed
+            # 
+            return None 
+        elif self.chol_type()=='sparse':
+            #
+            # Return sparse cholesky decomposition
+            #            
             return self.__L
         elif self.chol_type()=='full':
+            #
+            # Return the modified Cholesky decomposition
+            # 
             return self.__L, self.__D, self.__P, self.__D0 
         
     
@@ -738,7 +759,7 @@ class SPDMatrix(object):
                 return sqrtDinv.dot(y)
                 
     
-    def eig_decomp(self):
+    def eig_decomp(self, delta=None):
         """
         Compute the singular value decomposition USV' of M^{-1}K
         """ 
@@ -749,9 +770,14 @@ class SPDMatrix(object):
         # Compute eigendecomposition
         d, V = linalg.eigh(K)
         
+        # Rearrange to ensure decreasing order
+        d = d[::-1]
+        V = V[:,::-1]
+        
         # Modify negative eigenvalues
-        eps = np.finfo(float).eps
-        delta = np.sqrt(eps)*linalg.norm(K, 'fro')
+        if delta is None:
+            eps = np.finfo(float).eps
+            delta = np.sqrt(eps)*linalg.norm(K, 'fro')
         d[d<=delta] = delta
         
         # Store eigendecomposition
@@ -766,6 +792,16 @@ class SPDMatrix(object):
         d, V = self.get_eig_decomp()
         return V.dot(np.diag(d).dot(V.T))
     
+    
+    def has_eig_decomp(self):
+        """
+        Returns True if the eigendecomposition of the matrix has been computed
+        """
+        if self.__d is None:
+            return False
+        else:
+            return True
+        
     
     def get_eig_decomp(self):
         """
@@ -936,14 +972,7 @@ class Covariance(SPDMatrix):
         Returns the covariance kernel
         """
         return self.__kernel     
-        
-        
-    def cov(self):
-        """
-        Return the covariance matrix
-        """
-        return self.__K
-           
+              
     
     def discretization_type(self):
         """
@@ -1029,7 +1058,7 @@ class Covariance(object):
 
         """
         
-        self.__kernel = CovKernel(name, parameters)
+        self.__kernel = CovarianceKernel(name, parameters)
         assert isinstance(element, Element), \
         'Input "element" must be of type Element.'
             
@@ -1241,7 +1270,7 @@ class Precision(SPDMatrix):
         """
         SPDMatrix.__init__(self, Q)
 
-
+'''
 class MaternPrecision(Precision):
     """
     Precision matrix related to the Matern precision.
@@ -1253,7 +1282,7 @@ class MaternPrecision(Precision):
         
             (k^2 u - div[T(x)grad(u)])^{a/2} X = W
         
-        Inputs: https://www.dailymaverick.co.za/cartoon/sinking-in/
+        Inputs: 
         
             dofhandler: DofHandler, 
             
@@ -1319,15 +1348,17 @@ class MaternPrecision(Precision):
             count += 2
         
         return Q
- 
+''' 
     
     
 # =============================================================================
 # Gaussian Markov Random Field Class
 # =============================================================================
-class Gmrf(object):
+class GMRF(object):
     """
     Gaussian Markov Random Field
+    
+    Remark: Let's make this class completely independent of the discretization style.  
     
     Inputs (or important information) may be: 
         covariance/precision
@@ -1356,36 +1387,8 @@ class Gmrf(object):
     TODO: In what format should the sparse matrices be stored? consistency 
     TODO: Check: For sparse matrix A, Ax is computed by A.dot(x), not np.dot(A,x) 
     
-    """
-    @staticmethod
-    def matern_precision(mesh, element, alpha, kappa, tau=None, 
-                         boundary_conditions=None):
-        """
-        Return the precision matrix for the Matern random field defined on the 
-        spatial mesh. The field X satisfies
-        
-            (k^2 - div[T(x)grad(.)])^{a/2} X = W
-        
-        Inputs: 
-        
-            mesh: Mesh, finite element mesh on which the field is defined
-            
-            element: QuadFE, finite element space of piecewise polynomials
-            
-            alpha: int, positive integer (doubles not yet implemented).
-            
-            kappa: double, positive regularization parameter.
-            
-            tau: (Axx,Axy,Ayy) symmetric tensor or diffusion coefficient function.
-            
-            boundary_conditions: tuple of boundary locator function and boundary value
-                function (viz. fem.Assembler)
-        """    
-            
-      
- 
-    def __init__(self, dofhandler, subforest_flag=None, 
-                 mean=None, precision=None, covariance=None):
+    """ 
+    def __init__(self, mean=0, precision=None, covariance=None):
         """
         Constructor
         
@@ -1395,22 +1398,13 @@ class Gmrf(object):
             
             subforest_flag: int/str/tuple, submesh indicator
         
-            mean: Function, random field expectation (default=0)
+            mean: Nodal, random field expectation (default=0)
             
             precision: SPDEMatrix, (n,n) sparse/full precision matrix
                     
             covariance: SPDEMatrix, (n,n) sparse/full covariance matrix
 
-        """   
-        # ====================================================================
-        # Parse Finite Element Information
-        # ====================================================================
-        self.__dofhandler = dofhandler
-        self.__subforest_flag = subforest_flag
-        
-        # Distribute dofs
-        self.dofhandler().distribute_dofs(subforest_flag=self.subforest_flag())
-            
+        """               
         # =====================================================================
         # Parse Precision and Covariance
         # =====================================================================
@@ -1427,7 +1421,7 @@ class Gmrf(object):
         if self.covariance() is not None:
             assert isinstance(covariance, SPDMatrix), 'Input "covariance" '+\
                 'must be an SPDMatrix object.'
-            assert self.covariance().size() == self.dofhandler().n_dofs()
+            self.__size = covariance.size()
         #
         # Store precision
         #
@@ -1435,25 +1429,28 @@ class Gmrf(object):
         if precision is not None:
             assert isinstance(precision, SPDMatrix), 'Input "precision" '+\
                 'must be an SPDMatrix object.'   
-            assert self.precision().size() == self.dofhandler().n_dofs()
+            if self.covariance() is not None:
+                assert self.precision().size() == self.size()
+            else:
+                self.__size = self.precision().size()
+        
         
         # =====================================================================
         # Mean
         # =====================================================================
-        n = self.dofhandler().n_dofs(subforest_flag=self.subforest_flag())
         if mean is not None:
             #
             # Mean specified
             # 
-            assert isinstance(mean, Nodal), \
-                'Input "mean" should be of type "Nodal".'
-            assert mean.data().shape[0] == n, \
+            assert isinstance(mean, np.ndarray), \
+                'Input "mean" should be a numpy array.'
+            assert mean.data().shape[0] == self.size(), \
                 'Mean incompatible with precision/covariance.'
         else: 
             #
             # Zero mean (default)
             # 
-            mean = Nodal(data=np.zeros(n), dofhandler=self.dofhandler())
+            mean = np.zeros(self.size()) 
         self.__mean = mean
         
         # 
@@ -1463,23 +1460,23 @@ class Gmrf(object):
             #
             # Precision is given
             # 
-            if not np.allclose(mean.data(), np.zeros(n), 1e-10):
+            if not np.allclose(mean.data(), np.zeros(self.size()), 1e-10):
                 #
                 # mean is not zero
                 b = self.precision.solve(self.mean())
                 #
             else:
-                b = np.zeros(n)
+                b = np.zeros(self.size())
         else:
             b = None
         self.__b = b
         
-        
+    '''    
     @classmethod
     def from_covariance_kernel(cls, cov_name, cov_par, mesh, \
                                mu=None, element=None):
         """
-        Initialize Gmrf from covariance function
+        Initialize GMRF from covariance function
         
         Inputs: 
         
@@ -1501,7 +1498,7 @@ class Gmrf(object):
         Note: In the case of finite element discretization, mass lumping is used. 
         """
         # Convert covariance name to function 
-        #cov_fn = globals()['Gmrf.'+cov_name+'_cov']
+        #cov_fn = globals()['GMRF.'+cov_name+'_cov']
         cov_fn = locals()[cov_name+'_cov']
         #
         # Discretize the covariance function
@@ -1575,11 +1572,12 @@ class Gmrf(object):
             
         return cls(mu=mu, covariance=Sigma, mesh=mesh, element=element, \
                    discretization=discretization)
-    
+    '''
+    '''
     @classmethod
     def from_matern_pde(cls, alpha, kappa, mesh, element=None, tau=None):
         """
-        Initialize finite element Gmrf from matern PDE
+        Initialize finite element GMRF from matern PDE
         
         Inputs: 
         
@@ -1619,6 +1617,7 @@ class Gmrf(object):
             
         return cls(mu=mu, covariance=Sigma, mesh=mesh, element=element, \
                    discretization=discretization)
+    '''
     
     def precision(self):
         """
@@ -1634,6 +1633,37 @@ class Gmrf(object):
         return self.__covariance
         
     
+    def mean(self,n_copies=None):
+        """
+        Return the mean of the random vector
+        
+        Inputs:
+        
+            n_copies: int, number of copies of the mean
+            
+        Output: 
+        
+            mu: (n,n_copies) mean
+        """
+        if n_copies is not None:
+            assert type(n_copies) is np.int, \
+                'Number of copies should be an integer.'
+            if n_copies == 1:
+                return self.__mean
+            else:
+                return np.tile(self.__mean, (n_copies,1)).transpose()
+        else:
+            return self.__mean
+        
+    
+    def size(self):
+        """
+        Return the size of the random vector 
+        """
+        return self.__size
+    
+    
+    '''    
     def L(self, b=None, mode='precision'):
         """
         Return lower triangular Cholesky factor L or compute L*b
@@ -1709,53 +1739,13 @@ class Gmrf(object):
             return L.dot(b) 
         
         
-    def mu(self,n_copies=None):
-        """
-        Return the mean of the random vector
-        
-        Inputs:
-        
-            n_copies: int, number of copies of the mean
-            
-        Output: 
-        
-            mu: (n,n_copies) mean
-        """
-        if n_copies is not None:
-            assert type(n_copies) is np.int, \
-                'Number of copies should be an integer.'
-            if n_copies == 1:
-                return self.__mu
-            else:
-                return np.tile(self.__mu, (n_copies,1)).transpose()
-        else:
-            return self.__mu
-        
-    
+    '''
     def b(self):
         """
         Return Q\mu
         """
         return self.__b
-    
-    
-    def n(self):
-        """
-        Return the dimension of the random vector 
-        """
-        return self.__n
-    
-    
-    def rank(self):
-        """
-        Return the rank of the covariance/precision matrix
-        
-        Note: If the matrix is degenerate, we must use the covariance's
-            or precision's eigendecomposition.
-        """
-        pass
-    
-    
+    '''
     def Q_solve(self, b):
         """
         Return the solution x of Qx = b by successively solving 
@@ -1768,9 +1758,9 @@ class Gmrf(object):
         else:
             y = np.linalg.solve(self.__f_prec, b)
             return np.linalg.solve(self.__f_prec.transpose(),y)
+    '''
     
-    
-    
+    '''
     def L_solve(self, b, mode='precision'):
         """
         Return the solution x of Lx = b, where Q = LL' (or S=LL')
@@ -1848,11 +1838,103 @@ class Gmrf(object):
         """
         mesh = self.mesh()
         
-    
-    
-    def sample(self, n_samples=None, z=None, mode='precision'):
+    '''
+    def chol_sample(self, n_samples=1, z=None, mode='precision'):
         """
         Generate sample realizations from Gaussian random field.
+        
+        Inputs:
+        
+            n_samples: int, number of samples to generate
+            
+            z: (n,n_samples) random vector ~N(0,I).
+            
+            mode: str, specify parameters used to simulate random field
+                ['precision', 'covariance', 'canonical']
+              
+        Outputs:
+        
+            x: (n,n_samples), samples paths of random field
+            
+                
+        Note: Samples generated from the cholesky decomposition of Q are 
+            different from those generated from that of Sigma. 
+                
+                Q = LL' (lower*upper)
+                  
+            =>  S = Q^(-1) = L'^(-1) L^(-1) (upper*lower)
+            
+            However, they have  the same distribution
+        """
+        #
+        # Parse samples
+        # 
+        if z is not None:
+            #
+            # Extract number of samples from z
+            #  
+            assert len(z.shape) == 2, \
+                'Input "z" should have size (n, n_samples).'
+            assert z.shape[0] == self.size(), \
+                'Input "z" should have size (n, n_samples).'
+            n_samples = z.shape[1]
+        else:
+            #
+            # Generate z
+            # 
+            z = np.random.normal(size=(self.size(), n_samples))
+            
+            
+        if mode=='covariance':
+            #
+            # Cholesky decomposition of the covariance operator
+            # 
+            assert self.covariance() is not None, 'No covariance specified.'
+            
+            # Get covariance
+            K = self.covariance()
+            
+            # Compute Cholesky factorization L*L' if necessary
+            if not K.has_chol_decomp():
+                K.chol_decomp()
+            
+            # Return Lz + mean
+            return K.chol_sqrt(z) + self.mean(n_copies=n_samples)
+            
+        elif mode=='precision':
+            #
+            # Cholesky decomposition of the precision matrix
+            # 
+            assert self.precision() is not None, 'No precision specified.'
+            
+            # Get precision matrix
+            Q = self.precision()
+            
+            # Compute Cholesky decomposition L*L' if necessary
+            if not Q.has_chol_decomp():
+                Q.chol_decomp()
+            
+            # Return L^{-T} z + mean
+            return Q.sqrt_solve(z,transpose=True) \
+                + self.mean(n_copies=n_samples)  
+                       
+        elif mode=='canonical':
+            #
+            # Cholesky decomposition of the precision matrix 
+            #
+            assert self.precision() is not None, 'No precision specified.'
+            return self.chol_sample(z=z, mode='precision')
+        else:
+            raise Exception('Input "mode" not recognized. '+\
+                            'Use "covariance", "precision", or "canonical".')
+        
+     
+    
+    
+    def eig_sample(self, n_samples=1, z=None, mode='covariance'):
+        """
+        Generate a random sample based on the eigendecomposition of the 
+        covariance/precision matrix
         
         Inputs:
         
@@ -1867,57 +1949,75 @@ class Gmrf(object):
         Outputs:
         
             x: (n,n_samples), samples paths of random field
-            
-                
-        Note: Samples generated from the cholesky decomposition of Q are 
-            different from those generated from that of Sigma. 
-                
-                Q = LL' (lower*upper)
-                  
-            =>  S = Q^(-1) = L'^(-1) L^(-1) (upper*lower) 
+    
+        
+        Note: The eigendecomposition can generate samples from degenerate
+            covariance/precision matrices.
         """
-        assert self.mode_supported(mode), \
-            'Mode "'+ mode + '" not supported for this random field.'
         #
-        # Preprocess z   
+        # Parse samples
         # 
-        if z is None:
-            assert n_samples is not None, \
-                'Specify either random array or sample size.'
-            z = np.random.normal(size=(self.n(), n_samples))
-            z_is_a_vector = False
-        else:
+        if z is not None:
             #
             # Extract number of samples from z
             #  
-            if len(z.shape) == 1:
-                nz = 1
-                z_is_a_vector = True
-            else:
-                nz = z.shape[1]
-                z_is_a_vector = False 
-            assert n_samples is None or n_samples == nz, \
-                'Sample size incompatible with given random array.'
-            n_samples = nz
-        #
-        # Generate centered realizations
-        # 
-        if mode in ['precision','canonical']:
-            v = self.Lt_solve(z, mode='precision')
-        elif mode == 'covariance':
-            if self.__f_cov is not None:
-                v = self.L(z, mode='covariance')
-            elif self.__svd is not None:
-                U,s,_ = self.__svd
-                v = U.dot(np.dot(np.sqrt(np.diag(s)), z))  
-        #
-        # Add mean
-        # 
-        if z_is_a_vector:
-            return v + self.mu()
+            assert len(z.shape) == 2, \
+                'Input "z" should have size (n, n_samples).'
+            assert z.shape[0] == self.size(), \
+                'Input "z" should have size (n, n_samples).'
+            n_samples = z.shape[1]
         else:
-            return v + self.mu(n_samples)
-                    
+            #
+            # Generate z
+            # 
+            z = np.random.normal(size=(self.size(), n_samples))
+            
+            
+        if mode=='covariance':
+            #
+            # Eigen-decomposition of the covariance operator
+            # 
+            assert self.covariance() is not None, 'No covariance specified.'
+            
+            # Get covariance
+            K = self.covariance()
+            
+            # Compute eigendecomposition if necessary
+            if not K.has_eig_decomp():
+                K.eig_decomp()
+            
+            # Return Lz + mean
+            return K.eig_sqrt(z) + self.mean(n_copies=n_samples)
+            
+        elif mode=='precision':
+            #
+            # Cholesky decomposition of the precision matrix
+            # 
+            assert self.precision() is not None, 'No precision specified.'
+            
+            # Get precision matrix
+            Q = self.precision()
+            
+            # Compute Cholesky decomposition L*L' if necessary
+            if not Q.has_chol_decomp():
+                Q.chol_decomp()
+            
+            # Return L^{-T} z + mean
+            return Q.sqrt_solve(z,transpose=True) \
+                + self.mean(n_copies=n_samples)  
+                       
+        elif mode=='canonical':
+            #
+            # Cholesky decomposition of the precision matrix 
+            #
+            assert self.precision() is not None, 'No precision specified.'
+            return self.chol_sample(z=z, mode='precision')
+        else:
+            raise Exception('Input "mode" not recognized. '+\
+                            'Use "covariance", "precision", or "canonical".')
+    
+        
+
     
     def condition(self, constraint=None, constraint_type='pointwise',
                   mode='precision', output='gmrf', n_samples=1, z=None):
@@ -1943,7 +2043,7 @@ class Gmrf(object):
             
         Output:
         
-            X: Gmrf, conditioned random field. 
+            X: GMRF, conditioned random field. 
             
         TODO: Unfinished
         """
@@ -1959,7 +2059,7 @@ class Gmrf(object):
             # 
             mu_agb = mu_a - spla.spsolve(Q_aa, Q_ab.dot(x_b-mu_b))
             if n_samples is None:
-                return Gmrf(mu=mu_agb, precision=Q_aa)
+                return GMRF(mu=mu_agb, precision=Q_aa)
             else: 
                 pass
             

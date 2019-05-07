@@ -6,7 +6,7 @@ Created on Mar 11, 2017
 
 import unittest
 
-from gmrf import Gmrf, distance
+from gmrf import GMRF, distance
 from mesh import QuadMesh, DCEL
 from fem import QuadFE, DofHandler
 from assembler import Assembler
@@ -79,8 +79,14 @@ class TestGmrf(unittest.TestCase):
         self.assertTrue(np.allclose(d_xMy_tau,\
                         np.array([np.sqrt(7)/4, np.sqrt(47)/8])),\
                         'Weighted toroidal distance incorrect')
-             
-        
+    
+    
+    def test_constructor(self):
+        """
+        GMRF
+        """
+        pass  
+    '''    
     def test_constructor(self):
         """
         TODO: This test doesn't test any values as yet. 
@@ -91,7 +97,7 @@ class TestGmrf(unittest.TestCase):
         Q = np.array([[6,-1,0,-1],[-1,6,-1,0],[0,-1,6,-1],[-1,0,-1,6]])
         S = np.linalg.inv(Q)
         mu = np.zeros(4)
-        X = Gmrf(mu=mu, precision=Q, covariance=S)
+        X = GMRF(mu=mu, precision=Q, covariance=S)
         
         #
         # From covariance kernel
@@ -116,8 +122,8 @@ class TestGmrf(unittest.TestCase):
             count = 1
             for cov_name in cov_names:
                 
-                S = Gmrf.covariance_matrix(cov_name, cov_pars[cov_name], mesh=mesh, M=M)                
-                X = Gmrf(mesh=mesh, covariance=S, discretization='finite_differences')
+                S = GMRF.covariance_matrix(cov_name, cov_pars[cov_name], mesh=mesh, M=M)                
+                X = GMRF(mesh=mesh, covariance=S, discretization='finite_differences')
                 
                 
                 Xi = X.sample(n_samples=1, mode='covariance')
@@ -130,14 +136,15 @@ class TestGmrf(unittest.TestCase):
                 #
                 # Finite Difference
                 # 
-                #X_fd = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh)
+                #X_fd = GMRF.from_covariance_kernel(cov_name, cov_par, mesh)
                 
                 #
                 # Finite Elements
                 # 
-                #X_fe = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh, \
+                #X_fe = GMRF.from_covariance_kernel(cov_name, cov_par, mesh, \
                 #                                   element=element)
             plt.show()
+            
     
     def test_covariance_matrix(self):
         """
@@ -158,7 +165,7 @@ class TestGmrf(unittest.TestCase):
         #X, Y = x[i,:], x[j,:]
         X,Y = x[i], x[j]
         
-        cov_fn = Gmrf.linear_cov
+        cov_fn = GMRF.linear_cov
         cov_par = {'sgm':1}
         S = cov_fn(X, Y, **cov_par, M=M)   
         
@@ -169,7 +176,7 @@ class TestGmrf(unittest.TestCase):
         # Full
         #
         Q = laplacian_precision(10, sparse=False)
-        X = Gmrf(precision=Q)
+        X = GMRF(precision=Q)
         self.assertTrue(np.allclose(X.Q(),Q,1e-9),\
                         'Precision matrix not returned')
         self.assertFalse(sp.isspmatrix(X.Q()),\
@@ -178,7 +185,7 @@ class TestGmrf(unittest.TestCase):
         # Sparse
         #
         Q = laplacian_precision(10)
-        X = Gmrf(precision=Q)
+        X = GMRF(precision=Q)
         self.assertTrue(np.allclose(X.Q().toarray(),Q.toarray(),1e-9),\
                         'Precision matrix not returned.')
         self.assertTrue(sp.isspmatrix(X.Q()),\
@@ -187,16 +194,17 @@ class TestGmrf(unittest.TestCase):
         #
         # Q not given
         # 
-        X = Gmrf(covariance=Q)
+        X = GMRF(covariance=Q)
         self.assertEqual(X.Q(), None, 'Should return None.')
         
-        
+    '''
+    
     def test_Sigma(self):
         # 
         # Full
         #
         S = laplacian_precision(10, sparse=False)
-        X = Gmrf(covariance=S)
+        X = GMRF(covariance=S)
         self.assertTrue(np.allclose(X.Sigma(),S,1e-9),\
                         'Covariance matrix not returned')
         self.assertFalse(sp.isspmatrix(X.Sigma()),\
@@ -205,7 +213,7 @@ class TestGmrf(unittest.TestCase):
         # Sparse
         #
         S = laplacian_precision(10)
-        X = Gmrf(covariance=S)
+        X = GMRF(covariance=S)
         self.assertTrue(np.allclose(X.Sigma().toarray(),S.toarray(),1e-9),\
                         'Covariance matrix not returned.')
         self.assertTrue(sp.isspmatrix(X.Sigma()),\
@@ -214,7 +222,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Q not given
         # 
-        X = Gmrf(precision=S)
+        X = GMRF(precision=S)
         self.assertEqual(X.Sigma(), None, 'Should return None.')
         
     
@@ -222,14 +230,14 @@ class TestGmrf(unittest.TestCase):
         L = sp.csc_matrix([[1,0,0],[0,2,0],[1,2,3]])
         x = np.array([1,2,3])      
         b = L*x
-        X = Gmrf(precision=L*L.T)
+        X = GMRF(precision=L*L.T)
         self.assertTrue(np.allclose(X.L(x),b,1e-10),\
                         'L*x incorrect.')
         self.assertTrue(np.allclose(X.L().toarray(),L.toarray(),1e-10),\
                         'L incorrect.')
         self.assertRaises(AssertionError,X.L,b,mode='covariance')
         
-        X = Gmrf(precision=(L*L.T).toarray())
+        X = GMRF(precision=(L*L.T).toarray())
         self.assertTrue(np.allclose(X.L(x),b,1e-10),\
                         'L*x incorrect.')
         self.assertRaises(AssertionError,X.L,b,mode='covariance')
@@ -237,12 +245,12 @@ class TestGmrf(unittest.TestCase):
         
     def test_mu(self):
         Q = laplacian_precision(10)
-        X = Gmrf(precision=Q)
+        X = GMRF(precision=Q)
         self.assertTrue(np.allclose(X.mu(),np.zeros(10),1e-10),\
                         'Mean should be the zero vector.')
         
         mu = np.random.rand(10)
-        X = Gmrf(precision=Q,mu=mu)
+        X = GMRF(precision=Q,mu=mu)
         self.assertTrue(np.allclose(X.mu(),mu,1e-10),\
                         'Mean incorrect.')
         self.assertTrue(np.allclose(X.b(),spla.spsolve(Q.tocsc(),mu),1e-10),\
@@ -258,7 +266,7 @@ class TestGmrf(unittest.TestCase):
         for sparse in [True, False]:
             Q = laplacian_precision(n, sparse=sparse)
             b = np.random.rand(n)
-            X = Gmrf(precision=Q)
+            X = GMRF(precision=Q)
             self.assertTrue(np.allclose(Q.dot(X.Q_solve(b)),b,1e-10),\
                             'Q*Q^{-1}b should equal b.')
         
@@ -275,7 +283,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Sparse
         # 
-        X = Gmrf(precision=Q)
+        X = GMRF(precision=Q)
         self.assertTrue(np.allclose(X.L_solve(b),x,1e-10),\
                         'L solve returns incorrect result.')
         self.assertRaises(AssertionError, X.L_solve,b, mode='covariance')
@@ -283,7 +291,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Dense
         # 
-        X = Gmrf(precision=Q.toarray())
+        X = GMRF(precision=Q.toarray())
         self.assertTrue(np.allclose(X.L_solve(b),x,1e-10),\
                         'L solve returns incorrect result.')
         
@@ -293,7 +301,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Sparse 
         # 
-        X = Gmrf(covariance=Q)
+        X = GMRF(covariance=Q)
         self.assertTrue(np.allclose(X.L_solve(b,mode='covariance'),x,1e-10),\
                         'L solve returns incorrect result.')
         self.assertRaises(AssertionError, X.L_solve,b, mode='precision')
@@ -301,7 +309,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Dense
         # 
-        X = Gmrf(covariance=Q.toarray())
+        X = GMRF(covariance=Q.toarray())
         self.assertTrue(np.allclose(X.L_solve(b,mode='covariance'),x,1e-10),\
                         'L solve returns incorrect result.')
         self.assertRaises(AssertionError, X.L_solve,b, mode='precision')
@@ -318,7 +326,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Sparse
         # 
-        X = Gmrf(precision=Q)
+        X = GMRF(precision=Q)
         self.assertTrue(np.allclose(X.Lt_solve(b),x,1e-10),\
                         'L solve returns incorrect result.')
         self.assertRaises(AssertionError, X.Lt_solve,b, mode='covariance')
@@ -326,7 +334,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Dense
         # 
-        X = Gmrf(precision=Q.toarray())
+        X = GMRF(precision=Q.toarray())
         self.assertTrue(np.allclose(X.Lt_solve(b),x,1e-10),\
                         'L solve returns incorrect result.')
         
@@ -336,7 +344,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Sparse 
         # 
-        X = Gmrf(covariance=Q)
+        X = GMRF(covariance=Q)
         self.assertTrue(np.allclose(X.Lt_solve(b,mode='covariance'),x,1e-10),\
                         'L solve returns incorrect result.')
         self.assertRaises(AssertionError, X.Lt_solve,b, mode='precision')
@@ -344,7 +352,7 @@ class TestGmrf(unittest.TestCase):
         #
         # Dense
         # 
-        X = Gmrf(covariance=Q.toarray())
+        X = GMRF(covariance=Q.toarray())
         self.assertTrue(np.allclose(X.Lt_solve(b,mode='covariance'),x,1e-10),\
                         'L solve returns incorrect result.')
         self.assertRaises(AssertionError, X.Lt_solve,b, mode='precision')    
@@ -360,7 +368,7 @@ class TestGmrf(unittest.TestCase):
         b = L.transpose()*x
         Q = L*L.T
         S = sp.csc_matrix(np.linalg.inv(Q.toarray()))
-        X = Gmrf(precision=Q, covariance=S)
+        X = GMRF(precision=Q, covariance=S)
         #print(X.L(b,mode='covariance')-x)
         #Ltilde = X.L(mode='covariance')
         #print((Ltilde).toarray())
@@ -374,7 +382,7 @@ class TestGmrf(unittest.TestCase):
         n = 5
         Q = laplacian_precision(n, sparse=True)
         S = sp.csc_matrix(np.linalg.inv(Q.toarray()))
-        X = Gmrf(precision=Q, covariance=S)
+        X = GMRF(precision=Q, covariance=S)
         z = np.random.normal(size=(X.n(),))
         
         x_prec = X.sample(z=z, mode='precision')
@@ -432,7 +440,7 @@ class TestGmrf(unittest.TestCase):
                     'rational': {'a': 3, 'M': M}}
         for cov_name in cov_names:
             cov_par = cov_pars[cov_name]
-            #X = Gmrf.from_covariance_kernel(cov_name, cov_par, mesh,\
+            #X = GMRF.from_covariance_kernel(cov_name, cov_par, mesh,\
             #                               element=element)
             
     
@@ -450,7 +458,7 @@ class TestGmrf(unittest.TestCase):
         kappa = 3
         alpha =3
         system = Assembler(mesh,element)
-        X = Gmrf.from_matern_pde(alpha, kappa, mesh, element)
+        X = GMRF.from_matern_pde(alpha, kappa, mesh, element)
         """
         Xsmpl = X.sample(n_samples=1)
         from plot import Plot

@@ -307,7 +307,7 @@ class TestSPDMatrix(unittest.TestCase):
         A = A.toarray() if sparse else A
         self.assertTrue(np.allclose(AA,A))
        
-        
+
     def test_eigsolve(self):
         n = 20
         for sparse in range(False, True):
