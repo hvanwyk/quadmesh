@@ -1246,14 +1246,14 @@ class MaternPrecision(Precision):
     """
     Precision matrix related to the Matern precision.
     """
-    def __init__(self, dofhandler, alpha=1, tau=None):
+    def __init__(self, dofhandler, alpha=1, kappa=None, tau=None):
         """
         Construct the precision matrix for the Matern random field defined on the 
         spatial mesh. The field X satisfies
         
             (k^2 u - div[T(x)grad(u)])^{a/2} X = W
         
-        Inputs: 
+        Inputs: https://www.dailymaverick.co.za/cartoon/sinking-in/
         
             dofhandler: DofHandler, 
             
@@ -1267,7 +1267,59 @@ class MaternPrecision(Precision):
                 function (viz. fem.Assembler)
             
         """
-        pass
+        system = Assembler(mesh, element)
+        
+        #
+        # Assemble (kappa * M + K)
+        #
+        bf = [(kappa,'u','v')]
+        if tau is not None:
+            #
+            # Test whether tau is a symmetric tensor
+            # 
+            if type(tau) is tuple:
+                assert len(tau)==3, 'Symmetric tensor should have length 3.'
+                axx,axy,ayy = tau
+                bf += [(axx,'ux','vx'),(axy,'uy','vx'),
+                       (axy,'ux','vy'),(ayy,'uy','vy')]
+            else:
+                assert callable(tau) or isinstance(tau, Number)
+                bf += [(tau,'ux','vx'),(tau,'uy','vy')]
+        else:
+            bf += [(1,'ux','vx'),(1,'uy','vy')]
+        G = system.assemble(bilinear_forms=bf, 
+                            boundary_conditions=boundary_conditions)
+        G = G.tocsr()
+        
+        #
+        # Lumped mass matrix
+        # 
+        M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
+        m_lumped = np.array(M.sum(axis=1)).squeeze()
+        
+            
+        if np.mod(alpha,2) == 0:
+            #
+            # Even power alpha
+            # 
+            Q = cholesky(G.tocsc())
+            count = 1
+        else:
+            #
+            # Odd power alpha
+            # 
+            Q = cholesky_AAt((G*sp.diags(1/np.sqrt(m_lumped))).tocsc())
+            count = 2
+        
+        while count < alpha:
+            #
+            # Update Q
+            #
+            Q = cholesky_AAt((G*sp.diags(1/m_lumped)*Q.apply_Pt(Q.L())).tocsc()) 
+            count += 2
+        
+        return Q
+ 
     
     
 # =============================================================================
@@ -1328,66 +1380,9 @@ class Gmrf(object):
             
             boundary_conditions: tuple of boundary locator function and boundary value
                 function (viz. fem.Assembler)
+        """    
             
-            
-        Outputs:
-        
-            Q: sparse matrix, in CSC format
-            
-        """
-        system = Assembler(mesh, element)
-        
-        #
-        # Assemble (kappa * M + K)
-        #
-        bf = [(kappa,'u','v')]
-        if tau is not None:
-            #
-            # Test whether tau is a symmetric tensor
-            # 
-            if type(tau) is tuple:
-                assert len(tau)==3, 'Symmetric tensor should have length 3.'
-                axx,axy,ayy = tau
-                bf += [(axx,'ux','vx'),(axy,'uy','vx'),
-                       (axy,'ux','vy'),(ayy,'uy','vy')]
-            else:
-                assert callable(tau) or isinstance(tau, Number)
-                bf += [(tau,'ux','vx'),(tau,'uy','vy')]
-        else:
-            bf += [(1,'ux','vx'),(1,'uy','vy')]
-        G = system.assemble(bilinear_forms=bf, 
-                            boundary_conditions=boundary_conditions)
-        G = G.tocsr()
-        
-        #
-        # Lumped mass matrix
-        # 
-        M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
-        m_lumped = np.array(M.sum(axis=1)).squeeze()
-        
-            
-        if np.mod(alpha,2) == 0:
-            #
-            # Even power alpha
-            # 
-            Q = cholesky(G.tocsc())
-            count = 1
-        else:
-            #
-            # Odd power alpha
-            # 
-            Q = cholesky_AAt((G*sp.diags(1/np.sqrt(m_lumped))).tocsc())
-            count = 2
-        
-        while count < alpha:
-            #
-            # Update Q
-            #
-            Q = cholesky_AAt((G*sp.diags(1/m_lumped)*Q.apply_Pt(Q.L())).tocsc()) 
-            count += 2
-        
-        return Q
- 
+      
  
     def __init__(self, dofhandler, subforest_flag=None, 
                  mean=None, precision=None, covariance=None):
@@ -1442,30 +1437,43 @@ class Gmrf(object):
                 'must be an SPDMatrix object.'   
             assert self.precision().size() == self.dofhandler().n_dofs()
         
-        # ===============================================================================
+        # =====================================================================
         # Mean
-        # ===============================================================================
-        """
+        # =====================================================================
+        n = self.dofhandler().n_dofs(subforest_flag=self.subforest_flag())
         if mean is not None:
-            assert len(mean) == n, 'Mean incompatible with precision/covariance.'
+            #
+            # Mean specified
+            # 
+            assert isinstance(mean, Nodal), \
+                'Input "mean" should be of type "Nodal".'
+            assert mean.data().shape[0] == n, \
+                'Mean incompatible with precision/covariance.'
         else: 
-            mu = np.zeros(n)
-        self.__mu = mu
+            #
+            # Zero mean (default)
+            # 
+            mean = Nodal(data=np.zeros(n), dofhandler=self.dofhandler())
+        self.__mean = mean
         
         # 
-        # b = Q\mu
-        # 
-        if not np.allclose(mu, np.zeros(n), 1e-10):
-            # mu is not zero
-            b = self.Q_solve(mu)
-        else:
-            b = np.zeros(n)
-        self.__b = b
+        # Convenience parameter b = Q\mu
         #
-        # Store size of matrix
-        # 
-        self.__n = n    
-        """
+        if self.precision() is not None:
+            #
+            # Precision is given
+            # 
+            if not np.allclose(mean.data(), np.zeros(n), 1e-10):
+                #
+                # mean is not zero
+                b = self.precision.solve(self.mean())
+                #
+            else:
+                b = np.zeros(n)
+        else:
+            b = None
+        self.__b = b
+        
         
     @classmethod
     def from_covariance_kernel(cls, cov_name, cov_par, mesh, \
@@ -1596,7 +1604,21 @@ class Gmrf(object):
     
     
     
-    
+               
+                        
+        
+        #
+        # Lumped mass matrix (not necessary!)
+        #
+        M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
+        m_lumped = np.array(M.sum(axis=1)).squeeze()
+        #
+        # Adjust covariance
+        #
+        Sigma = sp.diags(1/m_lumped).dot(Sigma)
+            
+        return cls(mu=mu, covariance=Sigma, mesh=mesh, element=element, \
+                   discretization=discretization)
     
     def precision(self):
         """
@@ -1895,22 +1917,7 @@ class Gmrf(object):
             return v + self.mu()
         else:
             return v + self.mu(n_samples)
-        
-    
-    def mode_supported(self, mode):
-        """
-        Determine whether enough information is available to process given mode
-        """
-        if mode == 'precision':
-            return self.__Q is not None
-        elif mode == 'covariance':
-            return self.__Sigma is not None
-        elif mode == 'canonical':
-            return self.__Q is not None
-        else:
-            raise Exception('For modes, use "precision", ' + \
-                            '"covariance", or "canonical".')
-            
+                    
     
     def condition(self, constraint=None, constraint_type='pointwise',
                   mode='precision', output='gmrf', n_samples=1, z=None):
