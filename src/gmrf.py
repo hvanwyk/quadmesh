@@ -2017,9 +2017,115 @@ class GMRF(object):
                             'Use "covariance", "precision", or "canonical".')
     
         
+        
+    def chol_condition(self, A, Ko=0, e, output='sample', mode='precision', 
+                       z=None, n_samples=1):
+        """
+        Computes the conditional covariance of X, given E ~ N(AX, Ko). 
+        
+        Inputs:
+        
+            A: double, (k,n) 
+            
+            Ko: double symm, covariance matrix of E.
+            
+            e: double, value
+            
+            output: str, type of output desired [sample/covariance]
+            
+            Z: double, array whose columns are iid N(0,1) random vectors 
+                (ignored if output='gmrf')
+            
+            n_samples: int, number of samples (ignored if Z is not None)
+            
+            
+        Note: For 
+        TODO: Test
+        """
+        if Ko == 0:
+            #
+            # Hard Constraint
+            #
+            if mode=='precision':
+                Q = self.precision()
+                V = Q.chol_solve(A.T)
+                W = A.dot(V)
+                U = linalg.solve(W,V.T)
+                if output=='sample':
+                    #
+                    # Sample
+                    # 
+                    x = self.chol_sample(z=z, n_samples=n_samples, mode='precision')                    
+                    c = A.dot(x)-e
+                    x = x - np.dot(U.T, c)
+                    return x
+                elif mode=='gmrf':
+                    #
+                    # Random Field
+                    #
 
+                    # Conditional mean
+                    m = self.mean()  
+                    c = A.dot(m)-e
+                    mm = m - np.dot(U.T,c)
+                    
+                    # Conditional covariance
+                    K = Q.chol_solve(np.identity(self.size()))
+                    KK = K - V.dot(U)
+                else:
+                    raise Exception('Input "mode" should be "sample" or "gmrf".')
+                    
+            elif mode=='covariance':
+                K = self.covariance()
+                V = K.dot(A.T)
+                W = A.dot(V)
+                U = linalg.solve(W,V.T)
+                if output=='sample':
+                    #
+                    # Sample
+                    # 
+                    x = self.chol_sample(z=z, n_samples=n_samples, mode='covariance')
+                    c = A.dot(x)-e
+                    x = x - np.dot(U.T,c)
+                    return x
+                else:
+                    #
+                    # Random Field
+                    # 
+                    
+                    # Conditional covariance
+                    KK = K - V.dot(U) 
+                    
+                    # Conditional mean
+                    m = self.mean()
+                    c = A.dot(m)-e
+                    mm = m - np.dot(U.T,c)
+                    
+                    return GMRF(mean=mm, covariance=KK) 
+        else:
+            #
+            # Condition on Gaussian observations
+            # 
+            if mode=='precision':
+                #
+                # Precision 
+                # 
+                if output=='sample':
+                    pass
+                else:
+                    pass
+            elif mode=='covariance':
+                #
+                # Covariance
+                #
+                if output=='sample':
+                    pass
+                else:
+                    pass
+                
+                
     
-    def condition(self, constraint=None, constraint_type='pointwise',
+    def eig_condition(self, constraint=None, constraint_type='pointwise',
                   mode='precision', output='gmrf', n_samples=1, z=None):
         """
         
