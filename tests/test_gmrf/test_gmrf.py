@@ -443,7 +443,7 @@ class TestGmrf(unittest.TestCase):
             #X = GMRF.from_covariance_kernel(cov_name, cov_par, mesh,\
             #                               element=element)
             
-    
+    '''
     def test_matern_precision(self):
         
         #
@@ -477,7 +477,7 @@ class TestGmrf(unittest.TestCase):
         #print('Number of rows: {0}'.format(Q.shape[0]))
         #print('Number of dofs: {0}'.format(dofhandler.n_dofs()))
         """
-        
+    '''    
         
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

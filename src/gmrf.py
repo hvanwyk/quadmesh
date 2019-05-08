@@ -2018,7 +2018,7 @@ class GMRF(object):
     
         
         
-    def chol_condition(self, A, Ko=0, e, output='sample', mode='precision', 
+    def chol_condition(self, A, e, Ko=0, output='sample', mode='precision', 
                        z=None, n_samples=1):
         """
         Computes the conditional covariance of X, given E ~ N(AX, Ko). 
