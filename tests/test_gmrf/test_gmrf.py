@@ -100,12 +100,12 @@ class TestGmrf(unittest.TestCase):
         """
         GMRF
         """
-        mesh = QuadMesh(resolution=(40,40))
-        element = QuadFE(2,'DQ0')
+        mesh = Mesh1D(resolution=(500,))
+        element = QuadFE(1,'DQ0')
         dofhandler = DofHandler(mesh, element)
         cov_kernel = CovarianceKernel(name='matern', dim=2, \
                                       parameters= {'sgm': 1, 'nu': 2, 
-                                                   'l': 0.5, 'M': None})
+                                                   'l': 0.1, 'M': None})
         
         print('assembling covariance')
         covariance = Covariance(cov_kernel,dofhandler)
@@ -118,7 +118,7 @@ class TestGmrf(unittest.TestCase):
         
         print('plotting')
         plot = Plot()
-        plot.contour(Xh)
+        plot.line(Xh)
         '''
         #
         # Out of the box covariance kernels
