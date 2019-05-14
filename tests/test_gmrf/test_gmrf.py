@@ -6,11 +6,25 @@ Created on Mar 11, 2017
 
 import unittest
 
-from gmrf import GMRF, distance
-from mesh import QuadMesh, DCEL
-from fem import QuadFE, DofHandler
+# Internal libraries
 from assembler import Assembler
-from function import Function
+
+from fem import QuadFE
+from fem import DofHandler
+
+from function import Nodal
+
+from gmrf import GMRF
+from gmrf import distance
+from gmrf import CovarianceKernel
+from gmrf import Covariance
+
+from mesh import convert_to_array
+from mesh import Mesh1D
+from mesh import QuadMesh
+
+
+# Buit-in libraries
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
@@ -41,19 +55,20 @@ class TestGmrf(unittest.TestCase):
         # ---------------------------
         M = 2
         box = (0,1)
-        x = np.array([0.5,0.75])
-        y = np.array([0.25,0.125])
+        x = np.array([[0.5],[0.75]])
+        y = np.array([[0.25],[0.125]])
         d_xy = distance(x,y)
+        
         d_xMy = distance(x,y,M=M)
         d_xy_tau = distance(x,y, periodic=True, box=box)
         d_xMy_tau = distance(x, y, M=M, periodic=True, box=box)
-        self.assertTrue(np.allclose(d_xy, np.array([0.25,0.625])),\
+        self.assertTrue(np.allclose(d_xy.ravel(), np.array([0.25,0.625])),\
                         'Unweighted distance incorrect.')
-        self.assertTrue(np.allclose(d_xMy, np.sqrt(2)*np.array([0.25,0.625])),\
+        self.assertTrue(np.allclose(d_xMy.ravel(), np.sqrt(2)*np.array([0.25,0.625])),\
                         'Weighted distance incorrect.')
-        self.assertTrue(np.allclose(d_xy_tau, np.array([0.25,0.375])),\
+        self.assertTrue(np.allclose(d_xy_tau.ravel(), np.array([0.25,0.375])),\
                         'Unweighted toroidal distance incorrect.')
-        self.assertTrue(np.allclose(d_xMy_tau, np.sqrt(2)*np.array([0.25,0.375])),\
+        self.assertTrue(np.allclose(d_xMy_tau.ravel(), np.sqrt(2)*np.array([0.25,0.375])),\
                         'Weighted toroidal distance incorrect.') 
         # --------------------------
         # 2D
@@ -85,7 +100,116 @@ class TestGmrf(unittest.TestCase):
         """
         GMRF
         """
-        pass  
+        mesh = QuadMesh(resolution=(40,40))
+        element = QuadFE(2,'DQ0')
+        dofhandler = DofHandler(mesh, element)
+        cov_kernel = CovarianceKernel(name='matern', dim=2, \
+                                      parameters= {'sgm': 1, 'nu': 2, 
+                                                   'l': 0.5, 'M': None})
+        
+        print('assembling covariance')
+        covariance = Covariance(cov_kernel,dofhandler)
+        
+        print('defining gmrf')
+        X = GMRF(covariance=covariance)
+        
+        print('sampling')
+        Xh = Nodal(data=X.chol_sample(), dofhandler=dofhandler)
+        
+        print('plotting')
+        plot = Plot()
+        plot.contour(Xh)
+        '''
+        #
+        # Out of the box covariance kernels
+        #
+        fig, ax = plt.subplots(6,4, figsize=(5,7))
+        
+        cov_names = ['constant', 'linear', 'gaussian', 
+                     'exponential', 'matern', 'rational']
+        
+        anisotropies = {1: [None, 2], 2: [None, np.diag([2,1])]}
+        m_count = 0
+        for mesh in [Mesh1D(resolution=(10,)), QuadMesh(resolution=(10,10))]:
+            # Dimension
+            dim = mesh.dim()
+
+            #
+            # Construct computational mesh
+            # 
+            # Piecewise constant elements
+            element = QuadFE(dim,'DQ0')
+            
+            # Define dofhandler -> get vertices
+            dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
+            dofhandler.set_dof_vertices()
+            v = dofhandler.get_dof_vertices()
+            
+            # Define meshgrid for 1 and 2 dimensions
+            n_dofs = dofhandler.n_dofs()
+            M1,M2 = np.mgrid[0:n_dofs,0:n_dofs]
+            if dim == 1:
+                X = v[:,0][M1].ravel()
+                Y = v[:,0][M2].ravel()
+            elif dim == 2:
+                X = np.array([v[:,0][M1].ravel(), v[:,1][M1].ravel()]).T
+                Y = np.array([v[:,0][M2].ravel(), v[:,1][M2].ravel()]).T
+            
+            x = convert_to_array(X,dim=dim)
+            y = convert_to_array(Y,dim=dim)
+            a_count = 0
+            isotropic_label = ['isotropic','anisotropic']
+            for M in anisotropies[dim]:
+                # Cycle through anisotropies
+                
+                # Define covariance parameters
+                cov_pars = {'constant': {'sgm':1},   
+                            'linear': {'sgm': 1, 'M': M}, 
+                            'gaussian': {'sgm': 1, 'l': 0.1, 'M': M}, 
+                            'exponential': {'l': 0.1, 'M': M}, 
+                            'matern': {'sgm': 1, 'nu': 2, 'l': 0.5, 'M': M}, 
+                            'rational': {'a': 3, 'M': M}}
+                
+                c_count = 0
+                for cov_name in cov_names:
+                    
+                    cov_kernel = CovarianceKernel(cov_name, cov_pars[cov_name])
+                    cov = Covariance(cov_kernel, dofhandler)
+                    X = GMRF(covariance=cov)
+                    
+                    col = int(m_count*2**1 + a_count*2**0)
+                    row = c_count
+                    ax[row, col].imshow()
+                    if col==0:
+                        ax[row,col].set_ylabel(cov_name)
+                    
+                    if row==0:
+                        ax[row,col].set_title('%dD mesh\n %s'%(dim, isotropic_label[a_count]))
+                        
+                    ax[row, col].set_xticks([],[])
+                    ax[row, col].set_yticks([],[])
+                                        
+                    c_count += 1
+                a_count += 1
+            m_count += 1
+        fig.savefig('test_gmrf_sample.eps')  
+        '''
+    def test_sample_eig_covariance(self):
+        pass
+    
+    def test_sample_eig_precision(self):
+        pass
+    
+    def test_sample_chol_covariance(self):
+        pass
+    
+    def test_sample_chol_precision(self):
+        pass
+    
+    def tes_condition(self):
+        pass
+     
     '''    
     def test_constructor(self):
         """
@@ -197,7 +321,9 @@ class TestGmrf(unittest.TestCase):
         X = GMRF(covariance=Q)
         self.assertEqual(X.Q(), None, 'Should return None.')
         
-    '''
+    
+    
+    
     
     def test_Sigma(self):
         # 
@@ -443,7 +569,7 @@ class TestGmrf(unittest.TestCase):
             #X = GMRF.from_covariance_kernel(cov_name, cov_par, mesh,\
             #                               element=element)
             
-    '''
+    
     def test_matern_precision(self):
         
         #

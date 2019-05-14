@@ -1003,30 +1003,7 @@ class Covariance(SPDMatrix):
         return U    
     
     
-    def condition(self, A, Ko=0, output='sample', Z=None, n_samples=1):
-        """
-        Computes the conditional covariance of X, given E ~ N(AX, Ko). 
-        
-        Inputs:
-        
-            A: double, (k,n) 
-            
-            Ko: double symm, covariance matrix of E.
-            
-            output: str, type of output desired [sample/covariance]
-            
-            Z: double, array whose columns are iid N(0,1) random vectors 
-                (ignored if output='covariance'
-            
-            n_samples: int, number of samples (ignored if Z is not None)
-        """
-        if output=='sample':
-            #
-            # Sample Z ~ N(0,1)
-            # 
-            if Z is None:
-                Z = self.iid_gauss(n_samples=n_samples)
-            
+    
             
          
 '''   
@@ -1442,15 +1419,19 @@ class GMRF(object):
             #
             # Mean specified
             # 
-            assert isinstance(mean, np.ndarray), \
+            if isinstance(mean, Real):
+                mean = mean*np.ones((self.size(),1))
+            else:
+                assert isinstance(mean, np.ndarray), \
                 'Input "mean" should be a numpy array.'
-            assert mean.data().shape[0] == self.size(), \
+            
+                assert mean.shape[0] == self.size(), \
                 'Mean incompatible with precision/covariance.'
         else: 
             #
             # Zero mean (default)
             # 
-            mean = np.zeros(self.size()) 
+            mean = np.zeros((self.size(),1))
         self.__mean = mean
         
         # 
@@ -1839,7 +1820,7 @@ class GMRF(object):
         mesh = self.mesh()
         
     '''
-    def chol_sample(self, n_samples=1, z=None, mode='precision'):
+    def chol_sample(self, n_samples=1, z=None, mode='covariance'):
         """
         Generate sample realizations from Gaussian random field.
         
@@ -2125,34 +2106,30 @@ class GMRF(object):
                 
                 
     
-    def eig_condition(self, constraint=None, constraint_type='pointwise',
-                  mode='precision', output='gmrf', n_samples=1, z=None):
+    def eig_condition(self, A, e, Ko=0, output='sample', mode='precision', 
+                       z=None, n_samples=1):
         """
+        Computes the conditional random field, X given E ~ N(AX, Ko). 
         
         Inputs:
         
-            constraint: tuple, parameters specifying the constraint, determined
-                by the constraint type:
-                
-                'pointwise': (dof_indices, constraint_values) 
-                
-                'hard': (A, b), where A is the (k,n) constraint matrix and 
-                    b is the (k,m) array of realizations (usually m is None).
-                
-                'soft': (A, Q)
-        
-            constraint_type: str, 'pointwise' (default), 'hard', 'soft'.
+            A: double, (k,n) 
             
-            mode: str, 'precision' (default), or 'covariance', or 'svd'.
+            Ko: double symm, covariance matrix of E.
             
-            output: str, type of output 'gmrf', 'sample', 'log_pdf' 
+            e: double, value
             
-        Output:
-        
-            X: GMRF, conditioned random field. 
+            output: str, type of output desired [sample/covariance]
             
-        TODO: Unfinished
+            Z: double, array whose columns are iid N(0,1) random vectors 
+                (ignored if output='gmrf')
+            
+            n_samples: int, number of samples (ignored if Z is not None)
         """
+        pass
+    
+    
+        '''
         if constraint_type == 'pointwise':
             i_b, x_b = constraint
             i_a = [i not in i_b for i in range(self.n())]
@@ -2231,7 +2208,7 @@ class GMRF(object):
         else:
             raise Exception('Input "constraint_type" should be:' + \
                             ' "pointwise", "hard", or "soft"')
-    
+        '''
     
     def iid_gauss(self, n_samples=1):
         """

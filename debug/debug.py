@@ -21,13 +21,13 @@ from gmrf import modchol_ldlt
 
 # Eigenvectors 
 oort = 1/np.sqrt(2)
-V = np.array([[.5, oort, 0, 0.5], 
+V = np.array([[0.5, oort, 0, 0.5], 
               [0.5, 0, -oort, -0.5],
               [0.5, -oort, 0, 0.5],
               [0.5, 0, oort, -0.5]])
 
 # Eigenvalues
-d = np.array([4,3,2,0])
+d = np.array([4,3,2,0], dtype=float)
 Lmd = np.diag(d)
 
 # Covariance matrix
@@ -35,7 +35,28 @@ K = V.dot(Lmd.dot(V.T))
 
 # Transformation
 A = np.array([[1,2,3,4],
-              [2,4,6,8]])
+              [2,4,6,8]], dtype=float)
+
+# Nullspace of covariance
+Vn = V[:,3][:,None]
+
+for v in A:
+    u = v - Vn.dot(Vn.T.dot(v))
+    if not np.allclose(u,0):
+        u = u/linalg.norm(u)
+        Vn = np.append(Vn, u[:,None], axis=1)
+
+
+Q,R = linalg.qr(A.T, mode='economic')
+print(Q)
+print(R)
+Q,R = linalg.qr_insert(Vn,Lmdn,A[0,:], -1, which='col')
+#Q,R = linalg.qr_insert(Q,R,A[1,:], -1, which='col')
+Q.T.dot(A[1,:].T)
+pp = A[1,:] - Q.dot(Q.T.dot(A[1,:]))
+
+print(pp)
+print('R\n',R)
 
 print(A.dot(V))
 Q,R = linalg.qr(A, mode='economic')
