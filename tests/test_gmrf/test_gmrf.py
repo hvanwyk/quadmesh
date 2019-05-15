@@ -100,8 +100,8 @@ class TestGmrf(unittest.TestCase):
         """
         GMRF
         """
-        mesh = Mesh1D(resolution=(500,))
-        element = QuadFE(1,'DQ0')
+        mesh = Mesh1D(resolution=(1000,))
+        element = QuadFE(1,'Q1')
         dofhandler = DofHandler(mesh, element)
         cov_kernel = CovarianceKernel(name='matern', dim=2, \
                                       parameters= {'sgm': 1, 'nu': 2, 

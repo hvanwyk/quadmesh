@@ -27,18 +27,18 @@ class TestCovariance(unittest.TestCase):
     
     
     def test_assembly(self):
-        for mesh in [Mesh1D(resolution=(200,)), QuadMesh(resolution=(30,30))]:
+        for mesh in [Mesh1D(resolution=(2,)), QuadMesh(resolution=(30,30))]:
             
             dim = mesh.dim()
             
-            element = QuadFE(dim, 'DQ0')
+            element = QuadFE(dim, 'Q1')
             
             dofhandler = DofHandler(mesh, element)
             cov_kernel = CovarianceKernel('gaussian', {'sgm': 2, 'l': 0.2, 'M': None}, dim)
             
-            covariance = Covariance(cov_kernel, dofhandler, method='interpolation')
+            covariance = Covariance(cov_kernel, dofhandler, method='projection')
             KK = covariance.get_matrix()
-            
+            print(KK)
             K = covariance.assembler().af[0]['bilinear'].get_matrix().toarray()
             
             #self.assertTrue(np.allclose(KK,K))
@@ -48,7 +48,7 @@ class TestCovariance(unittest.TestCase):
             U = Nodal(data=covariance.sample(n_samples=1), dofhandler=dofhandler, dim=dim)
             plot = Plot()
             if dim==1:
-                #plt.imshow(KK)
+                plt.imshow(KK)
                 #plt.plot(V[:,:10])
                 plt.show()
                 plot.line(U)
