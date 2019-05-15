@@ -922,6 +922,10 @@ class Covariance(SPDMatrix):
             assembler.assemble()
             
             K = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Get approximation that is symmetric
+            K = 0.5*(K+K.T)
+            
         elif method=='projection':
             #
             # Simple assembler for the mass matrix

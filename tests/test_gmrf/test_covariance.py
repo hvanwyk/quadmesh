@@ -27,7 +27,7 @@ class TestCovariance(unittest.TestCase):
     
     
     def test_assembly(self):
-        for mesh in [Mesh1D(resolution=(2,)), QuadMesh(resolution=(30,30))]:
+        for mesh in [Mesh1D(resolution=(10,)), QuadMesh(resolution=(30,30))]:
             
             dim = mesh.dim()
             
