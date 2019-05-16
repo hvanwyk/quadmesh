@@ -364,10 +364,7 @@ def rational(x, y, a, M=None, periodic=False, box=None):
     return (1/(1+d**2))**a   
 
 
-
-           
-    
-class CovarianceKernel(Kernel):
+class CovKernel(Kernel):
     """
     Integral kernel
     """
@@ -428,6 +425,193 @@ class CovarianceKernel(Kernel):
         Kernel.__init__(self, f=k)
         
 
+class KLExpansion(object):
+    """
+    Karhunen-Loeve expansion
+    
+        u(x) = mu(x) + sum_j sqrt(lmd_j)*psi_j(x)*Z_j, 
+        
+    where (lmd_j, psi_j(x)) are eigenpairs of approximations of a covariance
+    operator C, defined by 
+    
+        Cu(x) = I_D k(x,y) u(y) dy 
+            
+    """
+    def __init__(self, k, dofhandler, mean=None, method='interpolation', 
+                 subforest_flag=None):
+        """
+        Constructor
+        
+        Inputs:
+            
+            k: Kernel, covariance kernel
+            
+            dofhandler: DofHandler, finite element dofhandler  
+            
+            mean: Nodal function representing the mean.
+            
+            method: str, method used to approximate the kernel
+                (['interpolation'], 'collocation', 'galerkin')
+            
+                'interpolation': Covariance kernel k(x,y) is approximated by
+                
+                        kh(x,y) = sum_i sum_j k_ij phi_i(x) phi_j(y),
+                    
+                    so that the Fredholm equation Cu = lmd u becomes
+                
+                        MKM*V = M*Lmd*V.
+                    
+                    
+                'collocation': Covariance operator C is approximated by
+                
+                        Ch u(x) = sum_i (int_D k(x_i,y) u(y) dy) phi_i(x)
+                    
+                    and Ch psi_j(x) = lmd*psi_j(x) is collocated at vertices 
+                    to get
+                
+                        Kh V = Lmd*V 
+                    
+                    
+                'galerkin': Covariance operator C is projected onto subspace
+                    so that the Fredholm equation becomes 
+                        
+                        B*V = M*Lmd*V, 
+                        
+                    where 
+                        
+                        B_ij = int_D int_D phi_i(x) phi_j(y) k(x,y) dx dy 
+                    
+                Notes: 
+                
+                    -'interpolation' is 'galerkin' with an approximate kernel.
+                    
+                    -Both 'interpolation' and 'galerkin' give rise to 
+                        orthogonal psi_i's, but not v's. 
+            
+            subforest_flag: str, submesh indicator
+        """
+        # Store covariance kernel
+        assert isinstance(k, Kernel), \
+        'Input "cov_kernel" should be a Kernel object.'
+        
+        self.__kernel = k
+        
+        # Store dofhandler
+        dofhandler.distribute_dofs(subforest_flag=subforest_flag)
+        dofhandler.set_dof_vertices()
+        self.__dofhandler = dofhandler
+        
+        # Mesh 
+        mesh = dofhandler.mesh
+        
+        # Basis
+        u = Basis(dofhandler, 'u')
+        
+        # Mass matrix 
+        m = Form(trial=u, test=u)
+        
+        if method=='collocation':
+            #
+            # Construct integral kernel from interpolants
+            #    
+            c = IIForm(kernel=k, test=u, trial=u)
+            assembler = Assembler([[c]], mesh, subforest_flag=subforest_flag)
+            assembler.assemble()
+            C = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Compute eigendecomposition
+            lmd, V = linalg.eig(C)
+                   
+        elif method=='galerkin':
+            #
+            # Simple assembler for the mass matrix
+            # 
+            c = IPForm(kernel=k, test=u, trial=u)
+            assembler = Assembler([[m],[c]], mesh, subforest_flag=subforest_flag)
+            assembler.assemble()
+            C = assembler.af[1]['bilinear'].get_matrix().toarray()
+            M = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Generalized eigen-decomposition
+            lmd, V = linalg.eig(C,M)
+            
+               
+        elif method=='interpolation':
+            
+            #
+            # Interpolate covariance kernel at dof vertices 
+            # 
+            x = dofhandler.get_dof_vertices(subforest_flag=subforest_flag)
+            n_dofs = dofhandler.n_dofs(subforest_flag=subforest_flag)
+            dim = dofhandler.mesh.dim()
+            I,J = np.mgrid[0:n_dofs,0:n_dofs] 
+            X = x[I,:].reshape((n_dofs**2,dim)) 
+            Y = x[J,:].reshape((n_dofs**2,dim))
+            K = k.eval((X,Y)).reshape((n_dofs,n_dofs))
+                        
+            # Assemble mass matrix
+            assembler = Assembler([[m]], mesh, subforest_flag=subforest_flag)
+            assembler.assemble()
+            M = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Set up generalized eigenvalue problem
+            C = M.dot(K.dot(M))
+    
+            # Compute generalized eigendecomposition
+            lmd, V = linalg.eig(C,M)
+            
+        else:
+            raise Exception('Only "interpolation", "galerkin", '+\
+                            ' or "collocation" supported for input "method"')
+        
+        self.__K = K
+        self.__lmd = lmd
+        self.__V = V
+        self.__method = method
+        self.__assembler = assembler
+        self.__subforest_flag = subforest_flag
+    
+        # 
+        # Initialize decompositions
+        #
+        SPDMatrix.__init__(self, K)
+
+
+    def mean(self):
+        """
+        Returns the mean function
+        """
+        return self.__mean
+    
+    
+    def covariance(self):
+        """
+        Returns the covariance matrix
+        """
+        pass
+    
+                  
+    def discretization_type(self):
+        """
+        Returns the assembly/approximation method ('interpolation' or 'projection')
+        """
+        return self.__method
+    
+        
+    def iid_gauss(self, n_samples=1):
+        """
+        Returns a matrix whose columns are N(0,I) vectors of length n 
+        """
+        return np.random.normal(size=(self.size(),n_samples)) 
+    
+    
+    def sample(self):
+        """
+        """
+        Z = self.iid_gauss()
+        pass
+    
+    
 class SPDMatrix(object):
     """
     Symmetric positive definite operator
@@ -887,6 +1071,11 @@ class SPDMatrix(object):
 class Covariance(SPDMatrix):
     """
     Covariance operator
+    
+    galerkin
+    collocation
+    interpolation
+    
     """
     def __init__(self, cov_kernel, dofhandler, mass_lumping=False,
                  subforest_flag=None, method='interpolation'):
@@ -976,13 +1165,6 @@ class Covariance(SPDMatrix):
         Returns the covariance kernel
         """
         return self.__kernel     
-              
-    
-    def discretization_type(self):
-        """
-        Returns the assembly/approximation method ('interpolation' or 'projection')
-        """
-        return self.__method
    
         
     def iid_gauss(self, n_samples=1):
@@ -1039,7 +1221,7 @@ class Covariance(object):
 
         """
         
-        self.__kernel = CovarianceKernel(name, parameters)
+        self.__kernel = CovKernel(name, parameters)
         assert isinstance(element, Element), \
         'Input "element" must be of type Element.'
             

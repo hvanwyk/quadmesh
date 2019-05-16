@@ -1,4 +1,4 @@
-from gmrf import CovarianceKernel
+from gmrf import CovKernel
 from gmrf import Covariance
 from mesh import QuadMesh
 from mesh import Mesh1D
@@ -27,16 +27,16 @@ class TestCovariance(unittest.TestCase):
     
     
     def test_assembly(self):
-        for mesh in [Mesh1D(resolution=(10,)), QuadMesh(resolution=(30,30))]:
+        for mesh in [Mesh1D(resolution=(10,)), QuadMesh(resolution=(10,10))]:
             
             dim = mesh.dim()
             
-            element = QuadFE(dim, 'Q1')
+            element = QuadFE(dim, 'DQ0')
             
             dofhandler = DofHandler(mesh, element)
-            cov_kernel = CovarianceKernel('gaussian', {'sgm': 2, 'l': 0.2, 'M': None}, dim)
+            cov_kernel = CovKernel('gaussian', {'sgm': 2, 'l': 0.2, 'M': None}, dim)
             
-            covariance = Covariance(cov_kernel, dofhandler, method='projection')
+            covariance = Covariance(cov_kernel, dofhandler, method='interpolation')
             KK = covariance.get_matrix()
             print(KK)
             K = covariance.assembler().af[0]['bilinear'].get_matrix().toarray()

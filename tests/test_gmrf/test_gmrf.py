@@ -16,7 +16,7 @@ from function import Nodal
 
 from gmrf import GMRF
 from gmrf import distance
-from gmrf import CovarianceKernel
+from gmrf import CovKernel
 from gmrf import Covariance
 
 from mesh import convert_to_array
@@ -103,7 +103,7 @@ class TestGmrf(unittest.TestCase):
         mesh = Mesh1D(resolution=(1000,))
         element = QuadFE(1,'Q1')
         dofhandler = DofHandler(mesh, element)
-        cov_kernel = CovarianceKernel(name='matern', dim=2, \
+        cov_kernel = CovKernel(name='matern', dim=2, \
                                       parameters= {'sgm': 1, 'nu': 2, 
                                                    'l': 0.1, 'M': None})
         
@@ -174,7 +174,7 @@ class TestGmrf(unittest.TestCase):
                 c_count = 0
                 for cov_name in cov_names:
                     
-                    cov_kernel = CovarianceKernel(cov_name, cov_pars[cov_name])
+                    cov_kernel = CovKernel(cov_name, cov_pars[cov_name])
                     cov = Covariance(cov_kernel, dofhandler)
                     X = GMRF(covariance=cov)
                     

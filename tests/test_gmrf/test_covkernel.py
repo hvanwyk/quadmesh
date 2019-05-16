@@ -1,4 +1,4 @@
-from gmrf import CovarianceKernel
+from gmrf import CovKernel
 from mesh import QuadMesh
 from mesh import Mesh1D
 from mesh import convert_to_array
@@ -69,7 +69,7 @@ class TestCovKernel(unittest.TestCase):
                 c_count = 0
                 for cov_name in cov_names:
                     
-                    C = CovarianceKernel(cov_name, cov_pars[cov_name])
+                    C = CovKernel(cov_name, cov_pars[cov_name])
                     Z = C.eval((x,y)).reshape(M1.shape)
                     
                     col = int(m_count*2**1 + a_count*2**0)
@@ -134,7 +134,7 @@ class TestCovKernel(unittest.TestCase):
                 c_count = 0
                 for cov_name in cov_names:
                     
-                    C = CovarianceKernel(cov_name, cov_pars[cov_name], dim=dim)
+                    C = CovKernel(cov_name, cov_pars[cov_name], dim=dim)
                     Cs = C.slice(x0, pos=0)
                     
                     f = Function(Cs, 'explicit', mesh=mesh, element=element)

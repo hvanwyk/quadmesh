@@ -18,7 +18,9 @@ from sksparse.cholmod import cholesky, cholesky_AAt, Factor
 from sklearn.datasets import make_sparse_spd_matrix
 import scipy.sparse as sp
 from gmrf import modchol_ldlt
-
+from gmrf import KLExpansion
+from gmrf import CovKernel
+'''
 # Eigenvectors 
 oort = 1/np.sqrt(2)
 V = np.array([[0.5, oort, 0, 0.5], 
@@ -64,3 +66,20 @@ r = np.diag(R)
 print(len(r[np.abs(r)>1e-13]))
 print(Q,'\n',R)
 
+'''
+
+mesh = QuadMesh(resolution=(2,2))
+element = QuadFE(2,'Q1')
+dofhandler = DofHandler(mesh, element)
+dofhandler.distribute_dofs()
+dofhandler.set_dof_vertices()
+x = dofhandler.get_dof_vertices()
+dim = 2
+k = CovKernel('gaussian', {'sgm': 2, 'l': 0.2, 'M': None}, dim)
+print(x,'\n')
+I,J = np.mgrid[0:9,0:9]
+X = x[I,:]
+Y = x[J,:]
+print(X.reshape((81,2)),'\n')
+print(Y.reshape((81,2)))
+X = KLExpansion(k, dofhandler)
