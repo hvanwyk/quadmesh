@@ -547,16 +547,19 @@ class KLExpansion(object):
             I,J = np.mgrid[0:n_dofs,0:n_dofs] 
             X = x[I,:].reshape((n_dofs**2,dim)) 
             Y = x[J,:].reshape((n_dofs**2,dim))
+            print('evaluating kernel')
             K = k.eval((X,Y)).reshape((n_dofs,n_dofs))
                         
             # Assemble mass matrix
+            print('assembling mass matrix')
             assembler = Assembler([[m]], mesh, subforest_flag=subforest_flag)
             assembler.assemble()
             M = assembler.af[0]['bilinear'].get_matrix().toarray()
             
             # Set up generalized eigenvalue problem
             C = M.dot(K.dot(M))
-    
+            
+            print('computing eigendecomposition')
             # Compute generalized eigendecomposition
             lmd, V = linalg.eig(C,M)
             
@@ -564,18 +567,27 @@ class KLExpansion(object):
             raise Exception('Only "interpolation", "galerkin", '+\
                             ' or "collocation" supported for input "method"')
         
+        
         self.__K = K
         self.__lmd = lmd
         self.__V = V
         self.__method = method
         self.__assembler = assembler
         self.__subforest_flag = subforest_flag
-    
+        self.__size = n_dofs
+        
+        
         # 
         # Initialize decompositions
         #
         SPDMatrix.__init__(self, K)
 
+    def size(self):
+        """
+        Return size
+        """
+        return self.__size
+    
 
     def mean(self):
         """
@@ -605,13 +617,33 @@ class KLExpansion(object):
         return np.random.normal(size=(self.size(),n_samples)) 
     
     
-    def sample(self):
+    def sample(self, n_samples=1, z=None):
         """
         """
-        Z = self.iid_gauss()
-        pass
+        #
+        # Parse samples
+        # 
+        if z is not None:
+            #
+            # Extract number of samples from z
+            #  
+            assert len(z.shape) == 2, \
+                'Input "z" should have size (n, n_samples).'
+            assert z.shape[0] == self.size(), \
+                'Input "z" should have size (n, n_samples).'
+            n_samples = z.shape[1]
+        else:
+            #
+            # Generate z
+            # 
+            z = np.random.normal(size=(self.size(), n_samples))
     
-    
+        V = self.__V
+        lmd = self.__lmd
+        Lmd = np.diag(lmd)
+        return V.dot(Lmd.dot(z))
+        
+        
 class SPDMatrix(object):
     """
     Symmetric positive definite operator

@@ -68,18 +68,22 @@ print(Q,'\n',R)
 
 '''
 
-mesh = QuadMesh(resolution=(2,2))
+mesh = QuadMesh(resolution=(30,30))
 element = QuadFE(2,'Q1')
 dofhandler = DofHandler(mesh, element)
 dofhandler.distribute_dofs()
 dofhandler.set_dof_vertices()
 x = dofhandler.get_dof_vertices()
 dim = 2
-k = CovKernel('gaussian', {'sgm': 2, 'l': 0.2, 'M': None}, dim)
-print(x,'\n')
+k = CovKernel('gaussian', {'sgm': 2, 'l': 0.05, 'M': None}, dim)
 I,J = np.mgrid[0:9,0:9]
 X = x[I,:]
 Y = x[J,:]
-print(X.reshape((81,2)),'\n')
-print(Y.reshape((81,2)))
+print('defining KL expansion')
 X = KLExpansion(k, dofhandler)
+XX = X.sample()
+print('defining nodal function')
+u = Nodal(dofhandler=dofhandler, data=XX)
+plot = Plot()
+print('plotting function')
+plot.contour(u)
