@@ -12,9 +12,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import matplotlib.cm as cm
 from scipy.interpolate import interp2d
-from fem import System, QuadFE
+from fem import QuadFE
 from mesh import Mesh
-from gmrf import Gmrf
 from scipy.interpolate.fitpack2 import RectBivariateSpline
 from plot import Plot
 import scipy.sparse.linalg as spla
@@ -56,7 +55,7 @@ def structure_ellipse(point, Axx, Ayy, Axy):
 # 
 #filename = os.getcwd() + '/shale.png'
 #filename = os.getcwd() + '/picture8a-4x3-swim.png'
-#filename = '/home/hans-werner/desktop/shale.jpg'
+filename = '/home/hans-werner/desktop/shale.jpg'
 filename = '/home/hans-werner/Dropbox/work/projects/' + \
            'spatially_indexed_noise/code/structure_tensor' + \
            '/picture8a-4x3-swim.png'
@@ -68,12 +67,12 @@ shale = shale[:,:,0]  # There is only 1 layer
 
 fig = plt.figure(0)
 ax = fig.add_subplot(111)
-ax.imshow(shale.T, origin='lower', cmap=cm.Greys);
+ax.imshow(shale, origin='lower', cmap=cm.Greys);
 
 #
 # Get structure tensor
 # 
-Axx, Axy, Ayy = feature.structure_tensor(shale, sigma=1)
+Axx, Axy, Ayy = feature.structure_tensor(shale, sigma=5)
 nx, ny = Axx.shape
 
 dx, dy = 2, 2
@@ -83,7 +82,7 @@ axx = RectBivariateSpline(xi, yi, 20*Axx, kx=1, ky=1)
 axy = RectBivariateSpline(xi, yi, 20*Axy, kx=1, ky=1)
 ayy = RectBivariateSpline(xi, yi, 20*Ayy, kx=1, ky=1)
 tau = (axx.ev, axy.ev, ayy.ev)
-
+'''
 mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(240,320))
 #mesh = Mesh.newmesh(box=[0,nx,0,ny], grid_size=(30,40))
 mesh.refine()
@@ -124,10 +123,12 @@ fig = plt.figure()
 ax = fig.add_subplot(111)
 plot.contour(ax, fig, variance, mesh, element)
 ax.set_title('Variance')
-"""
-plt.show()
 
 """
+
+plt.show()
+'''
+
 for ix in np.arange(0,nx,dx):
     for iy in np.arange(0,ny,dy):
         e = structure_ellipse((iy,ix), Axx[ix,iy],Axy[ix,iy],Ayy[ix,iy])
@@ -135,7 +136,7 @@ for ix in np.arange(0,nx,dx):
         
 plt.show()
 
-
+"""
 l1, l2 = feature.structure_tensor_eigvals(Axx, Axy, Ayy)
 #
 # Test Case

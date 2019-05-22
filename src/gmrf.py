@@ -17,6 +17,7 @@ from fem import DofHandler
 from fem import Basis
 
 from function import Function
+from function import Map
 from function import Nodal
 from function import Explicit
 from function import Constant
@@ -424,226 +425,7 @@ class CovKernel(Kernel):
         k = Explicit(f=cov_fn, parameters=parameters, n_variables=2, dim=dim)
         Kernel.__init__(self, f=k)
         
-
-class KLExpansion(object):
-    """
-    Karhunen-Loeve expansion
-    
-        u(x) = mu(x) + sum_j sqrt(lmd_j)*psi_j(x)*Z_j, 
-        
-    where (lmd_j, psi_j(x)) are eigenpairs of approximations of a covariance
-    operator C, defined by 
-    
-        Cu(x) = I_D k(x,y) u(y) dy 
-            
-    """
-    def __init__(self, k, dofhandler, mean=None, method='interpolation', 
-                 subforest_flag=None):
-        """
-        Constructor
-        
-        Inputs:
-            
-            k: Kernel, covariance kernel
-            
-            dofhandler: DofHandler, finite element dofhandler  
-            
-            mean: Nodal function representing the mean.
-            
-            method: str, method used to approximate the kernel
-                (['interpolation'], 'collocation', 'galerkin')
-            
-                'interpolation': Covariance kernel k(x,y) is approximated by
-                
-                        kh(x,y) = sum_i sum_j k_ij phi_i(x) phi_j(y),
-                    
-                    so that the Fredholm equation Cu = lmd u becomes
-                
-                        MKM*V = M*Lmd*V.
-                    
-                    
-                'collocation': Covariance operator C is approximated by
-                
-                        Ch u(x) = sum_i (int_D k(x_i,y) u(y) dy) phi_i(x)
-                    
-                    and Ch psi_j(x) = lmd*psi_j(x) is collocated at vertices 
-                    to get
-                
-                        Kh V = Lmd*V 
-                    
-                    
-                'galerkin': Covariance operator C is projected onto subspace
-                    so that the Fredholm equation becomes 
-                        
-                        B*V = M*Lmd*V, 
-                        
-                    where 
-                        
-                        B_ij = int_D int_D phi_i(x) phi_j(y) k(x,y) dx dy 
-                    
-                Notes: 
-                
-                    -'interpolation' is 'galerkin' with an approximate kernel.
-                    
-                    -Both 'interpolation' and 'galerkin' give rise to 
-                        orthogonal psi_i's, but not v's. 
-            
-            subforest_flag: str, submesh indicator
-        """
-        # Store covariance kernel
-        assert isinstance(k, Kernel), \
-        'Input "cov_kernel" should be a Kernel object.'
-        
-        self.__kernel = k
-        
-        # Store dofhandler
-        dofhandler.distribute_dofs(subforest_flag=subforest_flag)
-        dofhandler.set_dof_vertices()
-        self.__dofhandler = dofhandler
-        
-        # Mesh 
-        mesh = dofhandler.mesh
-        
-        # Basis
-        u = Basis(dofhandler, 'u')
-        
-        # Mass matrix 
-        m = Form(trial=u, test=u)
-        
-        if method=='collocation':
-            #
-            # Construct integral kernel from interpolants
-            #    
-            c = IIForm(kernel=k, test=u, trial=u)
-            assembler = Assembler([[c]], mesh, subforest_flag=subforest_flag)
-            assembler.assemble()
-            C = assembler.af[0]['bilinear'].get_matrix().toarray()
-            
-            # Compute eigendecomposition
-            lmd, V = linalg.eig(C)
-                   
-        elif method=='galerkin':
-            #
-            # Simple assembler for the mass matrix
-            # 
-            c = IPForm(kernel=k, test=u, trial=u)
-            assembler = Assembler([[m],[c]], mesh, subforest_flag=subforest_flag)
-            assembler.assemble()
-            C = assembler.af[1]['bilinear'].get_matrix().toarray()
-            M = assembler.af[0]['bilinear'].get_matrix().toarray()
-            
-            # Generalized eigen-decomposition
-            lmd, V = linalg.eig(C,M)
-            
-               
-        elif method=='interpolation':
-            
-            #
-            # Interpolate covariance kernel at dof vertices 
-            # 
-            x = dofhandler.get_dof_vertices(subforest_flag=subforest_flag)
-            n_dofs = dofhandler.n_dofs(subforest_flag=subforest_flag)
-            dim = dofhandler.mesh.dim()
-            I,J = np.mgrid[0:n_dofs,0:n_dofs] 
-            X = x[I,:].reshape((n_dofs**2,dim)) 
-            Y = x[J,:].reshape((n_dofs**2,dim))
-            print('evaluating kernel')
-            K = k.eval((X,Y)).reshape((n_dofs,n_dofs))
-                        
-            # Assemble mass matrix
-            print('assembling mass matrix')
-            assembler = Assembler([[m]], mesh, subforest_flag=subforest_flag)
-            assembler.assemble()
-            M = assembler.af[0]['bilinear'].get_matrix().toarray()
-            
-            # Set up generalized eigenvalue problem
-            C = M.dot(K.dot(M))
-            
-            print('computing eigendecomposition')
-            # Compute generalized eigendecomposition
-            lmd, V = linalg.eig(C,M)
-            
-        else:
-            raise Exception('Only "interpolation", "galerkin", '+\
-                            ' or "collocation" supported for input "method"')
-        
-        
-        self.__K = K
-        self.__lmd = lmd
-        self.__V = V
-        self.__method = method
-        self.__assembler = assembler
-        self.__subforest_flag = subforest_flag
-        self.__size = n_dofs
-        
-        
-        # 
-        # Initialize decompositions
-        #
-        SPDMatrix.__init__(self, K)
-
-    def size(self):
-        """
-        Return size
-        """
-        return self.__size
-    
-
-    def mean(self):
-        """
-        Returns the mean function
-        """
-        return self.__mean
-    
-    
-    def covariance(self):
-        """
-        Returns the covariance matrix
-        """
-        pass
-    
-                  
-    def discretization_type(self):
-        """
-        Returns the assembly/approximation method ('interpolation' or 'projection')
-        """
-        return self.__method
-    
-        
-    def iid_gauss(self, n_samples=1):
-        """
-        Returns a matrix whose columns are N(0,I) vectors of length n 
-        """
-        return np.random.normal(size=(self.size(),n_samples)) 
-    
-    
-    def sample(self, n_samples=1, z=None):
-        """
-        """
-        #
-        # Parse samples
-        # 
-        if z is not None:
-            #
-            # Extract number of samples from z
-            #  
-            assert len(z.shape) == 2, \
-                'Input "z" should have size (n, n_samples).'
-            assert z.shape[0] == self.size(), \
-                'Input "z" should have size (n, n_samples).'
-            n_samples = z.shape[1]
-        else:
-            #
-            # Generate z
-            # 
-            z = np.random.normal(size=(self.size(), n_samples))
-    
-        V = self.__V
-        lmd = self.__lmd
-        Lmd = np.diag(lmd)
-        return V.dot(Lmd.dot(z))
-        
-        
+     
 class SPDMatrix(object):
     """
     Symmetric positive definite operator
@@ -657,15 +439,27 @@ class SPDMatrix(object):
             K: double, (n,n) symmetric positive semidefinite kernel matrix
             
         """
-        # Save SPD matrix and mass matrix
-        self.__K = K
+        # Initialize Cholesky decomposition
+        if isinstance(K, Factor):
+            #
+            # Cholesky factor already computed
+            # 
+            self.__L = K
+            self.__chol_type = 'sparse'
+            n = K.L().shape[0]
+            self.__K = sp.identity(n)
+            self.__K = self.chol_reconstruct()
+        else:
+            #
+            # No Cholesky factor computed
+            # 
+            self.__L = None
+            self.__K = K
+        
         
         # Initialize eigendecomoposition
         self.__d = None
         self.__V = None
-        
-        # Initialize Cholesky decomposition
-        self.__L = None
         
     
     def size(self):
@@ -698,7 +492,7 @@ class SPDMatrix(object):
         """
         return self.__K
     
-
+    
     def chol_decomp(self):
         """
         Compute the cholesky factorization C = LL', where C=M^{-1}K.
@@ -1059,7 +853,6 @@ class SPDMatrix(object):
             
             transpose: bool, determine whether to compute Rx or R'x
             
-        
         Output:
         
             b = Rx/R'x
@@ -1098,8 +891,1018 @@ class SPDMatrix(object):
             # Solve V*sqrtD x = b
             #
             return sqrtD_inv.dot(np.dot(V.T, b))
+
+
+    def solve(self, b, decomposition='eig'):
+        """
+        Solve the system Kx = b for x, using the specified decomposition 
+        """
+        if decomposition == 'chol':
+            #
+            # Solve using Cholesky decomposition
+            # 
+            return self.chol_solve(b)
+        elif decomposition == 'eig':
+            #
+            # Solve using Eigendecomposition
+            # 
+            return self.eig_solve(b)
+            
+            
+    def sqrt(self, x, transpose=False, decomposition='eig'):
+        """
+        Compute Rx (or R'x), where A = RR'
+        """
+        if decomposition=='chol':
+            #
+            # Cholesky decomposition
+            # 
+            return self.chol_sqrt(x, transpose=transpose)
+        elif decomposition=='eig':
+            #
+            # Eigendecomposition
+            # 
+            return self.eig_sqrt(x, transpose=transpose)
+    
+    
+    def sqrt_solve(self, b, transpose=False, decomposition='eig'):
+        """
+        Solve Rx = b (or R'x = b) where A = RR'
+        """ 
+        if decomposition=='chol':
+            #
+            # Cholesky decomposition
+            # 
+            return self.chol_sqrt_solve(b, transpose=transpose)
+        elif decomposition=='eig':
+            #
+            # Eigendecomposition
+            # 
+            return self.eig_sqrt_solve(b, transpose=transpose)
+        
+        
+    def compute_nullspace(self, tol=1e-13):
+        """
+        Determines an othornormal set of vectors spanning the nullspace
+        """
+        if not self.has_eig_decomp():
+            #
+            # Compute the eigendecomposition if necessary
+            # 
+            self.eig_decomp()
+            
+        # Determine what eigenvalues are below tolerance
+        d = self.__d
+        ix = (np.abs(d)<tol) 
+        
+        self.__ix_nullspace = ix
+            
+            
+    def get_nullspace(self):
+        """
+        Returns the nullspace of the matrix 
+        """
+        V = self.__V
+        return V[:,self.__ix_nullspace]
+    
+    
+
+class GaussianField(object):
+    """
+    Base class for Gaussian random fields
+    """
+    def __init__(self, mean=None, b=None, covariance=None, precision=None): 
+        """
+        Constructor
+        
+        Inputs:
+        
+            mean: double, numpy array 
+            
+            precision: SPDEMatrix, (n,n) sparse/full precision matrix
+                    
+            covariance: SPDEMatrix, (n,n) sparse/full covariance matrix
+             
+            
+        NOTE: If the precision/covariance have a preferred decomposition, 
+            decompose before defining the Gaussian field.
+        """               
+        
+
+        
+        # =====================================================================
+        # Parse Precision and Covariance
+        # =====================================================================
+        # Check that at least one is not None
+        assert precision is not None or covariance is not None, \
+            'Specify precision or covariance (or both).'  
+        
+        #
+        # Store covariance
+        #
+        self.__covariance = covariance
+        
+        # Check covariance type
+        if self.covariance() is not None:
+            assert isinstance(covariance, SPDMatrix), 'Input "covariance" '+\
+                'must be an SPDMatrix object.'
+            self.__size = covariance.size()
+        #
+        # Store precision
+        #
+        self.__precision = precision
+        if precision is not None:
+            assert isinstance(precision, SPDMatrix), 'Input "precision" '+\
+                'must be an SPDMatrix object.'   
+            if self.covariance() is not None:
+                assert self.precision().size() == self.size()
+            else:
+                self.__size = self.precision().size()
+        
+        
+        # =====================================================================
+        # Mean
+        # =====================================================================
+        if mean is not None:
+            #
+            # Mean specified
+            # 
+            if isinstance(mean, Real):
+                mean = mean*np.ones((self.size(),1))
+            else:
+                assert isinstance(mean, np.ndarray), \
+                'Input "mean" should be a numpy array.'
+            
+                assert mean.shape[0] == self.size(), \
+                'Mean incompatible with precision/covariance.'
+                
+                if len(mean.shape)==1: 
+                    #
+                    # Turn vector into an 2D array
+                    # 
+                    mean = mean[:,None]
+        else: 
+            #
+            # Zero mean (default)
+            # 
+            mean = np.zeros((self.size(),1))
+        self.__mean = mean
+        
+        # 
+        # Convenience parameter b = Q\mu
+        #
+        if self.precision() is not None:
+            #
+            # Precision is given
+            # 
+            if not np.allclose(mean, np.zeros(self.size()), 1e-10):
+                #
+                # mean is not zero
+                if self.precision().has_chol_decomp():
+                    #
+                    # Use the Cholesky decomposition of precision
+                    # 
+                    b = self.precision().chol_solve(self.mean())
+                elif self.precision().has_eig_decomp():
+                    #
+                    # Use the eigendecomposition of the precision
+                    # 
+                    b = self.precision().eig_solve(self.mean())
+                else:
+                    #
+                    # Compute the eigendecomposition, and then solve
+                    # 
+                    self.precision().eig_decomp()
+                    b = self.precision().eig_solve(self.mean())
+            else:
+                b = np.zeros(shape=(self.size(),1))
+        else:
+            b = None
+        self.__b = b
+ 
+ 
+    def size(self):
+        """
+        Returns the size of the random vector
+        """ 
+        return self.__size
         
     
+    def mean(self,n_copies=None):
+        """
+        Return the mean of the random vector
+        
+        Inputs:
+        
+            n_copies: int, number of copies of the mean
+            
+        Output: 
+        
+            mu: (n,n_copies) mean
+        """
+        if n_copies is not None:
+            assert type(n_copies) is np.int, \
+                'Number of copies should be an integer.'
+            if n_copies == 1:
+                return self.__mean
+            else:
+                return np.tile(self.__mean, (1, n_copies))
+        else:
+            return self.__mean
+    
+    def set_mean(self, mean):
+        """
+        Define mean
+        """
+        pass
+    
+        
+    def b(self):
+        """
+        Returns the vector of central tendency in canonical form
+        """
+        return self.__b
+    
+    
+    def set_b(self):
+        pass
+    
+    
+    def covariance(self):
+        """
+        Returns the covariance of the random field
+        """
+        return self.__covariance
+    
+    
+    def precision(self):
+        """
+        Returns the precision of the random field
+        """
+        return self.__precision
+    
+    
+    def chol_sample(self, n_samples=1, z=None, mode='covariance'):
+        """
+        Generate sample realizations from Gaussian random field.
+        
+        Inputs:
+        
+            n_samples: int, number of samples to generate
+            
+            z: (n,n_samples) random vector ~N(0,I).
+            
+            mode: str, specify parameters used to simulate random field
+                ['precision', 'covariance', 'canonical']
+              
+        Outputs:
+        
+            x: (n,n_samples), samples paths of random field
+            
+                
+        Note: Samples generated from the cholesky decomposition of Q are 
+            different from those generated from that of Sigma. 
+                
+                Q = LL' (lower*upper)
+                  
+            =>  S = Q^(-1) = L'^(-1) L^(-1) (upper*lower)
+            
+            However, they have  the same distribution
+        """
+        #
+        # Parse samples
+        # 
+        if z is not None:
+            #
+            # Extract number of samples from z
+            #  
+            assert len(z.shape) == 2, \
+                'Input "z" should have size (n, n_samples).'
+            assert z.shape[0] == self.size(), \
+                'Input "z" should have size (n, n_samples).'
+            n_samples = z.shape[1]
+        else:
+            #
+            # Generate z
+            # 
+            z = np.random.normal(size=(self.size(), n_samples))
+            
+            
+        if mode=='covariance':
+            #
+            # Cholesky decomposition of the covariance operator
+            # 
+            assert self.covariance() is not None, 'No covariance specified.'
+            
+            # Get covariance
+            K = self.covariance()
+            
+            # Compute Cholesky factorization L*L' if necessary
+            if not K.has_chol_decomp():
+                K.chol_decomp()
+            
+            # Return Lz + mean
+            return K.chol_sqrt(z) + self.mean(n_copies=n_samples)
+            
+        elif mode=='precision':
+            #
+            # Cholesky decomposition of the precision matrix
+            # 
+            assert self.precision() is not None, 'No precision specified.'
+            
+            # Get precision matrix
+            Q = self.precision()
+            
+            # Compute Cholesky decomposition L*L' if necessary
+            if not Q.has_chol_decomp():
+                Q.chol_decomp()
+            
+            # Return L^{-T} z + mean
+            return Q.chol_sqrt_solve(z,transpose=True) \
+                + self.mean(n_copies=n_samples)  
+                       
+        elif mode=='canonical':
+            #
+            # Cholesky decomposition of the precision matrix 
+            #
+            assert self.precision() is not None, 'No precision specified.'
+            return self.chol_sample(z=z, mode='precision')
+        else:
+            raise Exception('Input "mode" not recognized. '+\
+                            'Use "covariance", "precision", or "canonical".')
+        
+     
+
+    def eig_sample(self, n_samples=1, z=None, mode='covariance'):
+        """
+        Generate a random sample based on the eigendecomposition of the 
+        covariance/precision matrix
+        
+        Inputs:
+        
+            n_samples: int, number of samples to generate
+            
+            z: (n,n_samples) random vector ~N(0,I).
+            
+            mode: str, specify parameters used to simulate random field
+                ['precision', 'covariance', 'canonical']
+            
+            
+        Outputs:
+        
+            x: (n,n_samples), samples paths of random field
+    
+        
+        Note: The eigendecomposition can generate samples from degenerate
+            covariance/precision matrices.
+        """
+        #
+        # Parse samples
+        # 
+        if z is not None:
+            #
+            # Extract number of samples from z
+            #  
+            assert len(z.shape) == 2, \
+                'Input "z" should have size (n, n_samples).'
+            assert z.shape[0] == self.size(), \
+                'Input "z" should have size (n, n_samples).'
+            n_samples = z.shape[1]
+        else:
+            #
+            # Generate z
+            # 
+            z = np.random.normal(size=(self.size(), n_samples))
+            
+            
+        if mode=='covariance':
+            #
+            # Eigen-decomposition of the covariance operator
+            # 
+            assert self.covariance() is not None, 'No covariance specified.'
+            
+            # Get covariance
+            K = self.covariance()
+            
+            # Compute eigendecomposition if necessary
+            if not K.has_eig_decomp():
+                K.eig_decomp()
+            
+            # Return Lz + mean
+            return K.eig_sqrt(z) + self.mean(n_copies=n_samples)
+            
+        elif mode=='precision':
+            #
+            # Cholesky decomposition of the precision matrix
+            # 
+            assert self.precision() is not None, 'No precision specified.'
+            
+            # Get precision matrix
+            Q = self.precision()
+            
+            # Compute eigen-decomposition if necessary
+            if not Q.has_eig_decomp():
+                Q.eig_decomp()
+            
+            # Return L^{-T} z + mean
+            return Q.eig_sqrt_solve(z,transpose=True) \
+                + self.mean(n_copies=n_samples)  
+                       
+        elif mode=='canonical':
+            #
+            # Cholesky decomposition of the precision matrix 
+            #
+            assert self.precision() is not None, 'No precision specified.'
+            return self.eig_sample(z=z, mode='precision')
+        else:
+            raise Exception('Input "mode" not recognized. '+\
+                            'Use "covariance", "precision", or "canonical".')
+    
+        
+    def chol_condition(self, A, e, Ko=0, output='sample', mode='precision', 
+                       z=None, n_samples=1):
+        """
+        Computes the conditional covariance of X, given E ~ N(AX, Ko). 
+        
+        Inputs:
+        
+            A: double, (k,n) 
+            
+            Ko: double symm, covariance matrix of E.
+            
+            e: double, value
+            
+            output: str, type of output desired [sample/covariance]
+            
+            Z: double, array whose columns are iid N(0,1) random vectors 
+                (ignored if output='gmrf')
+            
+            n_samples: int, number of samples (ignored if Z is not None)
+
+        TODO: Soft constraints
+        TODO: Test
+        """
+        if Ko == 0:
+            #
+            # Hard Constraint
+            #
+            if mode=='precision':
+                Q = self.precision()
+                V = Q.chol_solve(A.T)
+                W = A.dot(V)
+                U = linalg.solve(W,V.T)
+                if output=='sample':
+                    #
+                    # Sample
+                    # 
+                    x = self.chol_sample(z=z, n_samples=n_samples, mode='precision')                    
+                    c = A.dot(x)-e
+                    x = x - np.dot(U.T, c)
+                    return x
+                elif mode=='field':
+                    #
+                    # Random Field
+                    #
+
+                    # Conditional mean
+                    m = self.mean()  
+                    c = A.dot(m)-e
+                    mm = m - np.dot(U.T,c)
+                    
+                    # Conditional covariance
+                    K = Q.chol_solve(np.identity(self.size()))
+                    KK = K - V.dot(U)
+                    
+                    # Return gaussian field
+                    return GaussianField(mean=mm, covariance=KK)
+                else:
+                    raise Exception('Input "mode" should be "sample" or "gmrf".')
+                    
+            elif mode=='covariance':
+                K = self.covariance().get_matrix()
+                V = K.dot(A.T)
+                W = A.dot(V)
+                U = linalg.solve(W,V.T)
+                if output=='sample':
+                    #
+                    # Sample
+                    # 
+                    x = self.chol_sample(z=z, n_samples=n_samples, mode='covariance')
+                    c = A.dot(x)-e
+                    x = x - np.dot(U.T,c)
+                    return x
+                else:
+                    #
+                    # Random Field
+                    # 
+                    
+                    # Conditional covariance
+                    KK = K - V.dot(U) 
+                    
+                    # Conditional mean
+                    m = self.mean()
+                    c = A.dot(m)-e
+                    mm = m - np.dot(U.T,c)
+                    
+                    return GaussianField(mean=mm, covariance=KK) 
+        else:
+            #
+            # Condition on Gaussian observations
+            # 
+            KKo = SPDMatrix(Ko)
+            mean_E = A.dot(self.mean())
+            E = GaussianField(mean=mean_E, covariance=KKo)
+            if mode=='precision':
+                #
+                # Precision 
+                # 
+                QQ = self.precision()
+                if output=='sample':
+                    #
+                    # Generate sample from N(e,Ko) 
+                    # 
+                    ee = E.chol_sample(n_samples=n_samples, z=z)
+                    Qc = QQ.get_matrix() + A.T.dot(linalg.solve(Ko, A))
+                    QQc = SPDMatrix(Qc)
+                else:
+                    #
+                    #  
+                    # 
+                    pass
+            elif mode=='covariance':
+                #
+                # Covariance
+                #
+                if output=='sample':
+                    pass
+                else:
+                    pass
+                
+    
+    def eig_condition(self, A, e, Ko=0, output='sample', mode='precision', 
+                       z=None, n_samples=1):
+        """
+        Computes the conditional random field, X given E ~ N(AX, Ko). 
+        
+        Inputs:
+        
+            A: double, (k,n) 
+            
+            Ko: double symm, covariance matrix of E.
+            
+            e: double, value
+            
+            output: str, type of output desired [sample/covariance]
+            
+            Z: double, array whose columns are iid N(0,1) random vectors 
+                (ignored if output='gmrf')
+            
+            n_samples: int, number of samples (ignored if Z is not None)
+        """
+        if mode=='covariance':
+            pass
+        elif mode=='precision':
+            pass
+        else:
+            raise Exception('Input "mode" must be "covariance" or "precision".')
+        
+
+    
+    def iid_gauss(self, n_samples=1):
+        """
+        Returns a matrix whose columns are N(0,I) vectors of length n 
+        """
+        return np.random.normal(size=(self.size(),n_samples)) 
+    
+    
+    def nullspace(self):
+        """
+        Returns a matrix of orthonormal vectors constituting the nullspace of
+        the field's covariance matrix. 
+        """
+        pass
+    
+    
+class KLField(GaussianField):
+    """
+    Karhunen-Loeve expansion
+    
+        u(x) = mu(x) + sum_j sqrt(lmd_j)*psi_j(x)*Z_j, 
+        
+    where (lmd_j, psi_j(x)) are eigenpairs of approximations of a covariance
+    operator C, defined by 
+    
+        Cu(x) = I_D k(x,y) u(y) dy 
+            
+    """
+    def __init__(self, k, dofhandler, mean=None, method='interpolation', 
+                 subforest_flag=None):
+        """
+        Constructor
+        
+        Inputs:
+            
+            k: Kernel, covariance kernel
+            
+            dofhandler: DofHandler, finite element dofhandler  
+            
+            mean: Nodal function representing the mean.
+            
+            method: str, method used to approximate the kernel
+                (['interpolation'], 'collocation', 'galerkin')
+            
+                'interpolation': Covariance kernel k(x,y) is approximated by
+                
+                        kh(x,y) = sum_i sum_j k_ij phi_i(x) phi_j(y),
+                    
+                    so that the Fredholm equation Cu = lmd u becomes
+                
+                        MKM*V = M*Lmd*V.
+                    
+                    
+                'collocation': Covariance operator C is approximated by
+                
+                        Ch u(x) = sum_i (int_D k(x_i,y) u(y) dy) phi_i(x)
+                    
+                    and Ch psi_j(x) = lmd*psi_j(x) is collocated at vertices 
+                    to get
+                
+                        Kh V = Lmd*V 
+                    
+                    
+                'galerkin': Covariance operator C is projected onto subspace
+                    so that the Fredholm equation becomes 
+                        
+                        B*V = M*Lmd*V, 
+                        
+                    where 
+                        
+                        B_ij = int_D int_D phi_i(x) phi_j(y) k(x,y) dx dy 
+                    
+                Notes: 
+                
+                    -'interpolation' is 'galerkin' with an approximate kernel.
+                    
+                    -Both 'interpolation' and 'galerkin' give rise to 
+                        orthogonal psi_i's, but not v's. 
+            
+            subforest_flag: str, submesh indicator
+        """        
+        #
+        # Parse dofhandler
+        #
+        dofhandler.distribute_dofs(subforest_flag=subforest_flag)
+        dofhandler.set_dof_vertices()
+        self.__dofhandler = dofhandler
+        n_dofs = dofhandler.n_dofs(subforest_flag=subforest_flag)
+        
+        #
+        # Parse mean
+        # 
+        if mean is None:
+            mean = Nodal(data=np.zeros((n_dofs,1)), dofhandler=dofhandler)
+        else:
+            assert isinstance(mean, Nodal), \
+            'Input "mean" should be a "Nodal" object.'
+        
+            assert mean.dofhandler()==self.dofhandler(), \
+            'Input "mean" should have the same dofhandler as the random field. '
+        self.__mean_function = mean
+        
+        # Mesh 
+        mesh = dofhandler.mesh
+        
+        # Basis
+        u = Basis(dofhandler, 'u')
+        
+        # Mass matrix 
+        m = Form(trial=u, test=u)
+        
+        # Store covariance kernel
+        assert isinstance(k, Kernel), \
+        'Input "cov_kernel" should be a Kernel object.'
+        self.__kernel = k
+        
+        #
+        # Assemble and decompose covariance operator
+        # 
+        if method=='collocation':
+        
+            # Collocate integral kernel (not symmetric)
+            c = IIForm(kernel=k, test=u, trial=u)
+            assembler = Assembler([[c]], mesh, subforest_flag=subforest_flag)
+            assembler.assemble()
+            C = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Compute eigendecomposition
+            lmd, V = linalg.eig(C)
+                   
+        elif method=='galerkin':
+            
+            # L2 projection (Galerkin method)
+            c = IPForm(kernel=k, test=u, trial=u)
+            assembler = Assembler([[m],[c]], mesh, subforest_flag=subforest_flag)
+            assembler.assemble()
+            C = assembler.af[1]['bilinear'].get_matrix().toarray()
+            M = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Generalized eigen-decomposition
+            lmd, V = linalg.eigh(C,M)
+            
+               
+        elif method=='interpolation':
+            
+            #
+            # Interpolate covariance kernel at dof vertices 
+            # 
+            
+            x = dofhandler.get_dof_vertices(subforest_flag=subforest_flag)
+            dim = dofhandler.mesh.dim()
+            I,J = np.mgrid[0:n_dofs,0:n_dofs] 
+            X = x[I,:].reshape((n_dofs**2,dim)) 
+            Y = x[J,:].reshape((n_dofs**2,dim))
+            K = k.eval((X,Y)).reshape((n_dofs,n_dofs))
+                        
+            # Assemble mass matrix
+            assembler = Assembler([[m]], mesh, subforest_flag=subforest_flag)
+            assembler.assemble()
+            M = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Define discretized covariance operator
+            C = M.dot(K.dot(M.T))
+            
+            # Compute generalized eigendecomposition
+            lmd, V = linalg.eigh(C,M)
+            
+        else:
+            raise Exception('Only "interpolation", "galerkin", '+\
+                            ' or "collocation" supported for input "method"')
+        
+        #
+        # Store eigendecomposition
+        # 
+        # Rearrange to ensure decreasing order
+        lmd = lmd[::-1]
+        V = V[:,::-1]
+        self.__lmd = lmd                            # eigenvalues
+        self.__V = V                                # eigenvectors
+        
+        #
+        # Covariance matrix (X = mu + V*sqrt(Lmd)*Z
+        # 
+        covariance = SPDMatrix(V.dot(np.diag(lmd).dot(V.T)))
+        
+        GaussianField.__init__(self, mean=mean.data(), covariance=covariance)
+        
+        #
+        # Store quantities
+        # 
+        self.__C = C                                # discretized covariance operator
+        self.__discretization_method = method       # discretization method
+        self.__assembler = assembler                # finite element assembler
+        self.__subforest_flag = subforest_flag      # submesh flag
+        self.__size = n_dofs                        # number of fem dofs
+
+    
+    def dim(self):
+        """
+        Return dimension of domain
+        """
+        return self.dofhandler().mesh.dim()
+    
+        
+    def eigenvalues(self):
+        """
+        Return (generalized) eigenvalues of the discretized covariance operator 
+        """
+        return self.__lmd
+    
+    
+    def eigenvectors(self):
+        """
+        Return (generalized) eigenvectors of the discretized covariance operator
+        """
+        return self.__V
+    
+
+    def mean_function(self):
+        """
+        Returns the mean function
+        """
+        return self.__mean_function
+    
+                  
+    def discretization_method(self):
+        """
+        Returns the assembly/approximation method ('interpolation' or 'projection')
+        """
+        return self.__discretization_method
+    
+    
+    def sample(self, n_samples=1, z=None):
+        """
+        """
+        #
+        # Parse samples
+        # 
+        if z is not None:
+            #
+            # Extract number of samples from z
+            #  
+            assert len(z.shape) == 2, \
+                'Input "z" should have size (n, n_samples).'
+            assert z.shape[0] == self.size(), \
+                'Input "z" should have size (n, n_samples).'
+            n_samples = z.shape[1]
+        else:
+            #
+            # Generate z
+            # 
+            z = np.random.normal(size=(self.size(), n_samples))
+    
+        V = self.__V
+        lmd = self.__lmd
+        Lmd = np.diag(lmd)
+        return V.dot(Lmd.dot(z))
+        
+   
+
+class EllipticField(GaussianField):
+    """
+    Elliptic Gaussian random field, defined as the solution of the elliptic 
+    equation
+    
+        (k^2 u - div[T(x)grad(u)])^{gamma/2} X = W
+    """
+    def __init__(self, dofhandler, mean=None, gamma=1, kappa=None, tau=None, 
+                 subforest_flag=None):
+        """
+        Constructor
+            
+        Inputs: 
+        
+            dofhandler: DofHandler, 
+            
+            gamma: int, positive integer (doubles not yet implemented).
+            
+            kappa: double, positive regularization parameter.
+            
+            tau: (Axx,Axy,Ayy) symmetric tensor or diffusion coefficient function.
+                        
+        """
+        
+        #
+        # Parse dofhandler
+        #
+        dofhandler.distribute_dofs(subforest_flag=subforest_flag)
+        dofhandler.set_dof_vertices()
+        self.__dofhandler = dofhandler
+        n_dofs = dofhandler.n_dofs(subforest_flag=subforest_flag)
+        
+        #
+        # Parse mean
+        # 
+        if mean is None:
+            mean = Nodal(data=np.zeros((n_dofs,1)), dofhandler=dofhandler)
+        else:
+            assert isinstance(mean, Nodal), \
+            'Input "mean" should be a "Nodal" object.'
+        
+            assert mean.dofhandler()==self.dofhandler(), \
+            'Input "mean" should have the same dofhandler as the random field. '
+        self.__mean_function = mean
+        
+        dim = dofhandler.mesh.dim()
+        
+        #
+        # Define basis
+        # 
+        ux = Basis(dofhandler, 'ux')
+        uy = Basis(dofhandler, 'uy')
+        u  = Basis(dofhandler, 'u')
+        
+        #
+        # Define bilinear forms
+        # 
+        elliptic_forms = []
+        if tau is not None:
+            #
+            # Test whether tau is a symmetric tensor
+            # 
+            if type(tau) is tuple:
+                #
+                # Tau is a tensor
+                # 
+                assert len(tau)==3, 'Symmetric tensor should have length 3.'
+                dim == 2, 'Input "tau" cannot be a tuple when mesh dimension=1'
+                axx, axy, ayy = tau
+                Axx = Form(axx, trial=ux, test=ux)
+                Axy = Form(axy, trial=ux, test=uy)
+                Ayx = Form(axy, trial=uy, test=ux)
+                Ayy = Form(ayy, trial=uy, test=uy)
+                
+                elliptic_forms = [Axx, Axy, Ayx, Ayy]
+                
+            else:
+                #
+                # tau is a function
+                # 
+                assert isinstance(tau, Map), 'Input "tau" should be a "Map".'
+                
+                if dim==1:
+                    Ax = Form(tau, trial=ux, test=ux)
+                    elliptic_forms = [Ax] 
+                elif dim==2:
+                    Ax = Form(tau, trial=ux, test=ux)
+                    Ay = Form(tau, trial=uy, test=uy)
+                    elliptic_forms = [Ax,Ay]
+        else:
+            #
+            # Default tau=1
+            # 
+            if dim==1:
+                Ax = Form(1, trial=ux, test=ux)
+                elliptic_forms = [Ax]
+            elif dim==2:
+                Ax = Form(1, trial=ux, test=ux)
+                Ay = Form(1, trial=uy, test=uy)
+                elliptic_forms = [Ax, Ay]
+        #
+        # Regularization term
+        # 
+        elliptic_forms.append(Form(kappa, trial=u, test=u))
+        
+        #
+        # Mass matrix 
+        # 
+        mass = [Form(1, trial=u, test=u)]
+        
+        #
+        # Combine forms
+        # 
+        problems = [elliptic_forms, mass]
+        
+        #
+        # Assemble matrices
+        # 
+        assembler = Assembler(problems, mesh=dofhandler.mesh)
+        assembler.assemble()
+        
+        #
+        # Get system matrix
+        # 
+        K = assembler.af[0]['bilinear'].get_matrix()
+        
+        #
+        # Lumped mass matrix
+        # 
+        M = assembler.af[1]['bilinear'].get_matrix()
+        m_lumped = np.array(M.sum(axis=1)).squeeze()
+        
+            
+        if np.mod(gamma,2) == 0:
+            #
+            # Even power alpha
+            # 
+            Q = cholesky(K.tocsc())
+            count = 1
+        else:
+            #
+            # Odd power gamma
+            # 
+            Q = cholesky_AAt((K.dot(sp.diags(1/np.sqrt(m_lumped)))).tocsc())
+            count = 2
+        
+        while count < gamma:
+            #
+            # Update Q
+            #
+            Q = cholesky_AAt((K.dot(sp.diags(1/m_lumped)).dot(Q.apply_Pt(Q.L()))).tocsc()) 
+            count += 2
+        # Save precision matrix
+        Q = SPDMatrix(Q)
+    
+        GaussianField.__init__(self, mean=mean.data(), precision=Q)
+        
+        
+    def sample(self, n_samples=1, z=None):
+        """
+        Generate sample realizations from an ellipt.
+        
+        Inputs:
+        
+            n_samples: int, number of samples to generate
+            
+            z: (n,n_samples) random vector ~N(0,I).
+              
+        Outputs:
+        
+            x: (n,n_samples), samples paths of random field
+        
+        """
+        return self.chol_sample(n_samples=n_samples, z=z, mode='precision')
+        
+            
 class Covariance(SPDMatrix):
     """
     Covariance operator
@@ -1108,6 +1911,7 @@ class Covariance(SPDMatrix):
     collocation
     interpolation
     
+    TODO: Delete!
     """
     def __init__(self, cov_kernel, dofhandler, mass_lumping=False,
                  subforest_flag=None, method='interpolation'):
@@ -1454,96 +2258,8 @@ class Covariance(object):
         return Sigma      
 '''
   
-    
-class Precision(SPDMatrix):
-    """
-    Precision Matrix for 
-    """
-    def __init__(self, Q):
-        """
-        Constructor
-        """
-        SPDMatrix.__init__(self, Q)
 
-'''
-class MaternPrecision(Precision):
-    """
-    Precision matrix related to the Matern precision.
-    """
-    def __init__(self, dofhandler, alpha=1, kappa=None, tau=None):
-        """
-        Construct the precision matrix for the Matern random field defined on the 
-        spatial mesh. The field X satisfies
-        
-            (k^2 u - div[T(x)grad(u)])^{a/2} X = W
-        
-        Inputs: 
-        
-            dofhandler: DofHandler, 
-            
-            alpha: int, positive integer (doubles not yet implemented).
-            
-            kappa: double, positive regularization parameter.
-            
-            tau: (Axx,Axy,Ayy) symmetric tensor or diffusion coefficient function.
-            
-            boundary_conditions: tuple of boundary locator function and boundary value
-                function (viz. fem.Assembler)
-            
-        """
-        system = Assembler(mesh, element)
-        
-        #
-        # Assemble (kappa * M + K)
-        #
-        bf = [(kappa,'u','v')]
-        if tau is not None:
-            #
-            # Test whether tau is a symmetric tensor
-            # 
-            if type(tau) is tuple:
-                assert len(tau)==3, 'Symmetric tensor should have length 3.'
-                axx,axy,ayy = tau
-                bf += [(axx,'ux','vx'),(axy,'uy','vx'),
-                       (axy,'ux','vy'),(ayy,'uy','vy')]
-            else:
-                assert callable(tau) or isinstance(tau, Number)
-                bf += [(tau,'ux','vx'),(tau,'uy','vy')]
-        else:
-            bf += [(1,'ux','vx'),(1,'uy','vy')]
-        G = system.assemble(bilinear_forms=bf, 
-                            boundary_conditions=boundary_conditions)
-        G = G.tocsr()
-        
-        #
-        # Lumped mass matrix
-        # 
-        M = system.assemble(bilinear_forms=[(1,'u','v')]).tocsr()
-        m_lumped = np.array(M.sum(axis=1)).squeeze()
-        
-            
-        if np.mod(alpha,2) == 0:
-            #
-            # Even power alpha
-            # 
-            Q = cholesky(G.tocsc())
-            count = 1
-        else:
-            #
-            # Odd power alpha
-            # 
-            Q = cholesky_AAt((G*sp.diags(1/np.sqrt(m_lumped))).tocsc())
-            count = 2
-        
-        while count < alpha:
-            #
-            # Update Q
-            #
-            Q = cholesky_AAt((G*sp.diags(1/m_lumped)*Q.apply_Pt(Q.L())).tocsc()) 
-            count += 2
-        
-        return Q
-''' 
+
     
     
 # =============================================================================
@@ -2428,9 +3144,5 @@ class GMRF(object):
                             ' "pointwise", "hard", or "soft"')
         '''
     
-    def iid_gauss(self, n_samples=1):
-        """
-        Returns a matrix whose columns are N(0,I) vectors of length n 
-        """
-        return np.random.normal(size=(self.n(),n_samples)) 
+
         

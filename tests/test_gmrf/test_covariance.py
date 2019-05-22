@@ -27,11 +27,11 @@ class TestCovariance(unittest.TestCase):
     
     
     def test_assembly(self):
-        for mesh in [Mesh1D(resolution=(10,)), QuadMesh(resolution=(10,10))]:
+        for mesh in [Mesh1D(resolution=(100,)), QuadMesh(resolution=(30,30))]:
             
             dim = mesh.dim()
             
-            element = QuadFE(dim, 'DQ0')
+            element = QuadFE(dim, 'Q1')
             
             dofhandler = DofHandler(mesh, element)
             cov_kernel = CovKernel('gaussian', {'sgm': 2, 'l': 0.2, 'M': None}, dim)
