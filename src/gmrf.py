@@ -824,7 +824,7 @@ class SPDMatrix(object):
         return self.__d, self.__V
         
        
-    def eig_solve(self,b):
+    def eig_solve(self, b, eps=None):
         """
         Solve the linear system Kx = Mb by means of eigenvalue decomposition, 
         i.e. x = V'Dinv*V*b 
@@ -832,6 +832,8 @@ class SPDMatrix(object):
         Inputs:
         
             b: double, (n,m) array
+            
+            tol: double >0, 
         """
         # Check that eigendecomposition has been computed
         assert self.__d is not None, \
@@ -839,7 +841,7 @@ class SPDMatrix(object):
         
         V = self.__V  # eigenvectors
         d = self.__d  # eigenvalues
-        D_inv = diagonal_inverse(d)
+        D_inv = diagonal_inverse(d, eps=eps)
         return V.dot(D_inv.dot(np.dot(V.T, b)))
             
     
@@ -891,6 +893,23 @@ class SPDMatrix(object):
             # Solve V*sqrtD x = b
             #
             return sqrtD_inv.dot(np.dot(V.T, b))
+
+
+    def dot(self, b):
+        """
+        Returns the matrix vector product K*b
+        
+        Input:
+        
+            b: double, (n,m) compatible array
+        
+            
+        Output:
+        
+            Kb: double, (n,m) matrix-vector product
+        """
+        assert b.shape[0]==self.size(), 'Input "b" has incompatible shape.'
+        return self.get_matrix().dot(b)
 
 
     def solve(self, b, decomposition='eig'):
@@ -987,9 +1006,6 @@ class GaussianField(object):
         NOTE: If the precision/covariance have a preferred decomposition, 
             decompose before defining the Gaussian field.
         """               
-        
-
-        
         # =====================================================================
         # Parse Precision and Covariance
         # =====================================================================
@@ -1079,7 +1095,12 @@ class GaussianField(object):
         else:
             b = None
         self.__b = b
- 
+        
+        #
+        # Specify support
+        #  
+        self.__i_support = None
+        
  
     def size(self):
         """
@@ -1110,6 +1131,7 @@ class GaussianField(object):
         else:
             return self.__mean
     
+    
     def set_mean(self, mean):
         """
         Define mean
@@ -1126,15 +1148,15 @@ class GaussianField(object):
     
     def set_b(self):
         pass
-    
-    
+        
+
     def covariance(self):
         """
         Returns the covariance of the random field
         """
         return self.__covariance
     
-    
+        
     def precision(self):
         """
         Returns the precision of the random field
@@ -1142,7 +1164,8 @@ class GaussianField(object):
         return self.__precision
     
     
-    def chol_sample(self, n_samples=1, z=None, mode='covariance'):
+    def sample(self, n_samples=1, z=None,\
+               mode='covariance', decomposition='eig'):
         """
         Generate sample realizations from Gaussian random field.
         
@@ -1154,6 +1177,10 @@ class GaussianField(object):
             
             mode: str, specify parameters used to simulate random field
                 ['precision', 'covariance', 'canonical']
+                
+            decomposition: str, specifying the decomposition type
+                ['chol', 'eig']
+                
               
         Outputs:
         
@@ -1161,7 +1188,7 @@ class GaussianField(object):
             
                 
         Note: Samples generated from the cholesky decomposition of Q are 
-            different from those generated from that of Sigma. 
+            different from those generated from that of eig. 
                 
                 Q = LL' (lower*upper)
                   
@@ -1186,126 +1213,52 @@ class GaussianField(object):
             # Generate z
             # 
             z = np.random.normal(size=(self.size(), n_samples))
-            
-            
-        if mode=='covariance':
-            #
-            # Cholesky decomposition of the covariance operator
-            # 
-            assert self.covariance() is not None, 'No covariance specified.'
-            
-            # Get covariance
-            K = self.covariance()
-            
-            # Compute Cholesky factorization L*L' if necessary
-            if not K.has_chol_decomp():
-                K.chol_decomp()
-            
-            # Return Lz + mean
-            return K.chol_sqrt(z) + self.mean(n_copies=n_samples)
-            
-        elif mode=='precision':
-            #
-            # Cholesky decomposition of the precision matrix
-            # 
-            assert self.precision() is not None, 'No precision specified.'
-            
-            # Get precision matrix
-            Q = self.precision()
-            
-            # Compute Cholesky decomposition L*L' if necessary
-            if not Q.has_chol_decomp():
-                Q.chol_decomp()
-            
-            # Return L^{-T} z + mean
-            return Q.chol_sqrt_solve(z,transpose=True) \
-                + self.mean(n_copies=n_samples)  
-                       
-        elif mode=='canonical':
-            #
-            # Cholesky decomposition of the precision matrix 
-            #
-            assert self.precision() is not None, 'No precision specified.'
-            return self.chol_sample(z=z, mode='precision')
-        else:
-            raise Exception('Input "mode" not recognized. '+\
-                            'Use "covariance", "precision", or "canonical".')
-        
-     
-
-    def eig_sample(self, n_samples=1, z=None, mode='covariance'):
-        """
-        Generate a random sample based on the eigendecomposition of the 
-        covariance/precision matrix
-        
-        Inputs:
-        
-            n_samples: int, number of samples to generate
-            
-            z: (n,n_samples) random vector ~N(0,I).
-            
-            mode: str, specify parameters used to simulate random field
-                ['precision', 'covariance', 'canonical']
-            
-            
-        Outputs:
-        
-            x: (n,n_samples), samples paths of random field
-    
-        
-        Note: The eigendecomposition can generate samples from degenerate
-            covariance/precision matrices.
-        """
+         
         #
-        # Parse samples
-        # 
-        if z is not None:
-            #
-            # Extract number of samples from z
-            #  
-            assert len(z.shape) == 2, \
-                'Input "z" should have size (n, n_samples).'
-            assert z.shape[0] == self.size(), \
-                'Input "z" should have size (n, n_samples).'
-            n_samples = z.shape[1]
-        else:
-            #
-            # Generate z
-            # 
-            z = np.random.normal(size=(self.size(), n_samples))
-            
-            
+        # Retrieve SPDMatrix   
+        #  
         if mode=='covariance':
-            #
-            # Eigen-decomposition of the covariance operator
-            # 
+            # Check that covariance matrix is specified 
             assert self.covariance() is not None, 'No covariance specified.'
             
             # Get covariance
             K = self.covariance()
             
-            # Compute eigendecomposition if necessary
-            if not K.has_eig_decomp():
-                K.eig_decomp()
-            
-            # Return Lz + mean
-            return K.eig_sqrt(z) + self.mean(n_copies=n_samples)
-            
         elif mode=='precision':
-            #
-            # Cholesky decomposition of the precision matrix
-            # 
+            # Check that precision matrix is specified
             assert self.precision() is not None, 'No precision specified.'
             
-            # Get precision matrix
-            Q = self.precision()
+            # Get precision
+            K = self.precision()
             
-            # Compute eigen-decomposition if necessary
-            if not Q.has_eig_decomp():
-                Q.eig_decomp()
-            
+        #    
+        # Compute factorization L*L' if necessary
+        #
+        if decomposition=='chol' and not K.has_chol_decomp():
+            #
+            # Cholesky
+            #
+            K.chol_decomp()
+        elif decomposition=='eig' and not K.has_eig_decomp():
+            #
+            # Eigendecomposition
+            #
+            K.eig_decomp()
+        #
+        #  Compute sample   
+        # 
+        if mode=='covariance':
+            #
+            # Return Lz + mean
+            #
+            return K.sqrt(z, decomposition=decomposition) + \
+                self.mean(n_copies=n_samples)
+                
+        elif mode=='precision':
+            #
             # Return L^{-T} z + mean
-            return Q.eig_sqrt_solve(z,transpose=True) \
+            #
+            return K.sqrt_solve(z,transpose=True, decomposition=decomposition)\
                 + self.mean(n_copies=n_samples)  
                        
         elif mode=='canonical':
@@ -1313,11 +1266,126 @@ class GaussianField(object):
             # Cholesky decomposition of the precision matrix 
             #
             assert self.precision() is not None, 'No precision specified.'
-            return self.eig_sample(z=z, mode='precision')
+            return self.sample(n_samples=n_samples, z=z, mode='precision', \
+                               decomposition=decomposition)
         else:
             raise Exception('Input "mode" not recognized. '+\
                             'Use "covariance", "precision", or "canonical".')
+            
     
+    def condition(self, A, e, Ko=0, output='sample', n_samples=1, z=None, 
+                  mode='precision', decomposition='eig'):
+        """
+        Returns the conditional random field X|e, where e|X ~ N(AX, Ko).
+        
+            - If Ko=0, then e|X = AX, i.e. AX = e 
+            
+            - Otherwise, the conditional mean and precision are given by
+            
+                     mu_{x|e} = Q*mu + A^T Ko\e
+                     Q_{x|e}  = Q + A^T Ko\A.
+            
+        The resulting field has support on a reduced vector space.  
+        """
+        if Ko == 0:
+            #
+            # Hard Constraint
+            #
+            if mode=='precision':
+                Q = self.precision()
+                V = Q.chol_solve(A.T)
+                W = A.dot(V)
+                U = linalg.solve(W,V.T)
+                if output=='sample':
+                    #
+                    # Sample
+                    # 
+                    x = self.chol_sample(z=z, n_samples=n_samples, mode='precision')                    
+                    c = A.dot(x)-e
+                    x = x - np.dot(U.T, c)
+                    return x
+                elif mode=='field':
+                    #
+                    # Random Field
+                    #
+
+                    # Conditional mean
+                    m = self.mean()  
+                    c = A.dot(m)-e
+                    mm = m - np.dot(U.T,c)
+                    
+                    # Conditional covariance
+                    K = Q.chol_solve(np.identity(self.size()))
+                    KK = K - V.dot(U)
+                    
+                    # Return gaussian field
+                    return GaussianField(mean=mm, covariance=KK)
+                else:
+                    raise Exception('Input "mode" should be "sample" or "gmrf".')
+                    
+            elif mode=='covariance':
+                K = self.covariance().get_matrix()
+                V = K.dot(A.T)
+                W = A.dot(V)
+                U = linalg.solve(W,V.T)
+                if output=='sample':
+                    #
+                    # Sample
+                    # 
+                    x = self.chol_sample(z=z, n_samples=n_samples, mode='covariance')
+                    c = A.dot(x)-e
+                    x = x - np.dot(U.T,c)
+                    return x
+                else:
+                    #
+                    # Random Field
+                    # 
+                    
+                    # Conditional covariance
+                    KK = K - V.dot(U) 
+                    
+                    # Conditional mean
+                    m = self.mean()
+                    c = A.dot(m)-e
+                    mm = m - np.dot(U.T,c)
+                    
+                    return GaussianField(mean=mm, covariance=KK) 
+        else:
+            #
+            # Soft Constraint
+            # 
+            KKo = SPDMatrix(Ko)
+            mean_E = A.dot(self.mean())
+            E = GaussianField(mean=mean_E, covariance=KKo)
+            if mode=='precision':
+                #
+                # Precision 
+                # 
+                QQ = self.precision()
+                if output=='sample':
+                    #
+                    # Generate sample from N(e,Ko) 
+                    # 
+                    ee = E.sample(n_samples=n_samples, z=z)
+                    Qc = QQ.get_matrix() + A.T.dot(linalg.solve(Ko, A))
+                    QQc = SPDMatrix(Qc)
+                else:
+                    #
+                    # Store as Gaussian Field 
+                    # 
+                    bc = QQ.dot(self.mean()) + A.T.dot(Ko.solve(e))
+                    Qc = QQ.get_matrix() + A.T.dot(Ko.solve(A))
+                    
+                    return GaussianField(b=bc, precision=Qc)
+            elif mode=='covariance':
+                #
+                # Covariance
+                #
+                if output=='sample':
+                    pass
+                else:
+                    pass
+                
         
     def chol_condition(self, A, e, Ko=0, output='sample', mode='precision', 
                        z=None, n_samples=1):
@@ -1475,12 +1543,29 @@ class GaussianField(object):
         return np.random.normal(size=(self.size(),n_samples)) 
     
     
-    def nullspace(self):
+    def set_support(self, tol=1e-14):
+        """
+        Computes the support of the covariance/precision matrix 
+        """
+        cov = self.covariance()
+        if cov is not None:
+            if not cov.has_eig_decomp():
+                cov.eig_decomp()
+            d, dummy = cov.get_eig_decomp()
+        else:
+            prec = self.precision()
+            if not prec.has_eig_decomp():
+                prec.eig_decomp()
+            d, dummy = prec.eig_decomp()
+        self.__i_support = np.abs(d)>tol        
+        
+        
+    def support(self):
         """
         Returns a matrix of orthonormal vectors constituting the nullspace of
-        the field's covariance matrix. 
+        the field's covariance/precision matrix. 
         """
-        pass
+        return self.__V[:,self.__i_support]
     
     
 class KLField(GaussianField):

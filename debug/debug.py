@@ -68,14 +68,14 @@ print(Q,'\n',R)
 
 '''
 
-mesh = QuadMesh(resolution=(10,10))
+mesh = QuadMesh(resolution=(60,60))
 element = QuadFE(2,'DQ0')
 dofhandler = DofHandler(mesh, element)
 dofhandler.distribute_dofs()
 dofhandler.set_dof_vertices()
 x = dofhandler.get_dof_vertices()
 dim = 2
-k = CovKernel('gaussian', {'sgm': 2, 'l': 0.1, 'M': np.array([[1,0],[0,10]])}, dim)
+k = CovKernel('gaussian', {'sgm': 2, 'l': 0.1, 'M': np.array([[1,0.5],[0.5,10]])}, dim)
 I,J = np.mgrid[0:9,0:9]
 X = x[I,:]
 Y = x[J,:]
