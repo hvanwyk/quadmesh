@@ -1287,6 +1287,19 @@ class GaussianField(object):
             
         The resulting field has support on a reduced vector space.  
         """
+        if output=='sample':
+            #
+            # Generate a sample of the conditioned field
+            #
+            
+            # Sample unconditioned field 
+            Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
+                             decomposition=decomposition)
+            
+            
+            
+        elif output=='field':
+            pass
         if Ko == 0:
             #
             # Hard Constraint
@@ -1300,7 +1313,8 @@ class GaussianField(object):
                     #
                     # Sample
                     # 
-                    x = self.chol_sample(z=z, n_samples=n_samples, mode='precision')                    
+                    x = self.sample(z=z, n_samples=n_samples, mode=mode, 
+                                    decomposition=decomposition)                    
                     c = A.dot(x)-e
                     x = x - np.dot(U.T, c)
                     return x
@@ -1377,14 +1391,20 @@ class GaussianField(object):
                     Qc = QQ.get_matrix() + A.T.dot(Ko.solve(A))
                     
                     return GaussianField(b=bc, precision=Qc)
+                
             elif mode=='covariance':
                 #
                 # Covariance
                 #
+                KK = self.covariance()
                 if output=='sample':
                     pass
                 else:
-                    pass
+                    #
+                    # Store as Gaussian Field
+                    #  
+                    bc = KK.solve(self.mean()) + A.T.dot(linalg.solve(Ko,e))
+                    
                 
         
     def chol_condition(self, A, e, Ko=0, output='sample', mode='precision', 
