@@ -784,11 +784,13 @@ class SPDMatrix(object):
         d = d[::-1]
         V = V[:,::-1]
         
+        
         # Modify negative eigenvalues
         if delta is None:
             eps = np.finfo(float).eps
             delta = np.sqrt(eps)*linalg.norm(K, 'fro')
         d[d<=delta] = delta
+        
         
         # Store eigendecomposition
         self.__V = V
@@ -818,9 +820,13 @@ class SPDMatrix(object):
         Returns the matrix's eigenvalues and vectors
         """
         # Check that eigendecomposition has been computed
+        if self.__d is None:
+            self.eig_decomp()
+        
+        """    
         assert self.__d is not None, \
         'First compute eigendecomposition using "eig_decomp".'
-        
+        """
         return self.__d, self.__V
         
        
@@ -990,118 +996,189 @@ class GaussianField(object):
     """
     Base class for Gaussian random fields
     """
-    def __init__(self, mean=None, b=None, covariance=None, precision=None): 
+    def __init__(self,size, mean=None,K=None, mode='covariance',support=None): 
         """
         Constructor
         
         Inputs:
         
-            mean: double, numpy array 
+            size: int, the size n of the Gaussian random vector.  
             
-            precision: SPDEMatrix, (n,n) sparse/full precision matrix
+            mean: double, (n,1) numpy array representing the expectation. 
+            
+            b: double, (n,1) numpy array representing Q*mean.
+            
+            support: double, (n,k) numpy array whose columns form an orthonormal
+                basis for the support of the Gaussian vector.
+            
+            precision: double, (n,n) sparse/full precision matrix.
                     
-            covariance: SPDEMatrix, (n,n) sparse/full covariance matrix
+            covariance: double, (n,n) sparse/full covariance matrix.
              
-            
         NOTE: If the precision/covariance have a preferred decomposition, 
             decompose before defining the Gaussian field.
         """               
-        # =====================================================================
-        # Parse Precision and Covariance
-        # =====================================================================
-        # Check that at least one is not None
-        assert precision is not None or covariance is not None, \
-            'Specify precision or covariance (or both).'  
+        # Store size
+        self.__size = size
         
-        #
-        # Store covariance
-        #
-        self.__covariance = covariance
+        # Set supporting subspace
+        self.set_support(support)
         
-        # Check covariance type
-        if self.covariance() is not None:
-            assert isinstance(covariance, SPDMatrix), 'Input "covariance" '+\
-                'must be an SPDMatrix object.'
-            self.__size = covariance.size()
-        #
-        # Store precision
-        #
-        self.__precision = precision
-        if precision is not None:
-            assert isinstance(precision, SPDMatrix), 'Input "precision" '+\
-                'must be an SPDMatrix object.'   
-            if self.covariance() is not None:
-                assert self.precision().size() == self.size()
-            else:
-                self.__size = self.precision().size()
-        
-        
-        # =====================================================================
-        # Mean
-        # =====================================================================
-        if mean is not None:
-            #
-            # Mean specified
-            # 
-            if isinstance(mean, Real):
-                mean = mean*np.ones((self.size(),1))
-            else:
-                assert isinstance(mean, np.ndarray), \
-                'Input "mean" should be a numpy array.'
+        # Store covariance/precision
+        self.set_dependence(K, mode=mode)
+                 
+        # Store mean 
+        self.set_mean(mean)
             
-                assert mean.shape[0] == self.size(), \
-                'Mean incompatible with precision/covariance.'
-                
-                if len(mean.shape)==1: 
-                    #
-                    # Turn vector into an 2D array
-                    # 
-                    mean = mean[:,None]
-        else: 
+            
+    def set_mean(self, mean):
+        """
+        Store the mean
+        
+        Inputs:
+        
+            mean: double, (n,n_sample) mean (array)
+        """
+        if mean is None:
             #
-            # Zero mean (default)
-            # 
+            # Default mean is zero
+            #
             mean = np.zeros((self.size(),1))
-        self.__mean = mean
-        
-        # 
-        # Convenience parameter b = Q\mu
-        #
-        if self.precision() is not None:
-            #
-            # Precision is given
-            # 
-            if not np.allclose(mean, np.zeros(self.size()), 1e-10):
-                #
-                # mean is not zero
-                if self.precision().has_chol_decomp():
-                    #
-                    # Use the Cholesky decomposition of precision
-                    # 
-                    b = self.precision().chol_solve(self.mean())
-                elif self.precision().has_eig_decomp():
-                    #
-                    # Use the eigendecomposition of the precision
-                    # 
-                    b = self.precision().eig_solve(self.mean())
-                else:
-                    #
-                    # Compute the eigendecomposition, and then solve
-                    # 
-                    self.precision().eig_decomp()
-                    b = self.precision().eig_solve(self.mean())
-            else:
-                b = np.zeros(shape=(self.size(),1))
         else:
-            b = None
-        self.__b = b
+            #
+            # non-trivial location vector 
+            #
+            assert isinstance(mean, np.ndarray)
+            assert mean.shape[0]==self.size()
+            
+        self.__mean = mean
+        self.__b = None
+            
+    
+    def set_b(self):
+        """
+        Compute the convenience parameter b = precision*mu
         
-        #
-        # Specify support
-        #  
-        self.__i_support = None
+        What about degenerate matrices? 
+        """
+        Q = self.precision()
+        if Q is not None: 
+            b = Q.dot(self.mean())
+        else:
+            K = self.covariance()
+            b = K.solve(self.mean())
+        self.__b = b
+            
+        
+    def set_dependence(self, K, mode='covariance'):
+        """
+        Store the proper covariance matrix of the random field, i.e. the 
+        covariance of the non-constant component of the random field.   
+        
+        Inputs:
+        
+            covariance: double, (n,n) numpy array
+        """
+        V = self.support()
+        if V is not None:
+            #
+            # Support on a restricted subspace
+            # 
+            K = V.T.dot(K.dot(V))
+        
+        if mode=='covariance':
+            self.__covariance = SPDMatrix(K)
+            self.__precision = None
+        elif mode=='precision':
+            self.__precision = SPDMatrix(K)
+            self.__covariance = None
         
  
+    def set_support(self, support):
+        """
+        Stores the support of the Gaussian field
+        
+        Input:
+        
+            support: double, (n,k) array whose columns form an orthonormal
+                basis for the subspace in which the Gaussian field is not 
+                constant.
+        """
+        if support is not None:
+            # Check shape
+            n,k = support.shape
+            assert n==self.size(), 'Support subspace should have the same '+\
+                'number of rows as the random vector.'
+            assert k<=n, 'Number of columns in "support" cannot exceed '+\
+                'number of rows.'
+            
+            # Check orthogonality
+            I = np.identity(k)
+            assert np.allclose(support.T.dot(support),I)
+                
+            
+        # Store support vectors 
+        self.__support = support
+    
+    
+    def update_support(self, mode='covariance', tol=1e-12):
+        """
+        Updates the support subspace, based on the support of the projected
+        covariance/precision matrix. 
+        
+        Inputs:
+        
+            mode: str, specifying matrix from which support is to be computed
+                ('covariance'), or 'precision.
+                
+            tol: double>0, cut-off tolerance below which eigenvalue is 
+                considered 0. 
+        """
+        
+        if mode=='covariance':
+            #
+            # Use (reduced) covariance matrix
+            # 
+            cov = self.covariance()
+            assert cov is not None, 'No covariance specified.'
+            if not cov.has_eig_decomp():
+                cov.eig_decomp(delta=0)
+            d, V = cov.get_eig_decomp()
+        elif mode=='precision':
+            #
+            # Use (reduced) precision matrix
+            # 
+            prec = self.precision()
+            assert prec is not None, 'No precision specified'
+            if not prec.has_eig_decomp():
+                prec.eig_decomp(delta=0)
+            d, V = prec.eig_decomp()
+        else:
+            raise Exception('Input "mode" should be "covariance" or "precision"')
+        
+        # Determine non-zero eigenvalues 
+        i_support = np.abs(d)>tol  
+        m = np.sum(i_support)
+        
+        # Compute new (diagonal) covariance/precision on reduced subspace
+        D = sp.spdiags(d[i_support], 0, m, m) 
+        
+        # Update precision/covariance matrix
+        if mode=='covariance':
+            self.__covariance = SPDMatrix(D)
+        elif mode=='precision':
+            self.__precision = SPDMatrix(D)
+        
+        # Define new set of support vectors
+        W = self.support()
+        if W is not None: 
+            self.set_support(W.dot(V[:,i_support]))
+        else:
+            self.set_support(V[:,i_support])
+            
+        
+          
+        
     def size(self):
         """
         Returns the size of the random vector
@@ -1109,46 +1186,40 @@ class GaussianField(object):
         return self.__size
         
     
-    def mean(self,n_copies=None):
+    def mean(self, col=0, n_copies=None):
         """
         Return the mean of the random vector
         
         Inputs:
-        
+            
+            col: int, column of mean vector to be used (default=0).
+            
             n_copies: int, number of copies of the mean
             
         Output: 
         
             mu: (n,n_copies) mean
         """
+        mu = self.__mean[:,col][:,None]
         if n_copies is not None:
             assert type(n_copies) is np.int, \
                 'Number of copies should be an integer.'
             if n_copies == 1:
-                return self.__mean
+                return mu 
             else:
-                return np.tile(self.__mean, (1, n_copies))
+                return np.tile(mu, (1, n_copies))
         else:
-            return self.__mean
+            return mu
     
-    
-    def set_mean(self, mean):
-        """
-        Define mean
-        """
-        pass
-    
-        
+      
     def b(self):
         """
         Returns the vector of central tendency in canonical form
         """
+        if self.__b is None:
+            self.set_b()
         return self.__b
-    
-    
-    def set_b(self):
-        pass
-        
+
 
     def covariance(self):
         """
@@ -1162,9 +1233,21 @@ class GaussianField(object):
         Returns the precision of the random field
         """
         return self.__precision
+
+        
+    def support(self):
+        """
+        Returns a matrix of orthonormal vectors constituting the nullspace of
+        the field's covariance/precision matrix.
+        
+        Input:
+        
+            compute: bool, compute the support if necessary
+        """
+        return self.__support 
+        
     
-    
-    def sample(self, n_samples=1, z=None,\
+    def sample(self, n_samples=1, z=None, m_col=0,
                mode='covariance', decomposition='eig'):
         """
         Generate sample realizations from Gaussian random field.
@@ -1174,6 +1257,8 @@ class GaussianField(object):
             n_samples: int, number of samples to generate
             
             z: (n,n_samples) random vector ~N(0,I).
+            
+            m_col: int, column of mean array (for multiple GMRFs)
             
             mode: str, specify parameters used to simulate random field
                 ['precision', 'covariance', 'canonical']
@@ -1195,25 +1280,7 @@ class GaussianField(object):
             =>  S = Q^(-1) = L'^(-1) L^(-1) (upper*lower)
             
             However, they have  the same distribution
-        """
-        #
-        # Parse samples
-        # 
-        if z is not None:
-            #
-            # Extract number of samples from z
-            #  
-            assert len(z.shape) == 2, \
-                'Input "z" should have size (n, n_samples).'
-            assert z.shape[0] == self.size(), \
-                'Input "z" should have size (n, n_samples).'
-            n_samples = z.shape[1]
-        else:
-            #
-            # Generate z
-            # 
-            z = np.random.normal(size=(self.size(), n_samples))
-         
+        """         
         #
         # Retrieve SPDMatrix   
         #  
@@ -1224,7 +1291,7 @@ class GaussianField(object):
             # Get covariance
             K = self.covariance()
             
-        elif mode=='precision':
+        elif mode=='precision' or mode=='canonical':
             # Check that precision matrix is specified
             assert self.precision() is not None, 'No precision specified.'
             
@@ -1243,7 +1310,25 @@ class GaussianField(object):
             #
             # Eigendecomposition
             #
-            K.eig_decomp()
+            K.eig_decomp(delta=0)
+        
+        #
+        # Parse samples
+        # 
+        if z is not None:
+            #
+            # Extract number of samples from z
+            #  
+            assert len(z.shape) == 2, \
+                'Input "z" should have size (n, n_samples).'
+            assert z.shape[0] == K.size(), \
+                'Input "z" should have size (n, n_samples).'
+            n_samples = z.shape[1]
+        else:
+            #
+            # Generate z
+            # 
+            z = np.random.normal(size=(K.size(), n_samples))
         #
         #  Compute sample   
         # 
@@ -1251,15 +1336,22 @@ class GaussianField(object):
             #
             # Return Lz + mean
             #
-            return K.sqrt(z, decomposition=decomposition) + \
-                self.mean(n_copies=n_samples)
+            Lz = K.sqrt(z, decomposition=decomposition)
+            V = self.support()
+            if V is not None:
+                Lz = V.dot(Lz)
+            return  Lz + self.mean(col=m_col, n_copies=n_samples)
                 
         elif mode=='precision':
             #
             # Return L^{-T} z + mean
             #
-            return K.sqrt_solve(z,transpose=True, decomposition=decomposition)\
-                + self.mean(n_copies=n_samples)  
+            Lz = K.sqrt_solve(z,transpose=True, decomposition=decomposition)
+            V = self.support()
+            if V is not None:
+                Lz = V.dot(Lz)  
+            mu = self.mean(col=m_col, n_copies=n_samples)
+            return Lz + mu
                        
         elif mode=='canonical':
             #
@@ -1267,11 +1359,12 @@ class GaussianField(object):
             #
             assert self.precision() is not None, 'No precision specified.'
             return self.sample(n_samples=n_samples, z=z, mode='precision', \
-                               decomposition=decomposition)
+                               decomposition=decomposition, m_col=m_col)
         else:
             raise Exception('Input "mode" not recognized. '+\
                             'Use "covariance", "precision", or "canonical".')
             
+    
     
     def condition(self, A, e, Ko=0, output='sample', n_samples=1, z=None, 
                   mode='precision', decomposition='eig'):
@@ -1296,10 +1389,13 @@ class GaussianField(object):
             Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
                              decomposition=decomposition)
             
-            
-            
+            if mode=='precision':
+                Q = self.precision()
+                
         elif output=='field':
             pass
+        
+        
         if Ko == 0:
             #
             # Hard Constraint
@@ -1429,6 +1525,7 @@ class GaussianField(object):
 
         TODO: Soft constraints
         TODO: Test
+        TODO: Delete
         """
         if Ko == 0:
             #
@@ -1475,7 +1572,8 @@ class GaussianField(object):
                     #
                     # Sample
                     # 
-                    x = self.chol_sample(z=z, n_samples=n_samples, mode='covariance')
+                    x = self.sample(z=z, n_samples=n_samples, mode='covariance', 
+                                    decomposition='chol')
                     c = A.dot(x)-e
                     x = x - np.dot(U.T,c)
                     return x
@@ -1558,34 +1656,18 @@ class GaussianField(object):
     
     def iid_gauss(self, n_samples=1):
         """
-        Returns a matrix whose columns are N(0,I) vectors of length n 
+        Returns a matrix whose columns are N(0,I) vectors of length the 
+        size of the covariance. 
         """
-        return np.random.normal(size=(self.size(),n_samples)) 
-    
-    
-    def set_support(self, tol=1e-14):
-        """
-        Computes the support of the covariance/precision matrix 
-        """
-        cov = self.covariance()
-        if cov is not None:
-            if not cov.has_eig_decomp():
-                cov.eig_decomp()
-            d, dummy = cov.get_eig_decomp()
+        V = self.support()
+        if V is not None:
+            n = V.shape[1]
         else:
-            prec = self.precision()
-            if not prec.has_eig_decomp():
-                prec.eig_decomp()
-            d, dummy = prec.eig_decomp()
-        self.__i_support = np.abs(d)>tol        
-        
-        
-    def support(self):
-        """
-        Returns a matrix of orthonormal vectors constituting the nullspace of
-        the field's covariance/precision matrix. 
-        """
-        return self.__V[:,self.__i_support]
+            n = self.size()
+            
+        return np.random.normal(size=(n,n_samples)) 
+      
+
     
     
 class KLField(GaussianField):
