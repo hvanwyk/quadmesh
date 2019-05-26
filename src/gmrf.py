@@ -1287,6 +1287,18 @@ class GaussianField(object):
             
         The resulting field has support on a reduced vector space.  
         """
+        #
+        # 
+        # 
+        
+        #
+        # Compute V = Cov*A.T and W = A*Cov*A.T
+        # 
+        if len(A.shape)==1:
+            #
+            #
+            #
+            pass
         if output=='sample':
             #
             # Generate a sample of the conditioned field
@@ -1296,8 +1308,25 @@ class GaussianField(object):
             Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
                              decomposition=decomposition)
             
+            if len(A.shape)==1:
+                #
+                # Pointwise conditioning
+                # 
+                if mode=='covariance':
+                    pass
+                elif mode=='precision':
+                    pass
             
-            
+            elif Ko==0:
+                #
+                # Hard Constraint
+                # 
+                pass
+            else:
+                #
+                # Soft Constraint
+                # 
+                pass
         elif output=='field':
             pass
         if Ko == 0:
