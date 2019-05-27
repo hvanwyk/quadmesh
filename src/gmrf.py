@@ -1114,7 +1114,8 @@ class GaussianField(object):
             
             # Check orthogonality
             I = np.identity(k)
-            assert np.allclose(support.T.dot(support),I)
+            assert np.allclose(support.T.dot(support),I), 'Basis vectors '+\
+                'support should be orthonormal.'
                 
             
         # Store support vectors 
@@ -1175,9 +1176,26 @@ class GaussianField(object):
             self.set_support(W.dot(V[:,i_support]))
         else:
             self.set_support(V[:,i_support])
-            
+     
+     
+    def project(self,b,space='range'):
+        """
+        Project the array b onto either the range of the covariance or its 
+        nullspace.
         
-          
+        Inputs:
+        
+            b: (n,k) numpy array
+            
+            space: str, 'nullspace' or 'range'
+        """
+        V = self.support()
+        Pb = V.dot(V.T.dot(b))
+        if space=='range':
+            return Pb
+        elif space=='nullspace':
+            return b - Pb 
+        
         
     def size(self):
         """
@@ -1367,7 +1385,7 @@ class GaussianField(object):
     
     
     def condition(self, A, e, Ko=0, output='sample', n_samples=1, z=None, 
-                  mode='precision', decomposition='eig'):
+                  mode='covariance', decomposition='eig'):
         """
         Returns the conditional random field X|e, where e|X ~ N(AX, Ko).
         
@@ -1381,17 +1399,63 @@ class GaussianField(object):
         The resulting field has support on a reduced vector space.  
         """
         #
+        # Get covariance or precision
         # 
-        # 
-        
+        if mode=='covariance':
+            K = self.covariance()
+            assert K is not None, 'No covariance specified.'
+        elif mode=='precision':
+            Q = self.precision()
+            assert Q is not None, 'No precision specified.'
+                
+        #
+        # Convert pointwise restrictions to sparse matrix
+        #
+        n = self.size()
+        if len(A.shape)==1:
+            k = len(A)
+            rows = np.arange(k)
+            cols = A
+            vals = np.ones(k)
+            A = sp.coo_matrix((vals, (rows,cols)),shape=(k,n))
+            
         #
         # Compute V = Cov*A.T and W = A*Cov*A.T
+        #   
+        if mode=='covariance':    
+            V = K.dot(A.T.toarray())
+            W = A.dot(V)
+        elif mode=='precision':
+            V = Q.solve(A.T)
+            W = A.dot(V)
+        
+        #
+        # Determine whether constraints are hard or soft
         # 
-        if len(A.shape)==1:
+        if isinstance(Ko, Real) and Ko==0:
             #
+            # Hard constraints
+            #  
+            soft = False
+        else:
             #
+            # Soft constraint
+            # 
+            soft = True
+        
+        #
+        # For hard constraints, check whether constraint is possible 
+        # 
+        if not soft:
             #
-            pass
+            # A(P*x + P^*mu) = e 
+            # 
+            mu = self.mean()
+            r = e - A.dot(self.project(mu,'nullspace'))
+            u,s,vt = linalg.svd(A, full_matrices=False)
+            
+            r - u.dot(u.T.dot(self.projection(r,'range')))
+           
         if output=='sample':
             #
             # Generate a sample of the conditioned field
@@ -1401,68 +1465,64 @@ class GaussianField(object):
             Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
                              decomposition=decomposition)
             
-            if len(A.shape)==1:
-                #
-                # Pointwise conditioning
-                # 
-                if mode=='covariance':
-                    pass
-                elif mode=='precision':
-                    pass
+            if soft:
+                k = e.shape[0]
+                eps = GaussianField(k, mean=e, K=Ko, mode='covariance')
+                e = eps.sample(z=z, n_samples=n_samples)
+        
+            print(Xs.shape)
             
-            elif Ko==0:
-                #
-                # Hard Constraint
-                # 
-                pass
-            else:
-                #
-                # Soft Constraint
-                # 
-                pass
-            if mode=='precision':
-                Q = self.precision()
+            # Compute residual
+            r = A.dot(Xs)-e
+            
+            print('A*xs', A.dot(Xs).shape)
+            print('e', e.shape)
+            print(r.shape)
+            
+            # Conditional covariance 
+            U = linalg.solve(Ko+W, r)
+            
+            # Apply correction 
+            X = Xs - V.dot(U)
+             
                 
         elif output=='field':
-            pass
+            
+            # Conditional mean
+            mu = self.mean()
+            if Ko == 0:
+                r = A.dot(mu - e)
+                mu_c =  mu - linalg.solve(W, r)
+            else: 
+                mu_c = mu - A.T.dot(linalg.solve(Ko,e))
+            
+            # Covariance/precision
+            if mode=='covariance':
+                U = linalg.solve(Ko+W, V.T) 
+         
+                # Conditional covariance
+                K_c = K - V.dot(U)
+                
+                # Define Gaussian field
+                X = GaussianField(mean=mu_c, covariance=K_c)
+            
+            elif mode=='precision':
+                # Conditional precision
+                Q_c = Q + A.T.dot(linalg.solve(Ko,A))
+            
+                # Update support
+                
+                # Gaussian field
+                X = GaussianField(mean=mu_c, precision=Q_c)
+                
+        else:
+            raise Exception('Input "mode" should be "sample" or "field".')
+        
+        return X 
         
         
-        if Ko == 0:
-            #
-            # Hard Constraint
-            #
-            if mode=='precision':
-                Q = self.precision()
-                V = Q.chol_solve(A.T)
-                W = A.dot(V)
-                U = linalg.solve(W,V.T)
-                if output=='sample':
-                    #
-                    # Sample
-                    # 
-                    x = self.sample(z=z, n_samples=n_samples, mode=mode, 
-                                    decomposition=decomposition)                    
-                    c = A.dot(x)-e
-                    x = x - np.dot(U.T, c)
-                    return x
-                elif mode=='field':
-                    #
-                    # Random Field
-                    #
-
-                    # Conditional mean
-                    m = self.mean()  
-                    c = A.dot(m)-e
-                    mm = m - np.dot(U.T,c)
-                    
-                    # Conditional covariance
-                    K = Q.chol_solve(np.identity(self.size()))
-                    KK = K - V.dot(U)
-                    
-                    # Return gaussian field
-                    return GaussianField(mean=mm, covariance=KK)
-                else:
-                    raise Exception('Input "mode" should be "sample" or "gmrf".')
+        
+    """            
                     
             elif mode=='covariance':
                 K = self.covariance().get_matrix()
@@ -1531,8 +1591,7 @@ class GaussianField(object):
                     # Store as Gaussian Field
                     #  
                     bc = KK.solve(self.mean()) + A.T.dot(linalg.solve(Ko,e))
-                    
-                
+        """
         
     def chol_condition(self, A, e, Ko=0, output='sample', mode='precision', 
                        z=None, n_samples=1):
@@ -1654,35 +1713,6 @@ class GaussianField(object):
                     pass
                 else:
                     pass
-                
-    
-    def eig_condition(self, A, e, Ko=0, output='sample', mode='precision', 
-                       z=None, n_samples=1):
-        """
-        Computes the conditional random field, X given E ~ N(AX, Ko). 
-        
-        Inputs:
-        
-            A: double, (k,n) 
-            
-            Ko: double symm, covariance matrix of E.
-            
-            e: double, value
-            
-            output: str, type of output desired [sample/covariance]
-            
-            Z: double, array whose columns are iid N(0,1) random vectors 
-                (ignored if output='gmrf')
-            
-            n_samples: int, number of samples (ignored if Z is not None)
-        """
-        if mode=='covariance':
-            pass
-        elif mode=='precision':
-            pass
-        else:
-            raise Exception('Input "mode" must be "covariance" or "precision".')
-        
 
     
     def iid_gauss(self, n_samples=1):
@@ -1868,9 +1898,10 @@ class KLField(GaussianField):
         #
         # Covariance matrix (X = mu + V*sqrt(Lmd)*Z
         # 
-        covariance = SPDMatrix(V.dot(np.diag(lmd).dot(V.T)))
+        covariance = V.dot(np.diag(lmd).dot(V.T))
         
-        GaussianField.__init__(self, mean=mean.data(), covariance=covariance)
+        GaussianField.__init__(self,n_dofs, mean=mean.data(), 
+                               K=covariance, mode='covariance')
         
         #
         # Store quantities
@@ -2098,11 +2129,10 @@ class EllipticField(GaussianField):
             Q = cholesky_AAt((K.dot(sp.diags(1/m_lumped)).dot(Q.apply_Pt(Q.L()))).tocsc()) 
             count += 2
         # Save precision matrix
-        Q = SPDMatrix(Q)
-    
-        GaussianField.__init__(self, mean=mean.data(), precision=Q)
+        GaussianField.__init__(self, n_dofs, mean=mean.data(), \
+                               K=Q, mode='precision')
         
-        
+    '''    
     def sample(self, n_samples=1, z=None):
         """
         Generate sample realizations from an ellipt.
@@ -2118,131 +2148,11 @@ class EllipticField(GaussianField):
             x: (n,n_samples), samples paths of random field
         
         """
-        return self.chol_sample(n_samples=n_samples, z=z, mode='precision')
-        
+        return GaussianField.sample(self, n_samples=n_samples, z=z, 
+                                    mode='precision', decomposition='chol')
+    '''    
             
-class Covariance(SPDMatrix):
-    """
-    Covariance operator
-    
-    galerkin
-    collocation
-    interpolation
-    
-    TODO: Delete!
-    """
-    def __init__(self, cov_kernel, dofhandler, mass_lumping=False,
-                 subforest_flag=None, method='interpolation'):
-        """
-        Constructor
-        """
-        # Store covariance kernel
-        assert isinstance(cov_kernel, Kernel), \
-        'Input "cov_kernel" should be a Kernel object.'
-        
-        self.__kernel = cov_kernel
-        
-        # Store dofhandler
-        dofhandler.distribute_dofs(subforest_flag=subforest_flag)
-        dofhandler.set_dof_vertices()
-        self.__dofhandler = dofhandler
-        
-        # Mesh 
-        mesh = dofhandler.mesh
-        
-        # Basis
-        u = Basis(dofhandler, 'u')
-        
-        # Mass matrix 
-        m = Form(trial=u, test=u)
-        
-        if method=='interpolation':
-            #
-            # Construct integral kernel from interpolants
-            #    
-            c = IIForm(kernel=cov_kernel, test=u, trial=u)
-            assembler = Assembler([[c]], mesh, subforest_flag=subforest_flag)
-            assembler.assemble()
-            
-            K = assembler.af[0]['bilinear'].get_matrix().toarray()
-            
-            # Get approximation that is symmetric
-            K = 0.5*(K+K.T)
-            
-        elif method=='projection':
-            #
-            # Simple assembler for the mass matrix
-            # 
-            c = IPForm(kernel=cov_kernel, test=u, trial=u)
-            assembler = Assembler([[m],[c]], mesh, subforest_flag=subforest_flag)
-            assembler.assemble()
-            
-            C = assembler.af[1]['bilinear'].get_matrix().tocsc()
-            M = assembler.af[0]['bilinear'].get_matrix().tocsc()
-            
-            if mass_lumping:
-                print('Not implemented.')
-            else:
-                K = spla.spsolve(M,C).toarray() 
-        else:
-            raise Exception('Only "interpolation", "projection",'+\
-                            ' or "nystroem" supported for input "method"')
-        
-        self.__K = K
-        self.__method = method
-        self.__assembler = assembler
-        self.__subforest_flag = subforest_flag
-    
-        # 
-        # Initialize decompositions
-        #
-        SPDMatrix.__init__(self, K)
-        
-        
-        
-    def assembler(self):
-        """
-        Returns the assemler
-        """
-        return self.__assembler
-    
-    
-    def dim(self):
-        """
-        Returns the dimension of the underlying domain
-        """
-        return self.dofhandler.mesh.dim()
-     
-        
-    def kernel(self):
-        """
-        Returns the covariance kernel
-        """
-        return self.__kernel     
-   
-        
-    def iid_gauss(self, n_samples=1):
-        """
-        Returns a matrix whose columns are N(0,I) vectors of length n 
-        """
-        return np.random.normal(size=(self.size(),n_samples)) 
-    
-    
-    def sample(self, Z=None, n_samples=1):
-        """
-        Generate a random sample from a N(0,C), where C = M^{-1}S    
-        """
-        if Z is not None:
-            assert Z.shape[0]==self.size(), 'Incompatible shape' 
-        else:
-            Z = self.iid_gauss(n_samples=n_samples)
-        
-        d, V = self.get_eig_decomp()
-        U = V.dot(np.diag(np.sqrt(d)).dot(Z))
-        
-        return U    
-    
-    
+
     
             
          

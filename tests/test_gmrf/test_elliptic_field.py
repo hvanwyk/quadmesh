@@ -69,7 +69,9 @@ class TestEllipticField(unittest.TestCase):
         # Define default elliptic field 
         # 
         u = EllipticField(dofhandler, kappa=1, tau=tau, gamma=2)
-        v = Nodal(data=u.sample(), dofhandler=dofhandler)
+        Q = u.precision()
+        print(Q.issparse())
+        v = Nodal(data=u.sample(mode='precision', decomposition='chol'), dofhandler=dofhandler)
         
         
         plot = Plot(20)

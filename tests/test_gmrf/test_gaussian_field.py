@@ -7,6 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import linalg
 
+from scipy import sparse as sp
+
 
 def fbm_cov(x,y,H):
     """
@@ -243,7 +245,113 @@ class TestGaussianField(unittest.TestCase):
         self.assertTrue(np.allclose(U - V.dot(V.T.dot(U)), np.zeros(U.shape)))
         self.assertTrue(np.allclose(V - U.dot(U.T.dot(V)), np.zeros(V.shape)))
         
+    
+    def test_condition_nullspace(self):
+        """
+        Test conditioning with an existing nullspace
+        """
+        oort = 1/np.sqrt(2)
+        V = np.array([[0.5, oort, 0, 0.5], 
+                      [0.5, 0, -oort, -0.5],
+                      [0.5, -oort, 0, 0.5],
+                      [0.5, 0, oort, -0.5]])
         
+        # Eigenvalues
+        d = np.array([4,3,2,0], dtype=float)
+        Lmd = np.diag(d)
+        
+        # Covariance matrix
+        K = V.dot(Lmd.dot(V.T))
+        
+        mu = np.array([1,2,3,4])[:,None]
+        
+        # Zero mean Gaussian field
+        u_ex = GaussianField(4, mean=mu, K=K, mode='covariance', 
+                             support=V[:,0:3])
+        
+        A = np.array([[1,2,3,2]])
+        e = np.array([[1]])
+        u,s,vt = linalg.svd(A, full_matrices=False)
+        
+        print(u)
+        print(s)
+        #print(u_ex.project(mu,'nullspace'))
+        r = e - A.dot(u_ex.project(mu,'nullspace'))
+        print(r)
+        Pr = u_ex.project(r, 'range')
+        print(r-u.dot(u.T.dot(Pr)))
+        #Vperp = V[:,3][:,None]
+        #A = Vperp.dot(Vperp.T)
+        
+        
+        
+    def test_condition_pointswise(self):
+        """
+        Generate samples and random field  by conditioning on pointwise data
+        """
+        #
+        # Initialize Gaussian Random Field
+        # 
+        n = 11  # size
+        H = 0.5  # Hurst parameter in [0.5,1]
+        
+        # Form covariance and precision matrices
+        x = np.arange(1,n)
+        X,Y = np.meshgrid(x,x)
+        K = fbm_cov(X,Y,H)
+        
+        # Compute the precision matrix
+        I = np.identity(n-1)
+        Q = linalg.solve(K,I)
+        
+        
+        # Define mean
+        mean = np.random.rand(n-1,1)
+        
+        # Define Gaussian field
+        u_cov = GaussianField(n-1, mean=mean, K=K, mode='covariance')  
+        u_prc = GaussianField(n-1, mean=mean, K=Q, mode='precision')
+        
+        # Define generating white noise
+        z = u_cov.iid_gauss(n_samples=10)
+        
+        u_obs = u_cov.sample(z=z)
+        
+        # Index of measured observations
+        A = np.arange(0,n-1,2)
+        
+        # observed quantities        
+        e = u_obs[A,0][:,None]
+        print('e shape', e.shape)
+        
+        # change A into matrix
+        k = len(A)
+        rows = np.arange(k)
+        cols = A
+        vals = np.ones(k)
+        AA = sp.coo_matrix((vals, (rows,cols)),shape=(k,n-1)).toarray()
+        
+        AKAt = AA.dot(K.dot(AA.T))
+        KAt  = K.dot(AA.T)
+        
+        '''
+        U,S,Vt = linalg.svd(AA)
+        print(U)
+        print(S)
+        print(Vt)
+        
+        #print(AA.dot(u_obs)-e)
+        
+        k = e.shape[0]
+        Ko = 0.0001*np.identity(k)
+        
+        u_cond = u_cov.condition(A,e,Ko=Ko,n_samples=100)
+        plt.close('all')
+        plt.plot(A,e,'--')
+        plt.plot(u_obs[:,0])
+        plt.plot(u_cond,'k',linewidth=0.1, alpha=0.5)
+        plt.show()
+        '''
     def test_eig_condition(self):
         """
         Conditioning using Eigen-decomposition
