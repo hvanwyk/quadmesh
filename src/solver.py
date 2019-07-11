@@ -39,6 +39,8 @@ class LinearSystem(object):
         restrict: 
         
         interpolate
+        
+    TODO: Delete (replaced with LS)
      
     """
     def __init__(self, assembler, problem_index=None, \
@@ -1737,13 +1739,13 @@ class LS(object):
         
             A: sparse matrix
         """
-    
-        # Check matrix shape
-        assert A.shape[0]==A.shape[1], 'Matrix should be square.'
-        
-        # Check matrix size
-        assert A.shape[0]==len(self.get_dofs()), \
-        'Matrix size incompatible with Basis.'
+        if A is not None:
+            # Check matrix shape
+            assert A.shape[0]==A.shape[1], 'Matrix should be square.'
+            
+            # Check matrix size
+            assert A.shape[0]==len(self.get_dofs()), \
+            'Matrix size incompatible with Basis.'
         
         # Store matrix
         self.__A = A
@@ -1865,7 +1867,7 @@ class LS(object):
                         
             #
             # Zero out row k 
-            # 
+            # vectorsvectors
             A = Imk.dot(A)
                         
             #
@@ -1935,7 +1937,7 @@ class LS(object):
         self.__A_is_constrained
         
         
-    def invert_matrix(self, b=None):
+    def invert_matrix(self, b=None, factor=False):
         """
         Returns the solution (in vector form) of a problem
         
@@ -1978,11 +1980,17 @@ class LS(object):
         #
     
         # Convert to sparse column format
-        A = A.tocsc()
-        b = sparse.csc_matrix(b)
-        self.__u = self.__invA.solve(b.toarray())    
-                    
+        if factor:
+            A = A.tocsc()
+            b = sparse.csc_matrix(b)
+            u = self.__invA.solve(b.toarray())    
+        else:
+            u = linalg.spsolve(self.get_matrix(), self.get_rhs())    
+        if len(u.shape)==1:
+            u = u[:,None]
             
+        self.__u = u
+        
     def set_rhs(self, rhs):
         """
         Store right hand side
@@ -2135,7 +2143,7 @@ class LS(object):
             return u
            
     
-    def solve_system(self, b=None):
+    def solve_system(self, b=None, factor=False):
         """
         Compute the solution of the linear system 
         
@@ -2185,13 +2193,14 @@ class LS(object):
         #
         # Factor matrix
         # 
-        if not self.matrix_is_factored():
-            self.factor_matrix()
+        if factor:
+            if not self.matrix_is_factored():
+                self.factor_matrix()
             
         #
         # Solve the system
         # 
-        self.invert_matrix()
+        self.invert_matrix(factor=factor)
         
         
         #

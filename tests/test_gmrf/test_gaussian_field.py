@@ -153,8 +153,8 @@ class TestGaussianField(unittest.TestCase):
         ax[2].plot(u_eig_can, linewidth=0.5); 
         ax[2].set_title('Canonical'); 
         ax[2].axis('tight')
-        fig.suptitle('Samples')
         
+        fig.suptitle('Samples')
         fig.tight_layout()
         fig.subplots_adjust(top=0.8)
         fig.savefig('gaussian_field_eig_samples.eps')
@@ -210,7 +210,9 @@ class TestGaussianField(unittest.TestCase):
        
        
     def test_specify_support_twice(self):
+        #
         # TODO: Haven't done it for precision yet
+        #
         oort = 1/np.sqrt(2)
         V = np.array([[0.5, oort, 0, 0.5], 
                       [0.5, 0, -oort, -0.5],
@@ -246,10 +248,14 @@ class TestGaussianField(unittest.TestCase):
         self.assertTrue(np.allclose(V - U.dot(U.T.dot(V)), np.zeros(V.shape)))
         
     
-    def test_condition_nullspace(self):
+    def test_condition_with_nullspace(self):
         """
         Test conditioning with an existing nullspace
         """
+        
+        #
+        # Define Gaussian Field with degenerate support 
+        # 
         oort = 1/np.sqrt(2)
         V = np.array([[0.5, oort, 0, 0.5], 
                       [0.5, 0, -oort, -0.5],
@@ -269,22 +275,115 @@ class TestGaussianField(unittest.TestCase):
         u_ex = GaussianField(4, mean=mu, K=K, mode='covariance', 
                              support=V[:,0:3])
         
-        A = np.array([[1,2,3,2]])
-        e = np.array([[1]])
-        u,s,vt = linalg.svd(A, full_matrices=False)
+        #
+        # Conditioned random field (hard constraint)
+        # 
+        # Condition on Ax=e (A full rank)
+        A = np.array([[1,2,3,2],[2,4,6,4]])
+        e = np.array([[1],[5]])
         
-        print(u)
-        print(s)
-        #print(u_ex.project(mu,'nullspace'))
-        r = e - A.dot(u_ex.project(mu,'nullspace'))
-        print(r)
-        Pr = u_ex.project(r, 'range')
-        print(r-u.dot(u.T.dot(Pr)))
-        #Vperp = V[:,3][:,None]
-        #A = Vperp.dot(Vperp.T)
+        # Matrix A is not full rank -> error
+        with self.assertRaises(np.linalg.LinAlgError):
+            u_ex.condition(A,e)
+            
+        # Full rank matrix
+        A = np.array([[1,2,3,2],[3,9,8,7]])
+        
+        # Compute conditioned field
+        u_cnd = u_ex.condition(A,e,output='field')
+        X_cnd = u_cnd.sample(n_samples=100)
+        
+        # Sample by Kriging
+        X_kriged = u_cnd.sample(n_samples=100)
+        
+        # Check that both samples satisfy constraint
+        self.assertTrue(np.allclose(A.dot(X_cnd)-e,0))
+        self.assertTrue(np.allclose(A.dot(X_kriged)-e,0))
+        
+        # Check that the support of the conditioned field is contained in
+        # that of the unconditioned one 
+        self.assertTrue(np.allclose(u_ex.project(u_cnd.support(),'nullspace'),0))
+        
+        plt.close('all')
+        fig, ax = plt.subplots(1,3, figsize=(7,3))
+        ax[0].plot(u_ex.sample(n_samples=100), 'k', linewidth=0.1)
+        ax[0].set_title('Unconditioned Field')
+        
+        ax[1].plot(X_kriged,'k',linewidth=0.1)
+        ax[1].plot(u_cnd.mean())
+        ax[1].set_title('Kriged Sample')
+    
+        ax[2].plot(X_cnd,'k',linewidth=0.1)
+        ax[2].set_title('Sample of conditioned field')
+        
+        fig.suptitle('Samples')
+        fig.tight_layout()
+        fig.subplots_adjust(top=0.8)
+        fig.savefig('degenerate_gf_conditioned_samples.eps')
+
+    def test_condition_ptwise(self):
+        #
+        # Initialize Gaussian Random Field
+        # 
+        # Resolution
+        l_max = 9
+        n = 2**l_max+1  # size
+        
+        # Hurst parameter
+        H = 0.5  # Hurst parameter in [0.5,1]
+        
+        # Form covariance and precision matrices
+        x = np.arange(1,n+1)
+        X,Y = np.meshgrid(x,x)
+        K = fbm_cov(X,Y,H)
+        
+        # Compute the precision matrix
+        I = np.identity(n)
+        Q = linalg.solve(K,I)
+        
+        # Plot meshes
+        fig, ax = plt.subplots(1,1)
+        n = 2**l_max + 1
+        for l in range(l_max):
+            nl = 2**l + 1
+            i_spp = [i*2**(l_max-l) for i in range(nl)]
+            ax.plot(x[i_spp],l*np.ones(nl),'.')
+        #ax.plot(x,'.', markersize=0.1)
+        #plt.show()
         
         
+        # Plot conditioned field
+        fig, ax = plt.subplots(3,3)
         
+        # Define original field
+        u = []
+        n = 2**(l_max)+1
+        for l in range(l_max):
+            nl = 2**l + 1
+            i_spp = [i*2**(l_max-l) for i in range(nl)]
+            V_spp = I[:,i_spp]
+            if l==0:
+                u_fne = GaussianField(n, K=K, mode='covariance',\
+                                      support=V_spp)
+                u_obs = u_fne.sample()
+                i_obs = np.array(i_spp)
+            else:
+                u_fne = GaussianField(n, K=K, mode='covariance',\
+                                      support=V_spp)
+                u_cnd = u_fne.condition(i_obs,u_obs[i_obs], output='field')
+                u_obs = u_cnd.sample()
+                i_obs = np.array(i_spp)
+            u.append(u_obs)
+            
+            # Plot 
+            for ll in range(l,l_max):
+                i,j = np.unravel_index(ll,(3,3))
+                if ll == l:
+                    ax[i,j].plot(x[i_spp],5*np.exp(0.01*u_obs[i_spp]),linewidth=0.5)
+                else:
+                    ax[i,j].plot(x[i_spp],5*np.exp(0.01*u_obs[i_spp]),'g', linewidth=0.01,alpha=0.1)
+            fig.savefig('successive_conditioning.pdf')
+            
     def test_condition_pointswise(self):
         """
         Generate samples and random field  by conditioning on pointwise data
@@ -292,7 +391,11 @@ class TestGaussianField(unittest.TestCase):
         #
         # Initialize Gaussian Random Field
         # 
-        n = 11  # size
+        # Resolution
+        max_res = 10
+        n = 2**max_res+1  # size
+        
+        # Hurst parameter
         H = 0.5  # Hurst parameter in [0.5,1]
         
         # Form covariance and precision matrices
@@ -303,7 +406,6 @@ class TestGaussianField(unittest.TestCase):
         # Compute the precision matrix
         I = np.identity(n-1)
         Q = linalg.solve(K,I)
-        
         
         # Define mean
         mean = np.random.rand(n-1,1)
@@ -322,7 +424,7 @@ class TestGaussianField(unittest.TestCase):
         
         # observed quantities        
         e = u_obs[A,0][:,None]
-        print('e shape', e.shape)
+        #print('e shape', e.shape)
         
         # change A into matrix
         k = len(A)
@@ -331,27 +433,35 @@ class TestGaussianField(unittest.TestCase):
         vals = np.ones(k)
         AA = sp.coo_matrix((vals, (rows,cols)),shape=(k,n-1)).toarray()
         
+        
         AKAt = AA.dot(K.dot(AA.T))
         KAt  = K.dot(AA.T)
         
-        '''
         U,S,Vt = linalg.svd(AA)
-        print(U)
-        print(S)
-        print(Vt)
+        #print(U)
+        #print(S)
+        #print(Vt)
         
         #print(AA.dot(u_obs)-e)
         
         k = e.shape[0]
-        Ko = 0.0001*np.identity(k)
+        Ko = 0.01*np.identity(k)
         
+        # Debug
+        K = u_cov.covariance()
+        #U_spp = u_cov.support()
+        #A_cmp = A.dot(U_spp)
+    
         u_cond = u_cov.condition(A,e,Ko=Ko,n_samples=100)
+        """
         plt.close('all')
         plt.plot(A,e,'--')
         plt.plot(u_obs[:,0])
         plt.plot(u_cond,'k',linewidth=0.1, alpha=0.5)
         plt.show()
-        '''
+        """
+    
+    
     def test_eig_condition(self):
         """
         Conditioning using Eigen-decomposition
@@ -390,7 +500,6 @@ class TestGaussianField(unittest.TestCase):
             #print(vi)
         #print(N) 
 
-        
         A = np.array([[1,0,0,-1]])
         
                 

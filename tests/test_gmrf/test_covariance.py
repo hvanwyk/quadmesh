@@ -1,5 +1,4 @@
 from gmrf import CovKernel
-from gmrf import Covariance
 from mesh import QuadMesh
 from mesh import Mesh1D
 from fem import QuadFE
@@ -42,7 +41,7 @@ class TestCovariance(unittest.TestCase):
             K = covariance.assembler().af[0]['bilinear'].get_matrix().toarray()
             
             #self.assertTrue(np.allclose(KK,K))
-            covariance.eig_decomp()
+            covariance.compute_eig_decomp()
             d, V = covariance.get_eig_decomp()
             
             U = Nodal(data=covariance.sample(n_samples=1), dofhandler=dofhandler, dim=dim)

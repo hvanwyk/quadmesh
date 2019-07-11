@@ -299,7 +299,7 @@ class TestSPDMatrix(unittest.TestCase):
         
     
         # Compute eigendecomposition
-        K.eig_decomp()
+        K.compute_eig_decomp()
         
         # Check reconstruction
         d, V = K.get_eig_decomp()
@@ -316,7 +316,7 @@ class TestSPDMatrix(unittest.TestCase):
             K = SPDMatrix(A)
             
             # Compute eigendecomposition
-            K.eig_decomp()
+            K.compute_eig_decomp()
             
             # Reconstruct
             A = K.eig_reconstruct()
@@ -342,7 +342,7 @@ class TestSPDMatrix(unittest.TestCase):
             K = SPDMatrix(A)
             
             # Compute eigendecomposition
-            K.eig_decomp()               
+            K.compute_eig_decomp()               
     
             B = K.eig_reconstruct()
             
@@ -382,7 +382,7 @@ class TestSPDMatrix(unittest.TestCase):
             K = SPDMatrix(A)
             
             # Compute the Eigen decomposition
-            K.eig_decomp()
+            K.compute_eig_decomp()
             
             # Random vector
             x = np.random.rand(n)

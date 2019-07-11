@@ -769,7 +769,7 @@ class SPDMatrix(object):
                 return sqrtDinv.dot(y)
                 
     
-    def eig_decomp(self, delta=None):
+    def compute_eig_decomp(self, delta=None):
         """
         Compute the singular value decomposition USV' of M^{-1}K
         """ 
@@ -797,6 +797,22 @@ class SPDMatrix(object):
         self.__d = d
     
     
+    def set_eig_decomp(self, d, V):
+        """
+        Store an existing eigendecomposition of the matrix
+        
+        Inputs:
+        
+            d: double, (n,) vector of eigenvalues
+            
+            V: double, (n,n) array of orthonormal eigenvectors
+            
+        TODO: Add checks
+        """
+        self.__d = d
+        self.__V = V
+        
+    
     def eig_reconstruct(self):
         """
         Reconstruct the (modified) matrix from its eigendecomposition
@@ -821,11 +837,11 @@ class SPDMatrix(object):
         """
         # Check that eigendecomposition has been computed
         if self.__d is None:
-            self.eig_decomp()
+            self.compute_eig_decomp()
         
         """    
         assert self.__d is not None, \
-        'First compute eigendecomposition using "eig_decomp".'
+        'First compute eigendecomposition using "compute_eig_decomp".'
         """
         return self.__d, self.__V
         
@@ -843,7 +859,7 @@ class SPDMatrix(object):
         """
         # Check that eigendecomposition has been computed
         assert self.__d is not None, \
-        'First compute eigendecomposition using "eig_decomp".'
+        'First compute eigendecomposition using "compute_eig_decomp".'
         
         V = self.__V  # eigenvectors
         d = self.__d  # eigenvalues
@@ -914,8 +930,17 @@ class SPDMatrix(object):
         
             Kb: double, (n,m) matrix-vector product
         """
-        assert b.shape[0]==self.size(), 'Input "b" has incompatible shape.'
-        return self.get_matrix().dot(b)
+        assert b.shape[0]==self.size(), 'Input "b" has incompatible shape.'+\
+        'Size K: {0}, Size b: {1}'.format(self.size(), b.shape)
+        if sp.issparse(b):
+            #
+            # b is a sparse matrix
+            #
+            K = self.get_matrix()
+            b = b.tocsc()
+            return b.T.dot(K).T
+        else:
+            return self.get_matrix().dot(b)
 
 
     def solve(self, b, decomposition='eig'):
@@ -974,7 +999,7 @@ class SPDMatrix(object):
             #
             # Compute the eigendecomposition if necessary
             # 
-            self.eig_decomp()
+            self.compute_eig_decomp()
             
         # Determine what eigenvalues are below tolerance
         d = self.__d
@@ -990,13 +1015,295 @@ class SPDMatrix(object):
         V = self.__V
         return V[:,self.__ix_nullspace]
     
+
+class Covariance(SPDMatrix):
+    """
+    Discretized covariance operator
     
+    TODO: Class to (i) incorporate CovKernel, (ii) replace KLField
+    """
+    def __init__(self, dofhandler, discretization='interpolation', 
+                 subforest_flag=None, name=None, parameters={}, cov_fn=None):
+        """
+        Constructor
+        
+        Inputs:
+        
+            dofhandler: DofHandler, specifying the space over which to assemble
+                the covariance operator.
+                
+            method: str, method used to approximate the kernel
+                (['interpolation'], 'collocation', 'galerkin')
+            
+                'interpolation': Covariance kernel k(x,y) is approximated by
+                
+                        kh(x,y) = sum_i sum_j k_ij phi_i(x) phi_j(y),
+                    
+                    so that the Fredholm equation Cu = lmd u becomes
+                
+                        MKM*V = M*Lmd*V.
+                    
+                    
+                'collocation': Covariance operator C is approximated by
+                
+                        Ch u(x) = sum_i (int_D k(x_i,y) u(y) dy) phi_i(x)
+                    
+                    and Ch psi_j(x) = lmd*psi_j(x) is collocated at vertices 
+                    to get
+                
+                        Kh V = Lmd*V 
+                    
+                    
+                'galerkin': Covariance operator C is projected onto subspace
+                    so that the Fredholm equation becomes 
+                        
+                        B*V = M*Lmd*V, 
+                        
+                    where 
+                        
+                        B_ij = int_D int_D phi_i(x) phi_j(y) k(x,y) dx dy 
+                    
+                Notes: 
+                
+                    -'interpolation' is 'galerkin' with an approximate kernel.
+                    
+                    -Both 'interpolation' and 'galerkin' give rise to 
+                        orthogonal psi_i's, but not v's. 
+            
+            subforest_flag: str, submesh indicator
+        
+            name: str, name of predefined covariance kernel. 
+                
+                Supported kernels: 'constant', 'linear', 'gaussian', 
+                    'exponential', 'matern', 'rational'
+            
+                Alternatively, the covariance function can be specified
+                    directly using cov_fn.
+                
+            parameters: dict, parameter name/value pairs (see functions for
+                allowable parameters.
+                
+            dim: int, dimension of the underlying physical domain
+            
+            cov_fn: Map, function used to define the covariance kernel
+        """
+        #
+        # Store parameters
+        # 
+        self.__subforest_flag = subforest_flag
+        dofhandler.distribute_dofs(subforest_flag=subforest_flag)
+        dofhandler.set_dof_vertices(subforest_flag=subforest_flag)
+        self.__dofhandler = dofhandler
+        self.__discretization = discretization
+        self.__dim = dofhandler.mesh.dim()
+        
+        #
+        # Define covariance kernel
+        # 
+        self.set_kernel(name, parameters, cov_fn)
+        
+        #
+        # Assemble discretized covariance
+        # 
+        self.assemble()
+        
+        
+    def set_kernel(self, name, parameters, cov_fn):
+        """
+        Set covariance kernel
+        
+        Inputs:
+        
+            name: str, name of covariance kernel 
+                'constant', 'linear', 'gaussian', 'exponential', 'matern', 
+                or 'rational'
+            
+            parameters: dict, parameter name/value pairs (see functions for
+                allowable parameters.
+                
+            cov_fn: Map, explicit function defining covariance kernel
+        """
+        if cov_fn is None:
+            assert name is not None, \
+                'Covariance should either be specified '\
+                ' explicitly or by a string.'
+            #
+            # Determine covariance kernel
+            # 
+            if name == 'constant':
+                #
+                # k(x,y) = sigma
+                # 
+                cov_fn = constant
+            elif name == 'linear':
+                #
+                # k(x,y) = sigma + <x,My>
+                # 
+                cov_fn = linear
+            elif name == 'gaussian':
+                #
+                # k(x,y) = sigma*exp(-0.5(|x-y|_M/l)^2)
+                # 
+                cov_fn = gaussian
+            elif name == 'exponential':
+                #
+                # k(x,y) = sigma*exo(-0.5|x-y|_M/l)
+                # 
+                cov_fn = exponential
+            elif name == 'matern':
+                #
+                # k(x,y) = 
+                # 
+                cov_fn = matern
+            elif name == 'rational':
+                #
+                # k(x,y) = 1/(1 + |x-y|^2)^a
+                # 
+                cov_fn = rational
+ 
+        # Store results
+        dim = self.dofhandler().mesh.dim()
+        k = Explicit(f=cov_fn, parameters=parameters, n_variables=2, dim=dim)
+        self.__kernel = Kernel(f=k)
+ 
+        
+    def kernel(self):
+        """
+        Return covariance kernel
+        """
+        return self.__kernel
+            
+        
+    def assemble(self):
+        """
+        Assemble Covariance matrix
+        """
+        # Dofhandler
+        dofhandler = self.dofhandler()
+        
+        # Submesh indicator
+        sf = self.subforest_flag()
+
+        # Size
+        n_dofs = dofhandler.n_dofs(subforest_flag=sf)
+                
+        # Mesh 
+        mesh = dofhandler.mesh
+        
+        # Basis
+        u = Basis(dofhandler, 'u')
+        
+        # Mass matrix 
+        m = Form(trial=u, test=u)
+        
+        # Kernel
+        k = self.kernel()
+        
+        #
+        # Assemble and decompose covariance operator
+        # 
+        if self.discretization()=='collocation':
+        
+            # Collocate integral kernel (not symmetric)
+            c = IIForm(kernel=k, test=u, trial=u)
+            assembler = Assembler([[c]], mesh, subforest_flag=sf)
+            assembler.assemble()
+            C = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Compute eigendecomposition
+            lmd, V = linalg.eig(C)
+                   
+        elif self.discretization()=='galerkin':
+            
+            # L2 projection (Galerkin method)
+            c = IPForm(kernel=k, test=u, trial=u)
+            assembler = Assembler([[m],[c]], mesh, subforest_flag=sf)
+            assembler.assemble()
+            C = assembler.af[1]['bilinear'].get_matrix().toarray()
+            M = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Generalized eigen-decomposition
+            lmd, V = linalg.eigh(C,M)
+            
+               
+        elif self.discretization()=='interpolation':
+            
+            #
+            # Interpolate covariance kernel at dof vertices 
+            # 
+            
+            x = dofhandler.get_dof_vertices(subforest_flag=sf)
+            dim = dofhandler.mesh.dim()
+            I,J = np.mgrid[0:n_dofs,0:n_dofs] 
+            X = x[I,:].reshape((n_dofs**2,dim)) 
+            Y = x[J,:].reshape((n_dofs**2,dim))
+            K = k.eval((X,Y)).reshape((n_dofs,n_dofs))
+                        
+            # Assemble mass matrix
+            assembler = Assembler([[m]], mesh, subforest_flag=sf)
+            assembler.assemble()
+            M = assembler.af[0]['bilinear'].get_matrix().toarray()
+            
+            # Define discretized covariance operator
+            C = M.dot(K.dot(M.T))
+            
+            # Compute generalized eigendecomposition
+            lmd, V = linalg.eigh(C,M)
+            
+        else:
+            raise Exception('Only "interpolation", "galerkin", '+\
+                            ' or "collocation" supported for input "method"')
+    
+    
+        #
+        # Construct covariance matrix using eigendecomposition
+        #
+        
+        # Rearrange to ensure decreasing order
+        lmd = lmd[::-1]
+        V = V[:,::-1]
+        covariance = V.dot(np.diag(lmd).dot(V.T))
+        
+        # 
+        # Initialize as SPDMatrix  
+        #
+        SPDMatrix.__init__(self, covariance)
+        
+    
+    def dim(self):
+        """
+        Return the dimension of the computational domain
+        """
+        return self.__dim
+    
+    
+    def discretization(self):
+        """
+        Return the discretization scheme for the covariance operator
+        """
+        return self.__discretization
+        
+
+    def dofhandler(self):
+        """
+        Return dofhandler
+        """
+        return self.__dofhandler
+    
+
+    def subforest_flag(self):
+        """
+        Return the submesh flag
+        """ 
+        return self.__subforest_flag
+
 
 class GaussianField(object):
     """
     Base class for Gaussian random fields
     """
-    def __init__(self,size, mean=None,K=None, mode='covariance',support=None): 
+    def __init__(self, size, mean=None, K=None, mode='covariance', 
+                 support=None): 
         """
         Constructor
         
@@ -1008,8 +1315,8 @@ class GaussianField(object):
             
             b: double, (n,1) numpy array representing Q*mean.
             
-            support: double, (n,k) numpy array whose columns form an orthonormal
-                basis for the support of the Gaussian vector.
+            support: double, (n,k) numpy array whose columns form an 
+                orthonormal basis for the support of the Gaussian vector.
             
             precision: double, (n,n) sparse/full precision matrix.
                     
@@ -1073,7 +1380,8 @@ class GaussianField(object):
     def set_dependence(self, K, mode='covariance'):
         """
         Store the proper covariance matrix of the random field, i.e. the 
-        covariance of the non-constant component of the random field.   
+        covariance of the non-constant component of the random field. The 
+        actual covariance is given by V*K*V^T  
         
         Inputs:
         
@@ -1086,12 +1394,25 @@ class GaussianField(object):
             # 
             K = V.T.dot(K.dot(V))
         
+        #
+        # Store as SPDMatrix
+        # 
         if mode=='covariance':
-            self.__covariance = SPDMatrix(K)
-            self.__precision = None
+            if isinstance(K, SPDMatrix):
+                covariance = K
+            else:
+                covariance = SPDMatrix(K)
+            precision = None
         elif mode=='precision':
-            self.__precision = SPDMatrix(K)
-            self.__covariance = None
+            if isinstance(K,SPDMatrix):
+                precision = K
+            else:
+                precision = SPDMatrix(K)
+            covariance = None
+        
+        # Store
+        self.__precision = precision
+        self.__covariance = covariance
         
  
     def set_support(self, support):
@@ -1116,7 +1437,6 @@ class GaussianField(object):
             I = np.identity(k)
             assert np.allclose(support.T.dot(support),I), 'Basis vectors '+\
                 'support should be orthonormal.'
-                
             
         # Store support vectors 
         self.__support = support
@@ -1143,7 +1463,7 @@ class GaussianField(object):
             cov = self.covariance()
             assert cov is not None, 'No covariance specified.'
             if not cov.has_eig_decomp():
-                cov.eig_decomp(delta=0)
+                cov.compute_eig_decomp(delta=0)
             d, V = cov.get_eig_decomp()
         elif mode=='precision':
             #
@@ -1152,8 +1472,8 @@ class GaussianField(object):
             prec = self.precision()
             assert prec is not None, 'No precision specified'
             if not prec.has_eig_decomp():
-                prec.eig_decomp(delta=0)
-            d, V = prec.eig_decomp()
+                prec.compute_eig_decomp(delta=0)
+            d, V = prec.compute_eig_decomp()
         else:
             raise Exception('Input "mode" should be "covariance" or "precision"')
         
@@ -1328,7 +1648,7 @@ class GaussianField(object):
             #
             # Eigendecomposition
             #
-            K.eig_decomp(delta=0)
+            K.compute_eig_decomp(delta=0)
         
         #
         # Parse samples
@@ -1339,7 +1659,10 @@ class GaussianField(object):
             #  
             assert len(z.shape) == 2, \
                 'Input "z" should have size (n, n_samples).'
-            assert z.shape[0] == K.size(), \
+            if z.shape[0] > K.size():
+                z = z[:K.size(),:]
+            
+            assert z.shape[0] <= K.size(), \
                 'Input "z" should have size (n, n_samples).'
             n_samples = z.shape[1]
         else:
@@ -1389,7 +1712,12 @@ class GaussianField(object):
         """
         Returns the conditional random field X|e, where e|X ~ N(AX, Ko).
         
-            - If Ko=0, then e|X = AX, i.e. AX = e 
+            - (Hard Constraint) If Ko=0, then e|X = AX, i.e. AX = e and 
+                the conditional mean and covariance are given by
+                
+                mu_{x|Ax=e} = mu - K*A^T*(A*K*A^T)^{-1}(A*mu-e)
+                
+                K_{x|Ax=e} = K - 
             
             - Otherwise, the conditional mean and precision are given by
             
@@ -1399,7 +1727,7 @@ class GaussianField(object):
         The resulting field has support on a reduced vector space.  
         """
         #
-        # Get covariance or precision
+        # Measure of dependence
         # 
         if mode=='covariance':
             K = self.covariance()
@@ -1407,7 +1735,13 @@ class GaussianField(object):
         elif mode=='precision':
             Q = self.precision()
             assert Q is not None, 'No precision specified.'
+        
+        # Mean
+        mu = self.mean()  
                 
+        # Support
+        Vk = self.support()
+        
         #
         # Convert pointwise restrictions to sparse matrix
         #
@@ -1418,109 +1752,237 @@ class GaussianField(object):
             cols = A
             vals = np.ones(k)
             A = sp.coo_matrix((vals, (rows,cols)),shape=(k,n))
-            
-        #
-        # Compute V = Cov*A.T and W = A*Cov*A.T
-        #   
-        if mode=='covariance':    
-            V = K.dot(A.T.toarray())
-            W = A.dot(V)
-        elif mode=='precision':
-            V = Q.solve(A.T)
-            W = A.dot(V)
-        
+             
         #
         # Determine whether constraints are hard or soft
         # 
         if isinstance(Ko, Real) and Ko==0:
             #
             # Hard constraints
-            #  
-            soft = False
+            #
+                          
+            if Vk is not None:
+                #
+                # Reduce to active subspace 
+                #
+                
+                # Compute reduced map Ak = A*Vk
+                Ak = A.dot(Vk)
+                
+                # Component of mean onto support    
+                mu_k = Vk.T.dot(mu)
+                
+                # Compute ek = e - P^*mu
+                ek = e - A.dot(self.project(mu,'nullspace'))
+            else:
+                Ak = A.dot(Vk)
+                mu_k = mu
+                ek = e
+                
+            #
+            # Compute K*A.T and A*K*A.T
+            #   
+            if mode=='covariance':    
+                KAT  = K.dot(Ak.T)
+                AKAT = Ak.dot(KAT)
+            elif mode=='precision':
+                KAT = Q.solve(Ak.T)
+                AKAT = Ak.dot(KAT)
+
+            
+            if output=='sample':
+                #
+                # Return Kriged Sample
+                # 
+                
+                # Sample unconditioned field 
+                Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
+                                 decomposition=decomposition)            
+            
+                # Compute residual
+                r = A.dot(Xs)-e
+                
+                # Conditional covariance 
+                U = linalg.solve(AKAT,r)
+                
+                # Apply correction 
+                X = Xs - Vk.dot(KAT.dot(U))
+
+                return X
+            
+            elif output=='field':
+                #
+                # Return GaussianField
+                # 
+                
+                # Conditional mean
+                r = Ak.dot(mu_k)-ek
+                mu_cnd = mu - Vk.dot(KAT.dot(linalg.solve(AKAT,r)))
+                
+                # Conditional covariance
+                U = linalg.solve(AKAT, KAT.T)
+                K_cnd = K.get_matrix() - KAT.dot(U)
+                K_cnd = Vk.dot(K_cnd.dot(Vk.T))
+                
+                # Define random field 
+                X = GaussianField(self.size(), mean=mu_cnd, \
+                                  K=K_cnd,mode='covariance')
+                X.update_support()
+                
+                return X
+                
+            else:
+                raise Exception('Input "mode" should be "sample" or "field".')
+            
         else:
             #
             # Soft constraint
             # 
-            soft = True
-        
-        #
-        # For hard constraints, check whether constraint is possible 
+            
+            #
+            # Compute K*A.T and A*K*A.T
+            #   
+            if mode=='covariance':    
+                KAT  = K.dot(A.T)
+                AKAT = A.dot(KAT)
+            elif mode=='precision':
+                KAT = Q.solve(A.T)
+                AKAT = A.dot(KAT)
+                
+            if output=='sample':
+                #
+                # Return Kriged Sample            
+                #
+
+                # Sample unconditioned field 
+                Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
+                                 decomposition=decomposition)
+                
+                # Sample e|Ax
+                eps = GaussianField(A.shape[0], mean=e, K=Ko, mode='covariance')
+                e = eps.sample(z=z, n_samples=n_samples)
+                
+                # Compute residual
+                r = A.dot(Xs)-e
+                
+                # Conditional covariance 
+                U = linalg.solve(Ko+AKAT,r)
+                
+                # Apply correction 
+                X = Xs - KAT.dot(U)
+                
+                return X
+            
+            elif output=='field':
+                # Conditional mean
+                mu_cnd = mu - A.T.dot(linalg.solve(Ko,e))
+                
+                # Conditional precision
+                Q_cnd = Q + A.T.dot(linalg.solve(Ko,A))
+                
+                # Random field
+                X = GaussianField(self.size(), mean=mu_cnd, K=Q_cnd, 
+                                  mode='precision')
+                
+                return X
+        """    
+        #    
+        # For hard constraints, check whether constraint is possible, reduce 
+        # support 
         # 
         if not soft:
             #
-            # A(P*x + P^*mu) = e 
+            # A(P*x + P^*mu) = e must have a solution 
             # 
-            mu = self.mean()
-            r = e - A.dot(self.project(mu,'nullspace'))
-            u,s,vt = linalg.svd(A, full_matrices=False)
+            tol = 1e-13
             
-            r - u.dot(u.T.dot(self.projection(r,'range')))
-           
-        if output=='sample':
-            #
-            # Generate a sample of the conditioned field
-            #
             
-            # Sample unconditioned field 
-            Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
-                             decomposition=decomposition)
             
-            if soft:
-                k = e.shape[0]
-                eps = GaussianField(k, mean=e, K=Ko, mode='covariance')
-                e = eps.sample(z=z, n_samples=n_samples)
-        
-            print(Xs.shape)
             
-            # Compute residual
-            r = A.dot(Xs)-e
             
-            print('A*xs', A.dot(Xs).shape)
-            print('e', e.shape)
-            print(r.shape)
-            
-            # Conditional covariance 
-            U = linalg.solve(Ko+W, r)
-            
-            # Apply correction 
-            X = Xs - V.dot(U)
-             
+            # Solve Ay = r for y
+            sgm_zero = s<tol
+            assert linalg.norm(ek.T.dot(u[:,sgm_zero]))<tol, 'Projection onto '+\
+                'nullspace non-zero.' 
                 
+                
+        if output=='sample':
+            # =================================================================
+            # Return Kriged sample
+            # =================================================================
+            
+        
+             
         elif output=='field':
-            
+            # =================================================================
+            # Return random field
+            # =================================================================
+            #
             # Conditional mean
+            #
             mu = self.mean()
-            if Ko == 0:
-                r = A.dot(mu - e)
-                mu_c =  mu - linalg.solve(W, r)
+            if not soft:
+                r = A.dot(mu) - ek
+                mu_cnd = Vk.dot(mu_k - V.dot(linalg.solve(W,r)))
             else: 
-                mu_c = mu - A.T.dot(linalg.solve(Ko,e))
-            
-            # Covariance/precision
+                mu_cnd = mu - A.T.dot(linalg.solve(Ko,e))
+
+            #
+            # Support
+            # 
+            if not soft:
+                #
+                # New support = old supp intersect nullspace of A^T
+                #
+                
+                # Orthonormal basis for range of A 
+                AT_rng = vt[~sgm_zero,:].T
+                
+                # Project old support onto range of A^T (=orthogonal complement of
+                # nullspace of A^T): what zeros out, we keep 
+                R_spp = Vk - AT_rng.dot(AT_rng.T.dot(Vk))
+                Q,R,dummy = linalg.qr(R_spp, pivoting='true', mode='economic')
+                Rii = np.diag(R)
+                print('Rii', Rii)
+                i_spp = np.abs(Rii)>tol
+                cnd_spp = Q[:,i_spp]   
+                print('conditional support', cnd_spp)
+            #
+            # Conditional covariance/precision
+            #
             if mode=='covariance':
-                U = linalg.solve(Ko+W, V.T) 
+                U = linalg.solve(Ko+AKAT, KAT.T) 
          
                 # Conditional covariance
-                K_c = K - V.dot(U)
+                K_cnd = K.get_matrix() - KAT.dot(U)
+                K_cnd = Vk.dot(K_cnd.dot(Vk.T))
                 
-                # Define Gaussian field
-                X = GaussianField(mean=mu_c, covariance=K_c)
-            
+                if not soft:
+                    # Define Gaussian field (hard constraint)
+                    X = GaussianField(self.size(), mean=mu_cnd, \
+                                      K=K_cnd,mode='covariance',\
+                                      support=cnd_spp)
+                else:
+                    # Define Gaussian field (soft constraint)
+                    X = GaussianField(self.size(), mean=mu_cnd, \
+                                      K=K_cnd, mode='covariance')
+                    
             elif mode=='precision':
-                # Conditional precision
-                Q_c = Q + A.T.dot(linalg.solve(Ko,A))
-            
-                # Update support
                 
-                # Gaussian field
-                X = GaussianField(mean=mu_c, precision=Q_c)
                 
+                if not soft:
+                    # Gaussian field (hard constraint)
+                    X = GaussianField(mean=mu_cnd, precision=Q_cnd,\
+                                      support=cnd_spp)
+                else:
+                    # Gaussian field (soft constraint)
+                    X = GaussianField(mean=mu_cnd, precision=Q_cnd)
         else:
             raise Exception('Input "mode" should be "sample" or "field".')
         
         return X 
         
-        
+        """
         
     """            
                     
@@ -3027,7 +3489,7 @@ class GMRF(object):
             
             # Compute eigendecomposition if necessary
             if not K.has_eig_decomp():
-                K.eig_decomp()
+                K.compute_eig_decomp()
             
             # Return Lz + mean
             return K.eig_sqrt(z) + self.mean(n_copies=n_samples)

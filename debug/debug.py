@@ -9,6 +9,7 @@ from assembler import Form
 from fem import Basis
 from assembler import Assembler
 from solver import LinearSystem
+from solver import LS
 from plot import Plot
 import numpy as np
 from mesh import HalfEdge
@@ -20,6 +21,7 @@ import scipy.sparse as sp
 from gmrf import modchol_ldlt
 from gmrf import KLField
 from gmrf import CovKernel
+import TasmanianSG
 '''
 # Eigenvectors 
 oort = 1/np.sqrt(2)
@@ -67,27 +69,61 @@ print(len(r[np.abs(r)>1e-13]))
 print(Q,'\n',R)
 
 '''
+print("TasmanianSG version: {0:s}".format(TasmanianSG.__version__))
+print("TasmanianSG license: {0:s}".format(TasmanianSG.__license__))
 
-mesh = QuadMesh(resolution=(60,60))
-element = QuadFE(2,'DQ0')
+
+mesh = Mesh1D(resolution=(2,))
+element = QuadFE(mesh.dim(),'Q1')
 dofhandler = DofHandler(mesh, element)
-dofhandler.distribute_dofs()
-dofhandler.set_dof_vertices()
-x = dofhandler.get_dof_vertices()
-dim = 2
-k = CovKernel('gaussian', {'sgm': 2, 'l': 0.1, 'M': np.array([[1,0.5],[0.5,10]])}, dim)
-I,J = np.mgrid[0:9,0:9]
-X = x[I,:]
-Y = x[J,:]
-print('defining KL expansion')
-X = KLField(k, dofhandler, method='interpolation')
-XX = X.sample()
-print('defining nodal function')
-u = Nodal(dofhandler=dofhandler, data=XX)
-plot = Plot(10)
-print('plotting function')
-plot.contour(u)
 
-d = X.eigenvalues()
+phi_x = Basis(dofhandler, 'ux')
 
-print(d)
+problems = [Form(1, test=phi_x, trial=phi_x)]
+assembler = Assembler(problems, mesh)
+assembler.assemble()
+
+A = assembler.af[0]['bilinear'].get_matrix()
+n = dofhandler.n_dofs()
+b = np.ones((n,1))
+
+
+mesh.mark_region('left',lambda x: np.abs(x)<1e-9)
+mesh.mark_region('right',lambda x: np.abs(1-x)<1e-9)
+
+print('A before constraint', A.toarray())
+
+system = LS(phi_x)
+system.add_dirichlet_constraint('left',1)
+system.add_dirichlet_constraint('right',0)
+
+system.set_matrix(sp.csr_matrix(A, copy=True))
+system.set_rhs(b) 
+
+
+
+
+system.solve_system()
+
+print('A after constraint\n', system.get_matrix().toarray())
+print('column records\n', system.column_records)
+print('rhs after constraint\n', system.get_rhs().toarray())
+y = system.get_solution()
+
+
+plot = Plot()
+plot.line(y)
+
+
+b = np.zeros((n,1))
+system.set_matrix(sp.csr_matrix(A, copy=True))
+system.set_rhs(b)
+system.solve_system()
+print('column records\n')
+print([c.toarray() for c in system.column_records])
+print('rhs after constraint\n', system.get_rhs().toarray())
+y = system.get_solution()
+plot = Plot()
+plot.line(y)
+
+

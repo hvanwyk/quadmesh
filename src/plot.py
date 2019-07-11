@@ -569,7 +569,8 @@ class Plot(object):
         return axis
     
     
-    def contour(self, f, colorbar=True, derivative=(0,), resolution=(500,500), axis=None):
+    def contour(self, f, n_sample=0, colorbar=True, derivative=(0,), 
+                resolution=(500,500), axis=None):
         """
         Returns a contour plot of a function f
         
@@ -617,8 +618,11 @@ class Plot(object):
         nx, ny = resolution 
         x,y = np.meshgrid(np.linspace(x0,x1,nx),np.linspace(y0,y1,ny))
         xy = np.array([x.ravel(), y.ravel()]).T
-        ff = f.eval(xy, derivative=derivative)
-        z  = ff.reshape(x.shape)
+        if isinstance(f, Explicit):
+            ff = f.eval(xy)
+        else:
+            ff = f.eval(xy, derivative=derivative)
+        z  = ff[:,n_sample].reshape(x.shape)
         
         cm = axis.contourf(x,y,z,100)
         
@@ -786,7 +790,7 @@ class Plot(object):
                 
         return axis 
     
-    def wire(self, f, mesh=None, resolution=10, axis=None): 
+    def wire(self, f, n_sample=0, mesh=None, resolution=10, axis=None): 
         """
         Wire plot of 2D function
         """  
@@ -887,7 +891,7 @@ class Plot(object):
             
         
                 
-    def line(self, f, mesh=None, resolution=10, axis=None):
+    def line(self, f, mesh=None, resolution=10, axis=None, i_sample=0):
         """
         Plot graph of 1D function
         """
@@ -937,7 +941,7 @@ class Plot(object):
             # Add x and y-values to list
             #  
             x.extend(xx.tolist())
-            fx.extend(ff[:,0].tolist())
+            fx.extend(ff[:,i_sample].tolist())
             
             #
             # For discontinous elements, add a np.nan value

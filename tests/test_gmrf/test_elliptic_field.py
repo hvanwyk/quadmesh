@@ -46,9 +46,7 @@ class TestEllipticField(unittest.TestCase):
         xy = np.array([X.ravel(),Y.ravel()]).T
         U = fx.eval(xy).reshape(X.shape)
         V = fy.eval(xy).reshape(X.shape)
-    
-        print(X.shape, Y.shape, U.shape, V.shape)
-        
+            
         v1 = lambda x: -0.25*np.cos(np.pi*x[:,1]/10)
         v2 = lambda x:  0.75*np.cos(np.pi*x[:,0]/10)
         
@@ -70,7 +68,6 @@ class TestEllipticField(unittest.TestCase):
         # 
         u = EllipticField(dofhandler, kappa=1, tau=tau, gamma=2)
         Q = u.precision()
-        print(Q.issparse())
         v = Nodal(data=u.sample(mode='precision', decomposition='chol'), dofhandler=dofhandler)
         
         
