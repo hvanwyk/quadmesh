@@ -2,6 +2,7 @@ from mesh import Mesh1D
 from mesh import QuadMesh
 from fem import DofHandler
 from function import Function
+from function import Nodal
 from fem import QuadFE
 from assembler import Kernel
 from assembler import Form
@@ -13,7 +14,7 @@ import numpy as np
 from mesh import HalfEdge
 class JumpKernel(Kernel):
     """
-    Special Kernel to compute jumps accross half-edges
+    Special Kernel to compute jumps across half-edges
     """
     def __init__(self, u, dfdx=None, samples='all'): 
         """
@@ -86,8 +87,8 @@ i.e. I n.A*grad(u) ds or
 mesh = QuadMesh(resolution=(20,20))
 element = QuadFE(2,'DQ1')
 
-u = Function(lambda x,y: -1+x**5 + y**8, 'nodal', mesh=mesh, element=element)
-print(u.fn())
+u = Nodal(f=lambda x: -1+x[:,0]**5 + x[:,1]**8, mesh=mesh, element=element)
+print(u.data())
 plot = Plot(3)
 plot.wire(u)
  

@@ -1473,7 +1473,7 @@ class LS(object):
         
 
         #
-        # Form Dof-to-Equation Mapping
+        # Form Dof-to-Equation Mapping (not needed here)
         # 
         n_dofs = len(dofs)
         dof2eqn = np.zeros(dofs[-1]+1, dtype=np.int)
