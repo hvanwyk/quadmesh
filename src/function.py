@@ -1815,7 +1815,7 @@ class Nodal(Map):
             parameters: (compatible list of) function parameters  
         """
         if data is not None:
-            n_dofs, n_samples = data.shape
+            n_dofs, dummy = data.shape
             sf = self.subforest_flag()
             assert n_dofs==self.dofhandler().n_dofs(subforest_flag=sf),\
                 'Data size is not consistent'
