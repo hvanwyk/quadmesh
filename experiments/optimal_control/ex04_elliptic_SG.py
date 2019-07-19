@@ -30,7 +30,7 @@ import scipy.sparse as sp
 
 import matplotlib.pyplot as plt
 import TasmanianSG
-from tqdm import tqdm
+#from tqdm import tqdm
 """
 System 
 
