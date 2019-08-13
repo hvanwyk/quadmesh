@@ -570,7 +570,7 @@ class Plot(object):
     
     
     def contour(self, f, n_sample=0, colorbar=True, derivative=(0,), 
-                resolution=(500,500), axis=None):
+                resolution=(500,500), axis=None, mesh=None):
         """
         Returns a contour plot of a function f
         
@@ -595,11 +595,13 @@ class Plot(object):
             fig
                     
         """
+        if mesh is None:
+            mesh = f.mesh()
+        
         #
         # Check function
         # 
         assert isinstance(f, Map), 'Can only plot "Map" objects.'
-        
         
         #
         # Check axis
@@ -608,13 +610,13 @@ class Plot(object):
         
         #
         # Set axis limits
-        # 
-        axis = self.set_bounding_box(axis, f.mesh())
+        #     
+        axis = self.set_bounding_box(axis, mesh)
         
         #
         # Initialize grid
         # 
-        x0,x1,y0,y1 = f.mesh().bounding_box()
+        x0,x1,y0,y1 = mesh.bounding_box()
         nx, ny = resolution 
         x,y = np.meshgrid(np.linspace(x0,x1,nx),np.linspace(y0,y1,ny))
         xy = np.array([x.ravel(), y.ravel()]).T
@@ -891,14 +893,14 @@ class Plot(object):
             
         
                 
-    def line(self, f, mesh=None, resolution=10, axis=None, i_sample=0):
+    def line(self, f, mesh=None, resolution=10, axis=None, i_sample=0, plot_kwargs={}):
         """
         Plot graph of 1D function
         """
         #
         # Check function properties
         # 
-        assert isinstance(f, Map), 'Can only plot "Function" objects.'
+        assert isinstance(f, Map), 'Can only plot "Map" objects.'
         
         #
         # Ensure there's a mesh
@@ -956,7 +958,7 @@ class Plot(object):
         # 
         x = np.array(x)
         fx = np.array(fx)
-        axis.plot(x, fx, linewidth=1.5)
+        axis.plot(x, fx, linewidth=1.5, **plot_kwargs)
         
         #
         # Axis limits

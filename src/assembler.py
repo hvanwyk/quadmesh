@@ -3449,7 +3449,7 @@ class AssembledForm(object):
                 #  
                 return self.vals
             else:
-                if self.subsample is None:
+                if self.sub_sample is None:
                     #
                     # Return entire sample
                     #
@@ -3458,4 +3458,4 @@ class AssembledForm(object):
                     #
                     # Return sub-sample
                     # 
-                    return self.vals[self.subsample]
+                    return self.vals[self.sub_sample]

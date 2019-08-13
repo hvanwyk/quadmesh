@@ -6,6 +6,7 @@ import TasmanianSG
 import numpy as np
 import matplotlib.pyplot as plt
 import unittest
+from scipy.stats import norm
 
 class TestGaussHermite(unittest.TestCase):
     def test_standard_normal(self):
@@ -78,7 +79,7 @@ class TestGaussHermite(unittest.TestCase):
         dim = 4
         eta = GaussianField(dim, mean=mu, K=K, mode='covariance')
         n_vars = eta.covariance().size()
-        level = 5
+        level = 1
     
         # Initialize sparse grid
         tasmanian_library="/home/hans-werner/bin/TASMANIAN-6.0/"+\
@@ -86,7 +87,7 @@ class TestGaussHermite(unittest.TestCase):
         grid = TasmanianSG.TasmanianSparseGrid(tasmanian_library=tasmanian_library)
         
         # Define Gauss-Hermite physicist's rule exp(-x**2)
-        grid.makeGlobalGrid(n_vars, 4, level, "level", "gauss-hermite")
+        grid.makeGlobalGrid(n_vars, 4, level, "level", "gauss-hermite-odd")
         
         # Evaluate the Gaussian random field at the Gauss points
         z = grid.getPoints()
@@ -106,6 +107,10 @@ class TestGaussHermite(unittest.TestCase):
             I += w[i]*etay[:,i]
         I /= const_norm    
         II /= const_norm
+        
+        print(grid.getNumPoints())
+        print(I)
+        print(II)
         
         self.assertTrue(np.allclose(II,K))
         self.assertTrue(np.allclose(I,mu.ravel()))
@@ -164,3 +169,59 @@ class TestGaussHermite(unittest.TestCase):
         I = grid.integrate()/np.sqrt(np.pi)
         self.assertAlmostEqual(I[0],1)
         
+        
+    def test_transform(self):
+        """
+        Approximate moments of a Gaussian random vector 
+        
+            X ~ N([3,4], [[2,1],[1,3]])
+            
+        by a sparse grid method based on the interval [-1,1]^2 
+        """
+        #
+        # Define Sparse Grid on [-1,1]^2
+        # 
+        tasmanian_library="/home/hans-werner/bin/TASMANIAN-6.0/"+\
+                          "libtasmaniansparsegrid.so"
+        grid = TasmanianSG.TasmanianSparseGrid(tasmanian_library=tasmanian_library)
+        dim = 2
+        level = 40
+        grid.makeGlobalGrid(dim,1,level,'level','gauss-legendre')
+        n_points = grid.getNumPoints()
+        y = grid.getPoints()
+        
+        #
+        # Transform Points to Z~N(0,I)
+        # 
+        z = norm.ppf(0.5*y+0.5)
+        dz = 0.5**dim
+        
+        print(TasmanianSG.lsTsgGlobalRules)
+        print(n_points)
+        #
+        # Define Gaussian Field
+        # 
+        K = np.array([[2,1],[1,3]])
+        m = np.array([3,4])
+        
+        # Eigendecomposition
+        lmd, V = np.linalg.eigh(K)
+        lmd = lmd[::-1]
+        V = V[:,::-1]
+        sqrtD = np.diag(np.sqrt(lmd))
+
+        X = V.dot(sqrtD.dot(z.T)) 
+        Y = X + np.tile(m[:,None],(1,n_points))
+        
+        #
+        # Recompute mean and covariance matrix
+        # 
+        w = grid.getQuadratureWeights()*dz
+        ma = np.zeros(2)
+        Ka = 0
+        for i in range(n_points):
+            ma += Y[:,i]*w[i]
+            Ka += X[1,i]*X[0,i]*w[i]
+        print(ma)
+        TasmanianSG.lsTsgGlobalRules
+        print(Ka)

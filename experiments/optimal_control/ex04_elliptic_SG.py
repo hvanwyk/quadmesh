@@ -30,7 +30,7 @@ import scipy.sparse as sp
 
 import matplotlib.pyplot as plt
 import TasmanianSG
-#from tqdm import tqdm
+from tqdm import tqdm
 """
 System 
 
@@ -75,7 +75,7 @@ def sample_cost_gradient(state,adjoint,A,M,u,y_data,gamma):
     p = adjoint.get_solution(as_function=False)
     
     # Gradient
-    g = M.dot(p+u)
+    g = p+gamma*u
     
     return f, g, y, p
 
@@ -93,7 +93,7 @@ comment = Verbose()
 x_min = 0
 x_max = 2
 
-mesh = Mesh1D(box=[x_min, x_max], resolution=(100,))
+mesh = Mesh1D(box=[x_min, x_max], resolution=(256,))
 
 # Mark Dirichlet Vertices    
 mesh.mark_region('left', lambda x: np.abs(x)<1e-9)
@@ -135,8 +135,8 @@ y_target = Nodal(f=lambda x: 3-4*(x[:,0]-1)**2, dim=1, dofhandler=dh)
 y_data = y_target.data()
  
 # Regularization parameter 
-gamma = 0.00001
-
+#gamma = 0.00001
+gamma = 1e-5
 # Inital guess 
 u = np.zeros((m,1))
 
@@ -148,7 +148,7 @@ u = np.zeros((m,1))
 q = Nodal(data=np.empty((m,1)), dofhandler=dh)
 
 # Diffusion covariance function
-cov = Covariance(dh, name='gaussian', parameters={'sgm':0.1,'l':0.1})
+cov = Covariance(dh, name='gaussian', parameters={'sgm':1,'l':0.01})
 
 # Compute KL expansion
 lmd, V = la.eigh(cov.get_matrix())
@@ -158,7 +158,7 @@ V = V[:,i_sorted]
 
 # Determine number of KL terms
 tol_KL = 5e-1
-r_max = 15
+r_max = 1
 total_energy = np.sum(lmd**2)
 for r in range(10):
     lr = lmd[:r]
@@ -173,7 +173,7 @@ Vr = V[:,:r]
 # =============================================================================
 # Monte Carlo Sample
 # =============================================================================
-"""
+
 n_batches = 100
 n_samples_per_batch = 100
 n_samples = n_batches*n_samples_per_batch
@@ -199,7 +199,7 @@ for n_batch in tqdm(range(n_batches)):
     M = assembler.af[0]['bilinear'].get_matrix()[0]
     for n in range(n_samples_per_batch):
         A = assembler.af[0]['bilinear'].get_matrix()[n]
-        fn, gn = sample_cost_gradient(state,adjoint,A,M,u,y_data,gamma)   
+        fn, gn, yn, pn = sample_cost_gradient(state,adjoint,A,M,u,y_data,gamma)   
         f_mc.append(fn)
         g_mc.append(gn)
         
@@ -207,7 +207,7 @@ f_mc = np.concatenate(f_mc, axis=1)
 g_mc = np.concatenate(g_mc, axis=1)
 np.save('f_mc',f_mc)
 np.save('g_mc',g_mc)
-"""
+
 
 # =============================================================================
 # Sparse grid sample

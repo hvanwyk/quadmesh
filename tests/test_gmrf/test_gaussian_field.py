@@ -381,7 +381,7 @@ class TestGaussianField(unittest.TestCase):
                 if ll == l:
                     ax[i,j].plot(x[i_spp],5*np.exp(0.01*u_obs[i_spp]),linewidth=0.5)
                 else:
-                    ax[i,j].plot(x[i_spp],5*np.exp(0.01*u_obs[i_spp]),'g', linewidth=0.01,alpha=0.1)
+                    ax[i,j].plot(x[i_spp],5*np.exp(0.01*u_obs[i_spp]),'g', linewidth=0.1,alpha=0.1)
             fig.savefig('successive_conditioning.pdf')
             
     def test_condition_pointswise(self):

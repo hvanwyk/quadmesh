@@ -920,7 +920,7 @@ class Tree(object):
         
         candidate = self
         while not candidate.is_marked(flag):
-            if candidate.get_node_depth()==0:
+            if candidate.get_depth()==0:
                 return None
             else:
                 candidate = candidate.get_parent()

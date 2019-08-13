@@ -9,7 +9,7 @@ from mesh import Mesh1D
 from mesh import QuadMesh
 from mesh import Vertex
 from mesh import HalfEdge
-from solver import LinearSystem
+from solver import LS
 from plot import Plot
 import numpy as np
 
@@ -65,7 +65,9 @@ assembler.assemble()
 print('done')
 
 print('solving',  end=' ')
-system = LinearSystem(assembler, 0)
+A = assembler.af[0]['bilinear'].get_matrix()
+b = np.zeros(dofhandler.n_dofs())
+system = LS(u, A=A, b=b)
 system.add_dirichlet_constraint('B',uB)
 system.add_dirichlet_constraint('perimeter',0)
 

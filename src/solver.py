@@ -1913,16 +1913,7 @@ class LS(object):
             self.__b = b
         """
         
-    
-    def factor_matrix(self):
-        """
-        Factor system matrix
-        """
-        A = self.get_matrix()
-        self.__invA = linalg.splu(A.tocsc())
-        self.__A_is_factored = True
         
-    
     def matrix_is_factored(self):
         """
         Determine whether the matrix has been factored
@@ -1990,6 +1981,7 @@ class LS(object):
             u = u[:,None]
             
         self.__u = u
+        
         
     def set_rhs(self, rhs):
         """
@@ -2124,7 +2116,8 @@ class LS(object):
         #
         # Modify dofs that don't depend on others
         # 
-        n_dofs = self.get_dofhandler().n_dofs()
+        sf = self.get_basis().subforest_flag()
+        n_dofs = self.get_dofhandler().n_dofs(subforest_flag=sf)
         ec_dofs = [i for i in range(n_dofs) if C.getrow(i).nnz==0]        
         if type(u) is not np.ndarray:
             #

@@ -25,14 +25,15 @@ class Verbose(object):
         """
         Print a comment
         """
-        print("")
-        print(string,end="")
+        print(string)
         
             
-    def tic(self):
+    def tic(self, string=None):
         """
         Start timer
         """
+        if string is not None:
+            print(string,end="")
         self.__tic = time.time()
 
 
@@ -42,7 +43,7 @@ class Verbose(object):
         """
         assert self.__tic is not None, 'Use "tic" to start timer.'
         toc = time.time()
-        print(' (time elapsed %.4f sec)'%(toc-self.__tic), end="")
+        print(' (time elapsed %.4f sec)'%(toc-self.__tic))
         self.__tic = None
     
     
