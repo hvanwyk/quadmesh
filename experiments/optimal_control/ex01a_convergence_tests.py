@@ -27,9 +27,12 @@ import TasmanianSG
 
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
 import gc
 import scipy.sparse as sp
 import multiprocessing
+import time 
 
 """
 Perform convergence tests for the problem
@@ -214,13 +217,107 @@ def finite_element_error(y_ref, y_app, M, K):
     return l2_error, h1_error
 
 
-def assembly_time():
+def sample_timings():
     """
-    Test the amount of time
+    Test the amount of time it takes to compute a sample
+    
+    Record:
+    
+        assembly time
+        per sample solve
     """
-    pass
-
-
+    c = Verbose()
+    sample_sizes = [10,100,1000,10000]
+    cell_numbers = [2**i for i in range(11)]
+    
+    """
+    n_sample_sizes = len(sample_sizes)
+    n_cell_numbers = len(cell_numbers)
+    assembly_timings = np.empty((n_cell_numbers, n_sample_sizes))
+    solver_timings = np.empty((n_cell_numbers, n_sample_sizes))
+    for resolution, n_mesh in zip(cell_numbers, range(n_cell_numbers)):
+        
+        c.comment('Number of cells: %d'%(resolution))
+        mesh = Mesh1D(resolution=(resolution,))
+        mesh.mark_region('left', lambda x:np.abs(x)<1e-10)
+        mesh.mark_region('right', lambda x:np.abs(x-1)<1e-10)
+        
+        element = QuadFE(1,'Q1')
+        dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+        dofhandler.set_dof_vertices()
+        
+        phi = Basis(dofhandler,'u')
+        phi_x = Basis(dofhandler,'ux')
+            
+        for n_samples, n_experiment in zip(sample_sizes, range(n_sample_sizes)):
+            
+            c.comment('Number of samples: %d'%(n_samples))
+            
+            z = get_points(n_samples=n_samples)
+            q = set_diffusion(dofhandler,z)
+        
+            problems = [[Form(q, test=phi_x, trial=phi_x), 
+                         Form(1, test=phi)],
+                         [Form(1, test=phi, trial=phi)]]
+        
+            c.comment('assembly')
+            tic_assembly = time.time()
+            assembler = Assembler(problems, mesh)
+            assembler.assemble()
+            assembly_timings[n_mesh,n_experiment] = time.time()-tic_assembly
+            np.save('ex01a_assembly_timings', assembly_timings)
+            
+            
+            A = assembler.af[0]['bilinear'].get_matrix()
+            b = assembler.af[0]['linear'].get_matrix()
+            M = assembler.af[0]['bilinear'].get_matrix()
+            
+            system = LS(phi)
+            system.add_dirichlet_constraint('left')
+            system.add_dirichlet_constraint('right')
+            
+            c.comment('solve')
+            tic_solve = time.time()
+            for n in range(n_samples):
+                system.set_matrix(A[n])
+                system.set_rhs(b.copy())    
+                system.solve_system()
+            solver_timings[n_mesh,n_experiment] = (time.time()-tic_solve)/n_samples    
+            np.save('ex01a_solver_timings', solver_timings)
+    """       
+    solver_timings = np.load('ex01a_solver_timings.npy')
+    assembly_timings = np.load('ex01a_assembly_timings.npy')
+    
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif', size=12) 
+    
+    sample_sizes = np.array(sample_sizes)
+    cell_numbers = np.array(cell_numbers)
+    
+    C,S = np.meshgrid(cell_numbers, sample_sizes)
+    fig = plt.figure(figsize=(9,4))
+    
+    ax = fig.add_subplot(121, projection='3d')
+    ax.plot_surface(C,S, assembly_timings.T, alpha=0.5, )
+    ax.set_xlabel(r'Number of elements')
+    ax.set_ylabel(r'Number of samples')
+    ax.set_zlabel(r'Time', rotation=90)
+    ax.set_title(r'Assembly timings')
+    ax.view_init(azim=-120, elev=25)
+    
+    ax = fig.add_subplot(122, projection='3d')
+    ax.plot_surface(C, S, solver_timings.T, alpha=0.5)
+    ax.set_xlabel(r'Number of elements')
+    ax.set_ylabel(r'Number of samples')
+    ax.set_zlabel(r'Time', rotation=90)
+    ax.set_title(r'Solver timings')
+    ax.view_init(azim=-120, elev=25)
+    
+    plt.tight_layout()
+    plt.savefig('ex01a_timings.pdf')
+    
+    
 def finite_element_convergence():
     """
     Test the finite element error for a representative sample
@@ -313,16 +410,60 @@ def finite_element_convergence():
     
 def sampling_error():
     """
-    Test the sampling error
+    Test the sampling error by comparing the accuracy of the quantities of 
+    interest q1 = E[|y|] and q2 = E[y(0.5)]
+        
     """
+    c = Verbose()
+    mesh = Mesh1D(resolution=(1026,))
+    mesh.mark_region('left', lambda x:np.abs(x)<1e-10)
+    mesh.mark_region('right', lambda x:np.abs(x-1)<1e-10)
     
-
-
+    element = QuadFE(1,'Q1')
+    dofhandler = DofHandler(mesh, element)
+    dofhandler.distribute_dofs()
+    dofhandler.set_dof_vertices()
+    
+    phi = Basis(dofhandler,'u')
+    phi_x = Basis(dofhandler,'ux')
+    
+    ns_ref = 10000
+    z = get_points(n_samples=ns_ref)
+    q = set_diffusion(dofhandler,z)
+    
+    problems = [[Form(q, test=phi_x, trial=phi_x), Form(1, test=phi)],
+                [Form(1, test=phi, trial=phi)]]
+    
+    c.tic('assembling')
+    assembler = Assembler(problems, mesh)
+    assembler.assemble()
+    c.toc()
+    
+    A = assembler.af[0]['bilinear'].get_matrix()
+    b = assembler.af[0]['linear'].get_matrix()
+    M = assembler.af[0]['bilinear'].get_matrix()
+    
+    system = LS(phi)
+    system.add_dirichlet_constraint('left')
+    system.add_dirichlet_constraint('right')
+    
+    c.tic('solving')
+    for n in range(ns_ref):
+        system.set_matrix(A[n])
+        system.set_rhs(b.copy())    
+        system.solve_system()
+        
+    c.toc()    
+    
 if __name__=='__main__':
-    finite_element_convergence()
+    #finite_element_convergence()
+    #sample_timings()
+    
+    #sampling_error()
+    
     grid = make_grid(depth=9)
     z = get_points(mode='sg',grid=grid)
     
     
     n_samples = 1000
-    z = get_points(n_samples=n_samples)
+    
