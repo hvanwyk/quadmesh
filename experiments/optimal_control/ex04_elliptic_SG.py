@@ -174,8 +174,8 @@ Vr = V[:,:r]
 # Monte Carlo Sample
 # =============================================================================
 
-n_batches = 100
-n_samples_per_batch = 100
+n_batches = 1
+n_samples_per_batch = 10
 n_samples = n_batches*n_samples_per_batch
 f_mc = []
 g_mc = []

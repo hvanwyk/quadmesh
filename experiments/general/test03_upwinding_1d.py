@@ -51,5 +51,6 @@ def xi(alpha, method):
             xi = 0
         elif alpha >= 1:
             xi = 1 - 1/alpha  
-            
+
+         
             

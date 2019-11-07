@@ -958,7 +958,7 @@ class Plot(object):
         # 
         x = np.array(x)
         fx = np.array(fx)
-        axis.plot(x, fx, linewidth=1.5, **plot_kwargs)
+        axis.plot(x, fx, **plot_kwargs)
         
         #
         # Axis limits
