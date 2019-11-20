@@ -8,7 +8,6 @@
 </pydev_pathproperty>
 
 <pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
-<path>/home/hans-werner/miniconda3/lib/python3.6/site-packages</path>
 <path>/home/hans-werner/bin/TASMANIAN-6.0</path>
 </pydev_pathproperty>
 </pydev_project>

@@ -97,7 +97,7 @@ for resolution in [(5,5), (10,10), (20,20), (40,40)]:
             #
             # Solve Linear System
             # 
-            system = LinearSystem(assembler, 0)
+            system = LinearSystem()
             
             #
             # Add Dirichlet Boundary conditions

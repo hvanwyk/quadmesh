@@ -8,7 +8,7 @@ from gmrf import Covariance
 from gmrf import GaussianField
 from mesh import Mesh1D
 from plot import Plot
-from solver import LS
+from solver import LinearSystem
 
 # Built-in modules
 import numpy as np
@@ -68,7 +68,7 @@ assembler.assemble()
 A = assembler.af[0]['bilinear'].get_matrix()
 b = assembler.af[0]['linear'].get_matrix()
 
-linsys = LS(phi)
+linsys = LinearSystem(phi)
 linsys.add_dirichlet_constraint('left',1)
 linsys.add_dirichlet_constraint('right',0)
 

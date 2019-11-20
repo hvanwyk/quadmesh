@@ -48,7 +48,7 @@ from function import Constant
 
 from plot import Plot
 from solver import LinearSystem
-from solver import LS
+from solver import LinearSystem
 
 import numpy as np
 import scipy
@@ -113,7 +113,7 @@ def test_ft():
     b = assembler.af[0]['linear'].get_matrix()
     
     # Linear System
-    system = LS(p_u, A=A, b=b)
+    system = LinearSystem(p_u, A=A, b=b)
     
     # Dirichlet conditions
     mesh.mark_region('left', lambda x,y: np.abs(x)<1e-9, 
@@ -181,7 +181,7 @@ def test_ft():
         A = M + tht*dt*S
         b = M.dot(c0)-(1-tht)*dt*S.dot(c0)
         if i==0:
-            system = LS(c, A=A, b=b)
+            system = LinearSystem(c, A=A, b=b)
         else:
             system.set_matrix(A)
             system.set_rhs(b)

@@ -17,7 +17,7 @@ from function import Explicit
 from function import Constant
 
 from solver import LinearSystem
-from solver import LS
+from solver import LinearSystem
 #from plot import Plot
 
 
@@ -72,7 +72,7 @@ class TestLinearSystem(unittest.TestCase):
             A = assembler.af[0]['bilinear'].get_matrix()
             b = assembler.af[0]['linear'].get_matrix()
           
-            system = LS(u, A=A, b=b)
+            system = LinearSystem(u, A=A, b=b)
             
             
             #
@@ -142,7 +142,7 @@ class TestLinearSystem(unittest.TestCase):
             
             # Set up linear system
             #system = LinearSystem(assembler, 0)
-            system = LS(u, A=A, b=b)
+            system = LinearSystem(u, A=A, b=b)
             
             # Boundary functions
             bnd_left = lambda x: np.abs(x)<1e-9 
@@ -209,7 +209,7 @@ class TestLinearSystem(unittest.TestCase):
         #
         # Linear System
         #
-        system = LS(u, A=A, b=b)
+        system = LinearSystem(u, A=A, b=b)
         
         # Add Dirichlet constraints
         system.add_dirichlet_constraint('left',0)
@@ -273,7 +273,7 @@ class TestLinearSystem(unittest.TestCase):
         #
         # Linear System
         #
-        system = LS(u, A=A, b=b)
+        system = LinearSystem(u, A=A, b=b)
         
         # Add dirichlet constraint
         system.add_dirichlet_constraint('left',0, on_boundary=False)
@@ -351,7 +351,7 @@ class TestLinearSystem(unittest.TestCase):
             #
             # Linear System
             # 
-            system = LS(u, A=A, b=b)
+            system = LinearSystem(u, A=A, b=b)
             
             #
             # Constraints
@@ -426,7 +426,7 @@ class TestLinearSystem(unittest.TestCase):
             A = assembler.af[0]['bilinear'].get_matrix()
             b = assembler.af[0]['linear'].get_matrix()
             
-            system = LS(u, A=A, b=b)
+            system = LinearSystem(u, A=A, b=b)
             
             #
             # Add constraints
@@ -507,7 +507,7 @@ class TestLinearSystem(unittest.TestCase):
         #
         # System
         # 
-        system = LS(u, A=A, b=b)
+        system = LinearSystem(u, A=A, b=b)
         
         #
         # Dirichlet Constraints
@@ -597,7 +597,7 @@ class TestLinearSystem(unittest.TestCase):
         #
         # Linear System
         # 
-        system = LS(u, A=A, b=b)
+        system = LinearSystem(u, A=A, b=b)
         
         # Set constraints
         system.add_dirichlet_constraint('left',0)
@@ -684,7 +684,7 @@ class TestLinearSystem(unittest.TestCase):
         #
         # Linear System
         # 
-        system = LS(u, A=A)
+        system = LinearSystem(u, A=A)
         
         # Set constraints
         system.add_dirichlet_constraint('left',0)
@@ -695,7 +695,7 @@ class TestLinearSystem(unittest.TestCase):
         # Extract finite element solution
         ua = system.get_solution(as_function=True)
         
-        system2 = LS(u, A=A, b=b)
+        system2 = LinearSystem(u, A=A, b=b)
         
         # Set constraints
         system2.add_dirichlet_constraint('left',0)

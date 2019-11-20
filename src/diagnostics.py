@@ -4,8 +4,7 @@ Created on Jun 10, 2019
 @author: hans-werner
 '''
 import time 
-from collections import Mapping, Container 
-from sys import getsizeof
+
 
 class Verbose(object):
     """
