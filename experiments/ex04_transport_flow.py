@@ -48,7 +48,6 @@ from function import Constant
 
 from plot import Plot
 from solver import LinearSystem
-from solver import LinearSystem
 
 import numpy as np
 import scipy

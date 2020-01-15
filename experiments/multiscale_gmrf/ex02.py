@@ -8,8 +8,10 @@ from gmrf import Covariance
 from gmrf import GaussianField
 from mesh import Mesh1D
 from plot import Plot
-from solver import LS
+from solver import LinearSystem
 import TasmanianSG
+import time
+from diagnostics import Verbose
 
 # Built-in modules
 import numpy as np
@@ -31,7 +33,13 @@ Split the diffusion coefficient into a low- and a high dimensional component
 
 Use sparse grids to integrate the low dimensional approximation and Monte Carlo
 for the high dimensional region. 
+
+TODO: Finish
 """
+comment = Verbose()
+
+
+
 # =============================================================================
 # Finite Element Discretization
 # ============================================================================= 
@@ -53,16 +61,14 @@ x = dofhandler.get_dof_vertices()
 # =============================================================================
 n_samples = 5
 
-cov = Covariance(dofhandler, name='gaussian', parameters={'l':0.07})
+cov = Covariance(dofhandler, name='gaussian', parameters={'l':0.1})
 #cov = Covariance(dofhandler, name='exponential', parameters={'l':0.1})
 cov.compute_eig_decomp()
 lmd,V = cov.get_eig_decomp()
 
-plt.semilogy(lmd,'.')
-plt.show()
 
 # Plot low dimensional field
-d0 = 5
+d0 = 10
 d  = len(lmd)
 Lmd0 = np.diag(np.sqrt(lmd[:d0]))
 V0 = V[:,:d0]
@@ -77,17 +83,17 @@ Vc = V[:,d0:]
 for n in range(n_samples):
     Zc = np.random.randn(d-d0,100)
     log_qc = Vc.dot(Dc.dot(Zc))
+    plt.plot(x,log_q0[:,n],'k',linewidth=1.5)
     plt.plot(x,(log_q0[:,n].T+log_qc.T).T, 'k', linewidth=0.1, alpha=0.5)
 plt.show()
 
 # =============================================================================
 # Sparse Grid Loop
 # =============================================================================
-tasmanian_library="/home/hans-werner/bin/TASMANIAN-6.0/libtasmaniansparsegrid.so"
-grid = TasmanianSG.TasmanianSparseGrid(tasmanian_library=tasmanian_library)
+grid = TasmanianSG.TasmanianSparseGrid()
 dimensions = d0
 outputs = m
-depth = 8
+depth = 4
 type = 'level'
 rule = 'gauss-hermite'
 grid.makeGlobalGrid(dimensions, outputs, depth, type, rule)
@@ -106,10 +112,14 @@ log_q0 = Nodal(data=log_qSG, dofhandler=dofhandler)
 # Sample state
 qfn = Nodal(dofhandler=dofhandler, data=np.exp(log_qSG))
 
-
 # =============================================================================
 # Compute Sparse Grid Expectation
 # ============================================================================= 
+print('1. Low dimensional sparse grid')
+print('  -Number of Dofs: %d'%(m))
+print('  -SG sample size: %d'%(n0))
+
+comment.tic(' a) assembly: ')
 phi = Basis(dofhandler, 'u')
 phi_x = Basis(dofhandler, 'ux')
 
@@ -118,79 +128,90 @@ problems = [[Form(kernel=qfn, trial=phi_x, test=phi_x), Form(1, test=phi)],
 
 assembler = Assembler(problems, mesh)
 assembler.assemble()
+comment.toc()
 
+comment.tic(' b) solver: ')
 A = assembler.af[0]['bilinear'].get_matrix()
 b = assembler.af[0]['linear'].get_matrix()
 
-linsys = LS(phi)
+linsys = LinearSystem(phi)
 linsys.add_dirichlet_constraint('left',1)
 linsys.add_dirichlet_constraint('right',0)
 
-"""
 y_data = np.empty((m,n0))
-k = 0
-for n in range(n0):
-    if (n/n0 >= k/10):
-        print('%d0 percent complete'%(k))
-        k+=1
-        
+for n in range(n0):        
     linsys.set_matrix(A[n].copy())
     linsys.set_rhs(b.copy())
     linsys.solve_system()
     y_data[:,[n]] = linsys.get_solution(as_function=False)
+comment.toc()
 
+comment.tic(' c) saving SG:')
 np.save('y_SG',y_data)
-"""
+comment.toc()
 
+comment.tic(' d) loading SG:')
 y_SG = np.load('y_SG.npy')
-c_norm = np.sqrt(np.pi)**d0     # normalization constant
+comment.toc()
 
+comment.tic(' e) computing SG average:')
+c_norm = np.sqrt(np.pi)**d0     # normalization constant
 y_ave_SG = np.zeros(m)
 for n in range(n0):
     y_ave_SG += wSG[n]*y_SG[:,n]/c_norm
-plt.plot(x,y_ave_SG)
-plt.show()
+comment.toc()
+'''
+print('2. Enrich with MC')
+n1 = 100
+print('  -number of sg samples: %d'%(n0))
+print('  -number of mc per sg: %d'%(n1))
+print('  -total number of samples: %d'%(n0*n1))
 
 
-n1 = 20
 # Plot high dimensional field conditional on low
 Dc = np.diag(np.sqrt(lmd[d0:]))
 Vc = V[:,d0:]
 
-n = np.random.randint(n0)
 yc_ave_MC = np.empty((m,n0))
 k = 0
+comment.comment(' a) iterating over sparse grid points')
 for i in range(n0):
-    if (n/n0 >= k/10):
-        print('%d0 percent complete'%(k))
-        k+=1
-        
+    
+    comment.tic('  i. sampling mc conditional input')
     Zc = np.random.randn(d-d0,m)
     log_qc = Vc.dot(Dc.dot(Zc))
     qfn = Nodal(dofhandler=dofhandler, data=np.exp(log_qc))
-    assembler.assemble()
+    comment.toc()
     
+    comment.tic('  ii. assembling')
+    assembler.assemble()
+    comment.toc()
+    
+    comment.tic('  iii. solver')
     # Compute conditional expectation
     yc_data = np.empty((m,n1))
     for j in range(n1):
-        linsys.set_matrix(A[j])
+        linsys.set_matrix(A[j].copy())
         linsys.set_rhs(b.copy())
         linsys.solve_system()
         yc_data[:,[j]] = linsys.get_solution(as_function=False)
+    comment.toc()
     
-    #if i==5:
-    #    plt.plot(x,yc_data,'k', linewidth=0.1, alpha=0.5)
-    #    plt.title('Solution conditional on q0')
-    #    plt.show()
-    
+    """
+    if i==5:
+        plt.plot(x,yc_data,'k', linewidth=0.1, alpha=0.5)
+        plt.title('Solution conditional on q0')
+        plt.show()
+    """
     # Compute conditional average using Monte Carlo
     yc_ave_MC[:,i] = 1/n1*np.sum(yc_data,axis=1)
 np.save('yc_ave_MC',yc_ave_MC)
+'''
+y_ave_MC = np.load('yc_ave_MC.npy')
 
 y_ave_HYB =  np.zeros(m)
 for n in range(n0):
-    y_ave_HYB += wSG[n]*y_SG[:,n]/c_norm
-    #plt.plot(x,(log_q0.data()[:,n].T+log_qc.T).T, 'k', linewidth=0.1, alpha=0.5)
+    y_ave_HYB += wSG[n]*y_ave_MC[:,n]/c_norm
 plt.plot(x,y_ave_SG, 'k', label='coarse')
 plt.plot(x,y_ave_HYB, 'k--',label='hybrid')
 plt.legend()
@@ -278,3 +299,4 @@ u_error = Nodal(dofhandler=dofhandler, data=du)
 #u_error = np.dot(du.T, M.dot(du))
 #plot.line(u_error, i_sample=np.arange(0,n_train))
 """
+

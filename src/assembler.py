@@ -465,6 +465,8 @@ class Kernel(object):
     def n_subsample(self):
         """
         Returns the subsample of functions used
+        
+        TODO: Move this to Sample class
         """
         if self.__subsample is not None:
             return len(self.__subsample) 
@@ -477,6 +479,13 @@ class Kernel(object):
         Returns the list of functions 
         """
         return self.__f
+    
+    
+    def F(self):
+        """
+        Returns the metafunction
+        """
+        return self.__F
     
     
     def is_symmetric(self):
@@ -493,9 +502,11 @@ class Kernel(object):
         
         Inputs:
         
-            *x: (n_points, dim) array of points at which to evaluate the kernel
+            x: (n_points, dim) array of points at which to evaluate the kernel
             
-            
+            region: Geometric region (Cell, Interval, HalfEdge, Vertex)
+                Included for modified kernels            
+   
         Output:
         
             Kernel function evaluated at point x.
@@ -536,7 +547,7 @@ class Form(object):
             
             *dmu: str, area of integration
                 'dx' - integrate over a cell
-                'ds' - integrate over an edge
+                'ds' - integrate over a half-edge
                 'dv' - integrate over a vertex    
                 
             *flag: str/int/tuple cell/half_edge/vertex marker
@@ -709,6 +720,7 @@ class Form(object):
             
             wg: dict, Gaussian quadrature weights, indexed by regions.
             
+            phi: ??
             
         Outputs:
         
@@ -1582,7 +1594,6 @@ class Assembler(object):
         # =====================================================================
         # Initialize Dofhandlers   
         # =====================================================================
-        #self.set_dofhandlers()
         
         """
         #
@@ -1600,7 +1611,7 @@ class Assembler(object):
     
     def set_assembled_forms(self):
         """
-        Initialize list of AssembledForm's encoding the assembled forms associated
+        Initialize list of AssembledForms encoding the assembled forms associated
         with each problem
         """
         af = []
@@ -1665,58 +1676,7 @@ class Assembler(object):
         # 
         self.af = af 
         
-    '''
-    def set_dofhandlers(self):
-        """
-        Identify and initialize dofhandlers necessary to assemble problem
-        
-        Inputs:
-        
-            problems: list of Forms, describing the problem to be assembled.
-            
-            subforest_flag: str/int/tuple, submesh on which problem defined.
-        
-        
-        Modified:
-        
-            dofhandlers: dictionary, dofhandlers[etype] containing the 
-                dofhandler for the type of finite element.
-                
-        TODO: Delete
-        """
-        #
-        # Extract all elements
-        # 
-        elements = set()
-        dofhandlers = {}
-        for problem in self.problems:
-            for form in problem:                
-                if form.trial is not None:
-                    #
-                    # Add elements associated with trial functions
-                    #
-                    elements.add(form.trial.dofhandler().element)
-                    
-                if form.test is not None:
-                    #
-                    # Add elements associated with test functions
-                    # 
-                    elements.add(form.test.dofhandler().element)
-        #             
-        # Define new DofHandlers not already used by functions
-        # 
-        for element in elements:
-            etype = element.element_type()
-            if etype not in dofhandlers:
-                #
-                # Require a dofhandler for this element
-                #                                 
-                dofhandlers[etype] = DofHandler(self.mesh, element)
-                dofhandlers[etype].distribute_dofs()
-        self.dofhandlers = dofhandlers
-    '''        
-            
-            
+
     def assemble(self, clear_cell_data=True):
         """
         Assembles constant, linear, and bilinear forms over computational mesh,

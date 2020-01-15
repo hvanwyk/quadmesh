@@ -17,8 +17,7 @@ from function import Explicit
 from function import Constant
 
 from solver import LinearSystem
-from solver import LinearSystem
-#from plot import Plot
+
 
 
 class TestLinearSystem(unittest.TestCase):

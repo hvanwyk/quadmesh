@@ -138,7 +138,7 @@ class QuadFE(Element):
             
             p  = [lambda x: 1-x, lambda x: x]
             px = [lambda x:-1*np.ones(x.shape), lambda x: 1*np.ones(x.shape)]
-            pxx = [lambda x: 0*np.ones(x.shape), lambda x: 0*np.ones(x.shape)]
+            pxx = [lambda x: np.zeros(x.shape), lambda x: np.zeros(x.shape)]
             if dim == 1:
                 #
                 # One Dimensional
