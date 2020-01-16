@@ -1,7 +1,7 @@
 from assembler import Form, Kernel, Assembler
 from fem import QuadFE, Basis, DofHandler
 from function import Nodal, Explicit, Constant
-from mesh import Mesh1D, Interval
+from mesh import QuadMesh
 from plot import Plot
 from solver import LinearSystem
 
@@ -17,3 +17,11 @@ SUPG and
  
 """
 # Computational mesh
+mesh = QuadMesh(resolution=(25,25))
+
+
+# Time discretization
+t0, t1, dt = 0, 1, 0.025
+
+# Initial condition
+u0 = Constant(0)
