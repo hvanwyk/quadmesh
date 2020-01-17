@@ -75,7 +75,7 @@ def test_ft():
     # Mesh and Elements
     # =============================================================================
     # Mesh
-    mesh = QuadMesh(resolution=(10,10))
+    mesh = QuadMesh(resolution=(40,40))
      
     # Elements
     p_element = QuadFE(2,'Q1')  # element for pressure
@@ -84,6 +84,9 @@ def test_ft():
     # Dofhandlers
     p_dofhandler = DofHandler(mesh, p_element)
     c_dofhandler = DofHandler(mesh, c_element)
+    
+    p_dofhandler.distribute_dofs()
+    print('number of dofs:',p_dofhandler.n_dofs())
     
     # Basis functions
     p_ux = Basis(p_dofhandler, 'ux')
@@ -132,7 +135,7 @@ def test_ft():
     system.solve_system()
     u = system.get_solution()
     
-    plot.wire(u)
+    #plot.wire(u)
     
     dh = DofHandler(mesh, QuadFE(2,'DQ2'))
     dh.distribute_dofs()
@@ -173,7 +176,7 @@ def test_ft():
     ca = c0.interpolant(dofhandler=c_dofhandler)
     c0 = ca.data()
     #plot = Plot(5)
-    plot.wire(ca)
+    #plot.wire(ca)
     print('time stepping')
     for i in range(N):
         print(i)
@@ -192,7 +195,7 @@ def test_ft():
         c0 = cp
         ca.add_data(data=cp)
         
-        plot.wire(system.get_solution(as_function=True))
+        #plot.wire(system.get_solution(as_function=True))
 
 if __name__ == '__main__':
     test_ft()

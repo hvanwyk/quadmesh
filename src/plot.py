@@ -845,8 +845,9 @@ class Plot(object):
                 xx = x0 + t*(x1-x0)
                 yy = y0 + t*(y1-y0)
                 xy  = np.array([xx,yy]).T
-                zz = f.eval(xy, cell=cell)
-                
+                # TODO: How do we incorporate cell information into the function? 
+                #zz = f.eval(xy, cell=cell)
+                zz = f.eval(xy)
                 x.extend(list(xx))
                 y.extend(list(yy))
                 z.extend(list(zz))
