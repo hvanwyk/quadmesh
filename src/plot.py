@@ -384,7 +384,7 @@ class Plot(object):
         for cell in mesh.cells.get_leaves(subforest_flag=subforest_flag):
             if mesh.dim()==2:
                 assert isinstance(cell, QuadCell), 'Can only map QuadCells'
-            x = cell.reference_map(x_ref, jacobian=False)
+            x = cell.reference_map(x_ref)
             cell_dofs = dofhandler.get_global_dofs(cell)
             if cell_dofs is not None:
                 for i in range(n_dofs):

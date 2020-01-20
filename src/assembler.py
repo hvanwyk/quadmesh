@@ -5,6 +5,7 @@ from mesh import Vertex, Interval, HalfEdge, QuadCell, convert_to_array
 from function import Map, Nodal, Constant
 from fem import parse_derivative_info, Basis
  
+import time
  
 class GaussRule(object):
     """
@@ -1700,7 +1701,15 @@ class Assembler(object):
                 boundary conditions.
         
         
-        """                 
+        """       
+        t_shape_info = 0
+        t_gauss_rules = 0 
+        t_shape_eval = 0
+        t_form_eval = 0
+        t_get_node_address = 0
+        t_af_update = 0
+        t_af_consolidate = 0
+        t_reference_map = 0          
         #
         # Assemble forms over mesh cells
         #      
@@ -1717,17 +1726,28 @@ class Assembler(object):
             # Determine what shape functions and Gauss rules to 
             # compute on current cells
             # 
+            tic = time.time()
             ci_shape_info = self.shape_info(ci)
+            t_shape_info += time.time()-tic
             
             # 
             # Compute Gauss nodes and weights on cell
             # 
+            tic = time.time()
             xi_g, wi_g = self.gauss_rules(ci_shape_info)
+            t_gauss_rules += time.time()-tic
+            
+            tic = time.time()
+            ci.reference_map(xi_g[ci], mapsto='reference')
+            t_reference_map += time.time()-tic
+            
             
             #
             # Compute shape functions on cell
-            #  
+            #
+            tic = time.time()  
             phii = self.shape_eval(ci_shape_info, xi_g, ci)
+            t_shape_eval += time.time()-tic
             
             #
             # Assemble local forms and assign to global dofs
@@ -1819,13 +1839,17 @@ class Assembler(object):
                         #
                         # Evaluate local form 
                         #
+                        tic = time.time()
                         form_loc = form.eval(ci, xi_g, wi_g, phii)                   
+                        t_form_eval += time.time()-tic
                         
                         #
                         # Update assembled form
                         #
                         # cell address
+                        tic = time.time()
                         ci_addr = ci.get_node_address()
+                        t_get_node_address += time.time()-tic 
                         
                         if form.type=='constant':    
                             af = self.af[i_problem]['constant'] 
@@ -1849,10 +1873,11 @@ class Assembler(object):
                             dofs_trl = form.trial.dofs(ci)
 
                             # Store dofs and values in assembled form
-                            af = self.af[i_problem]['bilinear']  
+                            af = self.af[i_problem]['bilinear']
+                            tic = time.time()  
                             af.update(ci_addr, form_loc, 
                                       row_dofs=dofs_tst, col_dofs=dofs_trl)
-                                                                
+                            t_af_update += time.time()-tic                                    
         #
         # Post-process assembled forms
         # 
@@ -1866,9 +1891,19 @@ class Assembler(object):
                 #
                 # Consolidate assembly
                 #
+                tic = time.time()
                 af.consolidate(clear_cell_data=clear_cell_data)
-                
+                t_af_consolidate += time.time()-tic
         
+        print('Timings')
+        print('Shape infor',t_shape_info)
+        print('Gauss Rule', t_gauss_rules) 
+        print('Shape Eval', t_shape_eval)
+        print('Form Eval', t_form_eval)
+        print('Get node address', t_get_node_address)
+        print('AF update', t_af_update)
+        print('AF consolidate', t_af_consolidate)
+        print('Reference Map',t_reference_map)
         '''   
         #
         # Assemble forms over boundary edges 
@@ -2748,6 +2783,52 @@ class Assembler(object):
                     phi[region][basis] = p
         return phi        
             
+    
+    def shape_eval_v2(self,shape_info):
+        """
+        Map reference quadrature nodes from reference to physical region, and 
+        evaluate the relevant shape functions (and their derivatives).
+        
+        Inputs:
+        
+            shape_info: whose keys are the integration regions 
+                (QuadCell, Interval, or HalfEdge) over which to integrate and 
+                whose values are the basis functions to be integrated.
+                
+        
+        NOTE: This function combines shape_eval and gauss_rule, both of which
+            are computational bottlenecks
+        """
+        xg, wg = {}, {}
+        phi = {}
+        for region in shape_info.keys():
+            phi[region] = {}
+            #
+            # Map quadrature rule to entity (cell/halfedge)
+            # 
+            if isinstance(region, Interval):
+                #
+                # Interval
+                # 
+                xg[region], wg[region] = self.cell_rule.mapped_rule(region)
+            elif isinstance(region, HalfEdge):
+                #
+                # Edge
+                #
+                xg[region], wg[region] = self.edge_rule.mapped_rule(region)
+            elif isinstance(region, QuadCell):
+                #
+                # Quadrilateral
+                #
+                xg[region], wg[region] = self.cell_rule.mapped_rule(region)
+            elif isinstance(region, Vertex):
+                #
+                # Vertex
+                # 
+                xg[region], wg[region] = convert_to_array(region.coordinates()), 1
+            else:
+                raise Exception('Only Intervals, HalfEdges, Vertices, & QuadCells supported')  
+        return xg, wg
           
     def interpolate(self, marker_coarse, marker_fine, u_coarse=None):
         """

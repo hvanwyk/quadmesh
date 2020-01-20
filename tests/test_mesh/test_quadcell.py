@@ -215,6 +215,7 @@ class TestQuadCell(unittest.TestCase):
         y_refs = np.array([[0,0],[1,0],[1,1],[0,1]])
         x = list(convert_to_array(cell.get_vertices()))
         x_phys = cell.reference_map(list(y_refs))
+
         self.assertTrue(np.allclose(np.array(x),x_phys),\
                         'Mapped vertices should coincide '+\
                         'with physical cell vertices.')
@@ -225,7 +226,8 @@ class TestQuadCell(unittest.TestCase):
         rule_2d = GaussRule(order=4, shape='quadrilateral')
         r = rule_2d.nodes()
         wg = rule_2d.weights()
-        dummy, jac = cell.reference_map(list(r), jacobian=True)
+        dummy, mg = cell.reference_map(list(r), jac_r2p=True)
+        jac = mg['jac_r2p']
         area = 0
         for i in range(4):
             j = jac[i]
@@ -287,8 +289,10 @@ class TestQuadCell(unittest.TestCase):
         x = np.array([[0.5, 0.5],[0.5+h,0.5],[0.5-h,0.5],
                       [0.5,0.5+h],[0.5,0.5-h]])
         
-        x_ref, J, H  = cell.reference_map(x, mapsto='reference', 
-                                          hessian=True, jacobian=True)
+        x_ref, mg  = cell.reference_map(x, mapsto='reference',
+                                          hess_p2r=True, jac_p2r=True)
+        J = mg['jac_p2r']
+        H = mg['hess_p2r']
         
         # sxx
         sxx_fd = (J[1][0,0]-J[2][0,0])/(2*h)

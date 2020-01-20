@@ -515,7 +515,8 @@ class QuadFE(Element):
                 return self.__p[i1](x[:,0])*self.__pxx[i2](x[:,1])
          
     
-    def shape(self, x, cell=None, derivatives=(0,), local_dofs='all'):
+    def shape(self, x, cell=None, derivatives=(0,), local_dofs='all',
+              x_ref=None, jacobian=None, hessian=None):
         """
         Evaluate all shape functions at a given points
         
@@ -606,7 +607,8 @@ class QuadFE(Element):
                 # Return jacobian and hessian
                 # 
                 x_ref, J, H = \
-                    cell.reference_map(x, jacobian=jacobian, hessian=hessian,\
+                    cell.reference_map(x, jacobian=jacobian, \
+                                       hessian=hessian,\
                                        mapsto='reference')
             elif jacobian:
                 #

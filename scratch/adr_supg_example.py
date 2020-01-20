@@ -18,7 +18,7 @@ SUPG and
 """
 comment = Verbose()
 # Computational mesh
-mesh = QuadMesh(box=[0,10,0,10], resolution=(25,25))
+mesh = QuadMesh(box=[0,10,0,10], resolution=(100,100))
 left = mesh.mark_region('left', lambda x,y: abs(x)<1e-10)
 
 # Finite elements
@@ -61,30 +61,29 @@ Dy = 0.1*Dx
 Form(1,trial=v,test=v)
 
 k_max = 1
-for t in np.linspace(t0,t1,nt):
-    print(t)
-    for k in range(k_max):
-        up = Nodal(f=lambda x:x[:,1]**2, dofhandler=V1)
-        um = Nodal(f=lambda x:x[:,0], dofhandler=V1)
-        residual = [Form(Kernel(f=up),test=v),
-                    Form(Kernel(f=um,F=lambda um:-um), test=v),
-                    Form(Kernel(f=[up],derivatives=['ux'],F=lambda ux,dt=dt,Dx=Dx:dt*Dx*ux),test=v_x)]
+up = Nodal(f=lambda x:x[:,1]**2, dofhandler=V1)
+um = Nodal(f=lambda x:x[:,0], dofhandler=V1)
+residual = [Form(1,test=v)]
+"""
+residual = [Form(Kernel(f=up),test=v),
+            Form(Kernel(f=um), test=v),
+            Form(Kernel(f=up),test=v_x)]
+"""
+comment.tic('Assembly')
+assembler = Assembler(residual,mesh)
+assembler.assemble()
+comment.toc()
+
+# Form residual 
+"""
+(up, v) - (um,v) 
++ dt*(Dx*up_x,v_x) + dt*(Dy*up_y,v_y) 
++ dt*(v1*up_x,v) + dt*(v2*up_y,v) 
++ dt*(k*up**2,v)
+
+"""
+#residual = [Form(u_np,test=v), 
+#            Form(-u_nm,test=v)]
         
-        comment.tic('Assembly')
-        assembler = Assembler(residual,mesh)
-        assembler.assemble()
-        comment.toc()
-        
-        # Form residual 
-        """
-        (up, v) - (um,v) 
-        + dt*(Dx*up_x,v_x) + dt*(Dy*up_y,v_y) 
-        + dt*(v1*up_x,v) + dt*(v2*up_y,v) 
-        + dt*(k*up**2,v)
-        
-        """
-        #residual = [Form(u_np,test=v), 
-        #            Form(-u_nm,test=v)]
-                
 
  

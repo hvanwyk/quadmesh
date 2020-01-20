@@ -465,9 +465,9 @@ class TestHalfEdge(unittest.TestCase):
         h = HalfEdge(v1,v2)
         
         x = np.linspace(0, 1, 5)
-        points = h.reference_map(x, jacobian=False, hessian=False)
+        points = h.reference_map(x)
                 
-        y = h.reference_map(points, jacobian=False, hessian=False, mapsto='reference')
+        y = h.reference_map(points, mapsto='reference')
         for (yi,xi) in zip(x,y):
             self.assertAlmostEqual(xi,yi)
             

@@ -2374,69 +2374,135 @@ class HalfEdge(Tree):
 
 
      
-    def reference_map(self, x, jacobian=False, hessian=False, mapsto='physical'):
+    def reference_map(self, x_in, mapsto='physical',
+                      jac_p2r=False, jac_r2p=False,
+                      hess_p2r=False, hess_r2p=False,
+                      jacobian=False, hessian=False):
         """
-        Map points x from the reference interval to the physical HalfEdge or vice versa
+        Map points x from the reference interval to the physical HalfEdge or 
+        vice versa.
         
         Inputs:
         
-            x: double, (n,) array or a list of points.
-            
-            jacobian: bool, return jacobian for mapping.
-            
+            x_in: double, (n,) array or a list of points to be mapped.
+                                    
+            jac_p2r: bool, return jacobian of mapping from physical to 
+                reference domain
+                
+            jac_r2p: bool, return jacobian of mapping from reference to
+                physical domain
+                
+            hess_p2r: bool, return hessian of mapping from physical to 
+                reference domain
+                
+            hess_r2p: bool, return hessian of mapping from phyical to 
+                reference domain
+                
             mapsto: str, 'physical' (map from reference to physical), or 
                 'reference' (map from physical to reference).
                 
-                
         Outputs:
         
-            y: double, (n,) array of mapped points
+            x_trg: double, (n,) array of mapped points
             
-            jac: array (2,), jacobian [x'(t), y'(t)]
-            
-            hess: array (2,2), Hessian (always 0).
+            mg: dictionary, of jacobians and hessians associated with the 
+                mapping. 
+                
+                jac_p2r: double, n-list of physical-to-reference jacobians
+                
+                jac_r2p: double, n-list of reference-to-physical jacobians
+                
+                hess_p2r: double, n-list of physical-to-reference hessians
+                
+                hess_r2p: double, n-list of reference-to-phyiscal hessians        
+
         """
+        #
+        # Preprocessing
+        # 
         if mapsto=='physical':
             #
             # Check that input is an array
             # 
-            assert type(x) is np.ndarray, \
+            assert type(x_in) is np.ndarray, \
             'If "mapsto" is "physical", then input should '+\
-            'be a one dimensional array.'
+            'be an array.'
             #
             # Check that points contained in [0,1]
             # 
-            assert x.max()>=0 and x.min()<=1, \
+            assert x_in.max()>=0 and x_in.min()<=1, \
             'Reference point should be between 0 and 1.'
             
         elif mapsto=='reference':
-            x = convert_to_array(x, dim=self.head().dim())
+            x = convert_to_array(x_in, dim=self.head().dim())
             #
             # Check that points lie on the HalfEdge
             # 
-            assert all(self.contains_points(x)), \
+            assert all(self.contains_points(x_in)), \
             'Some points are not contained in the HalfEdge.'
               
         #
         # Compute mapped points
         #     
-        n_points = x.shape[0]
+        n = x_in.shape[0]
         x0, y0 = self.base().coordinates()
         x1, y1 = self.head().coordinates()
+        
         if mapsto == 'physical':
-            y = [(x0 + (x1-x0)*xi, y0 + (y1-y0)*xi) for xi in x]
+            x_trg = [(x0 + (x1-x0)*xi, y0 + (y1-y0)*xi) for xi in x_in]
         elif mapsto == 'reference':
             if not np.isclose(x0, x1):
                 #
                 # Not a vertical line
                 # 
-                y = list((x[:,0]-x0)/(x1-x0))
+                x_trg = list((x[:,0]-x0)/(x1-x0))
             elif not np.isclose(y0, y1):
                 #
                 # Not a horizontal line
                 # 
-                y = list((x[:,1]-y0)/(y1-y0))
-        
+                x_trg = list((x_in[:,1]-y0)/(y1-y0))
+    
+        #
+        # Compute the Jacobians and Hessians (if asked for)
+        #
+        if any([jac_r2p, jac_p2r, hess_r2p, hess_p2r]):
+            #
+            # Gradients of the mapping sought
+            # 
+            # Initialize map gradients (mg) dictionary
+            mg = {} 
+            if jac_r2p:
+                #
+                # Jacobian of mapping from reference to physical region
+                #  
+                mg['jac_r2p'] = [np.array([[x1-x0],[y1-y0]])]*n
+                
+            if jac_p2r:
+                #
+                # Jacobian of mapping from physical to reference region
+                # TODO: Shouldn't this also be a list? 
+                mg['jac_p2r'] = np.array([[1/(x1-x0), 1/(y1-y0)]])
+            if hess_r2p:
+                #
+                # Hessian of mapping from reference to physical region
+                # 
+                mg['hess_r2p'] = [np.zeros((2,2))]*n
+            if hess_p2r:
+                #
+                # Hessian of mappring from physical to reference region
+                # 
+                mg['hess_p2r'] = [np.zeros((2,2))]*n
+            
+            
+            return x_trg, mg
+            
+        else:
+            #
+            # No gradients of the mapping sought
+            # 
+            return x_trg
+            
+        # TODO: Remove this...
         #
         # Compute the Jacobian
         # 
@@ -2445,7 +2511,7 @@ class HalfEdge(Tree):
                 #
                 # Derivative of mapping from refence to physical cell
                 # 
-                jac = [np.array([[x1-x0],[y1-y0]])]*n_points
+                jac = [np.array([[x1-x0],[y1-y0]])]*n
             elif mapsto == 'reference':
                 #
                 # Derivative of inverse map
@@ -2461,13 +2527,13 @@ class HalfEdge(Tree):
         # Return output
         # 
         if jacobian and hessian:
-            return y, jac, hess
+            return x_trg, jac, hess
         elif jacobian and not hessian:
-            return y, jac
+            return x_trg, jac
         elif hessian and not jacobian:
-            return y, hess
+            return x_trg, hess
         else: 
-            return y
+            return x_trg
 
 
    
@@ -2860,47 +2926,106 @@ class Interval(HalfEdge):
         return in_cell.ravel()
         
         
-    def reference_map(self, x, jacobian=False, hessian=False, mapsto='physical'):
+    def reference_map(self, x_in, mapsto='physical', 
+                      jac_r2p=False, jac_p2r=False,
+                      hess_r2p=False, hess_p2r=False, 
+                      jacobian=False, hessian=False):
         """
-        Map points x from the reference to the physical domain or vice versa
+        Map points x from the reference to the physical Interval or vice versa
         
         Inputs:
         
-            x: double, (n,) array or a list of points.
+            x_in: double, (n,) array or a list of points to be mapped
             
-            jacobian: bool, return jacobian for mapping.
-            
+            jac_p2r: bool, return jacobian of mapping from physical to 
+                reference domain
+                
+            jac_r2p: bool, return jacobian of mapping from reference to
+                physical domain
+                
+            hess_p2r: bool, return hessian of mapping from physical to 
+                reference domain
+                
+            hess_r2p: bool, return hessian of mapping from phyical to 
+                reference domain
+                
             mapsto: str, 'physical' (map from reference to physical), or 
                 'reference' (map from physical to reference).
                 
-                
         Outputs:
         
-            y: double, (n,) array of mapped points
+            x_trg: double, (n,) array of mapped points
             
-            jac: list of associated gradients
-            
-            hess: list of associated Hessians (always 0).
+            mg: dictionary, of jacobians and hessians associated with the 
+                mapping. 
+                
+                jac_p2r: double, n-list of physical-to-reference jacobians
+                
+                jac_r2p: double, n-list of reference-to-physical jacobians
+                
+                hess_p2r: double, n-list of physical-to-reference hessians
+                
+                hess_r2p: double, n-list of reference-to-phyiscal hessians               
         """
         # 
         # Convert input to array
         # 
-        x = convert_to_array(x,dim=1)
+        x_in = convert_to_array(x_in,dim=1)
             
         #
         # Compute mapped points
         # 
-        n = len(x)    
+        n = len(x_in)    
         x0, = self.get_vertex(0).coordinates()
         x1, = self.get_vertex(1).coordinates()
+        
+        # 
+        # Compute target point
+        # 
         if mapsto == 'physical':
-            y = x0 + (x1-x0)*x
+            x_trg = x0 + (x1-x0)*x_in
         elif mapsto == 'reference':
-            y = (x-x0)/(x1-x0)
+            x_trg = (x_in-x0)/(x1-x0)
         
         #
-        # Compute the Jacobian
-        # 
+        # Compute the Jacobians and Hessians (if asked for)
+        #
+        if any([jac_r2p, jac_p2r, hess_r2p, hess_p2r]):
+            #
+            # Gradients of the mapping sought
+            # 
+            # Initialize map gradients (mg) dictionary
+            mg = {} 
+            if jac_r2p:
+                #
+                # Jacobian of mapping from reference to physical region
+                #  
+                mg['jac_r2p'] = [(x1-x0)]*n
+                
+            if jac_p2r:
+                #
+                # Jacobian of mapping from physical to reference region
+                # 
+                mg['jac_p2r'] = [1/(x1-x0)]*n
+            if hess_r2p:
+                #
+                # Hessian of mapping from reference to physical region
+                # 
+                mg['hess_r2p'] = list(np.zeros(n))
+            if hess_p2r:
+                #
+                # Hessian of mappring from physical to reference region
+                # 
+                mg['hess_p2r'] = list(np.zeros(n))
+            
+            return x_trg, mg
+        else:
+            #
+            # No gradients of the mapping sought
+            # 
+            return x_trg
+        
+        # TODO: Remove whatever is underneath
         if jacobian:
             if mapsto == 'physical':
                 #
@@ -2923,13 +3048,13 @@ class Interval(HalfEdge):
         # Return output
         # 
         if jacobian and hessian:
-            return y, jac, hess
+            return x_trg, jac, hess
         elif jacobian and not hessian:
-            return y, jac
+            return x_trg, jac
         elif hessian and not jacobian:
-            return y, hess
+            return x_trg, hess
         else: 
-            return y
+            return x_trg
      
                         
 class Cell(Tree):
@@ -3466,10 +3591,52 @@ class QuadCell(Cell, Tree):
         return bins
     
         
-    def reference_map(self, x_in, jacobian=False, 
-                      hessian=False, mapsto='physical'):
+    def reference_map(self, x_in, mapsto='physical',
+                      jac_p2r=False, jac_r2p=False,
+                      hess_p2r=False, hess_r2p=False,
+                      jacobian=False, hessian=False):
         """
-        Bilinear map between reference cell [0,1]^2 and physical cell
+        Bilinear map between reference cell [0,1]^2 and physical QuadCell
+            
+        Inputs:
+        
+            x_in: double, (n,) array or a list of points.
+                
+            jac_p2r: bool, return jacobian of mapping from physical to 
+                reference domain
+                
+            jac_r2p: bool, return jacobian of mapping from reference to
+                physical domain
+                
+            hess_p2r: bool, return hessian of mapping from physical to 
+                reference domain
+                
+            hess_r2p: bool, return hessian of mapping from phyical to 
+                reference domain
+                
+            mapsto: str, 'physical' (map from reference to physical), or 
+                'reference' (map from physical to reference).
+        
+                
+        Outputs:
+        
+            x_trg: double, (n,) array of mapped points
+            
+            mg: dictionary, of jacobians and hessians associated with the 
+                mapping. 
+                
+                jac_p2r: double, n-list of (2,2) physical-to-reference 
+                    jacobians.
+                
+                jac_r2p: double, n-list of (2,2) reference-to-physical 
+                    jacobians.
+                
+                hess_p2r: double, n-list of (2,2,2) physical-to-reference 
+                    hessians.
+                
+                hess_r2p: double, n-list of (2,2,2) reference-to-phyiscal 
+                    hessians.        
+
         
         Inputs: 
         
@@ -3486,7 +3653,7 @@ class QuadCell(Cell, Tree):
             mapsto: str, 'reference' if mapping onto the refence cell [0,1]^2
                 or 'physical' if mapping onto the physical cell. Default is 
                 'physical'
-                
+                        
                 
         Outputs:
         
@@ -3512,12 +3679,12 @@ class QuadCell(Cell, Tree):
         p_ne_x, p_ne_y = x_verts[2,:]
         p_nw_x, p_nw_y = x_verts[3,:]
 
-        if mapsto=='physical':        
+        if mapsto=='physical':
             #    
             # Map points from [0,1]^2 to the physical cell, using bilinear
             # nodal basis functions 
-            #
-            
+            #        
+                
             # Points in reference domain
             s, t = x_in[:,0], x_in[:,1] 
             
@@ -3528,13 +3695,13 @@ class QuadCell(Cell, Tree):
                 p_ne_y*s*t + p_nw_y*(1-s)*t
              
             # Store points in a list
-            x_mapped = np.array([x,y]).T
+            x_trg = np.array([x,y]).T
             
         elif mapsto=='reference':
             #
             # Map from physical- to reference domain using Newton iteration
             #   
-            
+        
             # Points in physical domain
             x, y = x_in[:,0], x_in[:,1]
             
@@ -3572,8 +3739,125 @@ class QuadCell(Cell, Tree):
                 s = np.minimum(np.maximum(s,0),1)
                 t = np.minimum(np.maximum(t,0),1)
                 
-            x_mapped = np.array([s,t]).T
+            x_trg = np.array([s,t]).T
+
+        #
+        # Compute the Jacobians and Hessians (if asked for)
+        #
+        if any([jac_r2p, jac_p2r, hess_r2p, hess_p2r]):
+            #
+            # Gradients of the mapping sought
+            # 
+            # Initialize map gradients (mg) dictionary
+            mg = {} 
+            
+            if jac_r2p or jac_p2r:
+                #
+                # Compute Jacobian of the forward mapping 
+                #
+                xs = -p_sw_x*(1-t) + p_se_x*(1-t) + p_ne_x*t - p_nw_x*t  # J11 
+                ys = -p_sw_y*(1-t) + p_se_y*(1-t) + p_ne_y*t - p_nw_y*t  # J21
+                xt = -p_sw_x*(1-s) - p_se_x*s + p_ne_x*s + p_nw_x*(1-s)  # J12
+                yt = -p_sw_y*(1-s) - p_se_y*s + p_ne_y*s + p_nw_y*(1-s)  # J22
+                
+            if jac_r2p:
+                #
+                # Jacobian of mapping from reference to physical region
+                #  
+                mg['jac_r2p'] = [np.array([[xs[i], xt[i]], [ys[i], yt[i]]])\
+                                 for i in range(n)]
+            if jac_p2r:
+                #
+                # Jacobian of mapping from physical to reference region
+                #
+                
+                # Compute matrix inverse of jacobian for backward mapping
+                Det = xs*yt-xt*ys
+                sx =  yt/Det
+                sy = -xt/Det
+                tx = -ys/Det
+                ty =  xs/Det
+                mg['jac_p2r'] = [np.array([[sx[i], sy[i]],[tx[i], ty[i]]])\
+                                 for i in range(n)] 
+            if hess_r2p:
+                #
+                # Hessian of mapping from reference to physical region
+                # 
+                if self.is_rectangle():
+                    # Linear mapping (no curvature)
+                    hr2p = [np.zeros((2,2,2)) for dummy in range(n)]
+                        
+                else:
+                    hr2p = []
+                    
+                    # Nonlinear mapping: compute curvature for each point
+                    for i in range(n):
+                        h = np.zeros((2,2,2))
+                        xts = p_sw_x - p_se_x + p_ne_x - p_nw_x
+                        yts = p_sw_y - p_se_y + p_ne_y - p_nw_y
+                        h[:,:,0] = np.array([[0, xts], [xts, 0]])
+                        h[:,:,1] = np.array([[0, yts], [yts, 0]])
+                        hr2p.append(h)
+                
+                # Store result
+                mg['hess_r2p'] = hr2p
+                
+            if hess_p2r:
+                #
+                # Hessian of mapping from physical to reference region
+                # 
+                if self.is_rectangle():
+                    # Linear mapping (no curvature)
+                    hp2r = [np.zeros((2,2,2)) for dummy in range(n)]
+                else:
+                    # Nonlinear mapping: compute curvature for each point
+                    hp2r = []
+                    
+                    Dx = p_sw_x - p_se_x + p_ne_x - p_nw_x
+                    Dy = p_sw_y - p_se_y + p_ne_y - p_nw_y
+                    
+                    dxt_dx = Dx*sx
+                    dxt_dy = Dx*sy
+                    dyt_dx = Dy*sx
+                    dyt_dy = Dy*sy
+                    dxs_dx = Dx*tx
+                    dxs_dy = Dx*ty
+                    dys_dx = Dy*tx
+                    dys_dy = Dy*ty
+                    
+                    dDet_dx = dxs_dx*yt + dyt_dx*xs - dys_dx*xt - dxt_dx*ys
+                    dDet_dy = dxs_dy*yt + dyt_dy*xs - dys_dy*xt - dxt_dy*ys
+                    
+                    sxx =  dyt_dx/Det - yt*dDet_dx/Det**2
+                    sxy =  dyt_dy/Det - yt*dDet_dy/Det**2
+                    syy = -dxt_dy/Det + xt*dDet_dy/Det**2
+                    txx = -dys_dx/Det + ys*dDet_dx/Det**2
+                    txy = -dys_dy/Det + ys*dDet_dy/Det**2
+                    tyy =  dxs_dy/Det - xs*dDet_dy/Det**2
+                    
+                    for i in range(n):
+                        h = np.zeros((2,2,2))
+                        h[:,:,0] = np.array([[sxx[i], sxy[i]], 
+                                             [sxy[i], syy[i]]])
+                        
+                        h[:,:,1] = np.array([[txx[i], txy[i]], 
+                                             [txy[i], tyy[i]]])
+                        hp2r.append(h)
+                        
+                # Store result
+                mg['hess_p2r'] = hp2r
+            
+            #
+            # Return points and gradients
+            #
+            return x_trg, mg
+        else:
+            #
+            # No gradients of the mapping sought
+            # 
+            return x_trg
         
+        # TODO: Remove everything below
         if jacobian:
             #
             # Compute Jacobian of the forward mapping 
@@ -3656,13 +3940,13 @@ class QuadCell(Cell, Tree):
         # Return output
         #    
         if jacobian and hessian:
-            return x_mapped, jac, hess
+            return x_trg, jac, hess
         elif jacobian and not hessian:
-            return x_mapped, jac
+            return x_trg, jac
         elif hessian and not jacobian:
-            return x_mapped, hess
+            return x_trg, hess
         else: 
-            return x_mapped
+            return x_trg
 
 
 class RVertex(Vertex):

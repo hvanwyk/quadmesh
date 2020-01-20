@@ -1,4 +1,5 @@
 from mesh import Vertex, HalfEdge, Interval
+from mesh import convert_to_array
 import numpy as np
 import unittest
 
@@ -164,25 +165,29 @@ class TestInterval(unittest.TestCase):
         x = np.array([0,1, 0.5])
         
         # Map point to physical interval
-        y, jac, hess = I.reference_map(x, jacobian=True, hessian=True)
+        y, mg = I.reference_map(x, jac_r2p=True, hess_r2p=True)
         
-        """
         # Verify
-        self.assertTrue(type(y) is list)
-        self.assertEqual(y, [2,5,3.5])
+        jac = mg['jac_r2p']
+        hess = mg['hess_r2p']
+        
+        self.assertTrue(type(y) is np.ndarray)
+        
+        self.assertTrue(np.allclose(y, convert_to_array([(2,),(5,),(3.5,)],dim=1)))
         self.assertTrue(type(jac) is list)
         self.assertEqual(jac, [3,3,3])
         self.assertTrue(type(hess) is list)
         self.assertEqual(hess, [0,0,0])
         
         # Map back to reference domain
-        xx, ijac, ihess = I.reference_map(y, jacobian=True, hessian=True, \
-                                          mapsto='reference')
+        xx, mg = I.reference_map(y, jac_p2r=True, hess_p2r=True, mapsto='reference')
+        ijac = mg['jac_p2r']
+        ihess = mg['hess_p2r']
         
         # Verify
         for i in range(3):
             self.assertEqual(xx[i],x[i])
             self.assertEqual(ijac[i], 1/jac[i])
             self.assertEqual(ihess[i], hess[i])
-        """
+        
             
