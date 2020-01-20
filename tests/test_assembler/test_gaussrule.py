@@ -123,8 +123,9 @@ class TestGaussRule(unittest.TestCase):
         e = HalfEdge(Vertex((0,0)),Vertex((1,1)))
         
         # Map rule to physical entity
-        x_phys, jacobian = e.reference_map(x_ref, jacobian=True)
-    
+        x_phys, mg = e.reference_map(x_ref, jac_r2p=True)
+        jacobian =  mg['jac_r2p']
+        
         x_phys = convert_to_array(x_phys, dim=2)
         fvec = f(x_phys[:,0],x_phys[:,1])
         

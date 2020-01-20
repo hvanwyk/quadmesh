@@ -515,30 +515,21 @@ class QuadFE(Element):
                 return self.__p[i1](x[:,0])*self.__pxx[i2](x[:,1])
          
     
-    def shape(self, x, cell=None, derivatives=(0,), local_dofs='all',
-              x_ref=None, jacobian=None, hessian=None):
+    def shape(self, x_ref=None, cell=None, derivatives=(0,), 
+              jac_p2r=None, hess_p2r=None, local_dofs='all'):
         """
-        Evaluate all shape functions at a given points
+        Evaluate shape functions (and derivatives) at a given (reference) points
         
         Inputs: 
-        
-            x: double, points at which shape functions are to be evaluated. 
-                forms
-                
-                1. (n_points, n_dim) array, or
-                
-                2. list of n_points n_dim-tuples,
-                
-                3. list of n_points vertices  
             
+            x_ref: double, points on reference domain at which shape functions
+                are evaluated.  
             
-            cell [None]: QuadCell, optionally specify cell in which case:
-                
-                1. the input x is first mapped to the reference, 
-                
-                2. when computing derivatives, shape functions are modified to
-                   account for the coordinate mapping.
-             
+            cell [None]: optionally specify QuadCell or Interval to which   
+                the shape function is mapped. When computing derivatives, 
+                shape functions are modified to account for the coordinate 
+                mapping, using inverse jacobians or hessians. If region is None
+                then the shape function is evaluated on refence element.
              
             derivatives: list of tuples, (order,i,j) where 
                 
@@ -547,8 +538,11 @@ class QuadFE(Element):
                 2. i,j specify the variable wrt which we differentiate
                     e.g. (2,0,0) computes d^2p/dx^2 = p_xx,
                          (2,1,0) computes d^2p/dxdy = p_yx
-                      
-                        
+            
+            jac_p2r: double, Jacobian of the inverse coordinate mapping
+            
+            hess_p2r: double, Hessian of the inverse coordinate mapping
+                                  
             local_dofs: int, list of local dof indices whose entries in
                 range(self.n_dofs).
                 
@@ -559,69 +553,42 @@ class QuadFE(Element):
                  (derivatives of ) shape functions, evaluated at the given 
                  points.
                  
-                 
-
+        
+        Note: To compute the reference points for a point x in the region,  
+            use the 'reference_map' function.
+            
+        TODO: Make sure about HalfEdges
         """
-        #
-        # Convert x to array
-        #
-        x = convert_to_array(x, self.dim())      
-        n_points = x.shape[0]
+        x_ref = convert_to_array(x_ref, self.dim())
+        n_points = x_ref.shape[0]
         
         #
-        # Only one derivative specified
+        # Determine whether to return singleton
         # 
         if not type(derivatives) is list:
             derivatives = [derivatives]
             is_singleton = True
         else:
             is_singleton = False
+        
         #
-        # Check whether points are valid.
-        # 
-        if cell is None:
-            #
-            # Points should lie in the reference domain 
-            #
-            assert all(x.ravel() >= 0), 'All entries should be nonnegative.'
-            assert all(x.ravel() <= 1), 'All entries should be at most 1.'
-            x_ref = x
-            
-        elif cell is not None:
-            #
-            # Points should lie in the physical domain
+        # Points should lie in the reference domain 
+        #
+        assert all(x_ref.ravel() >= 0), 'All entries should be nonnegative.'
+        assert all(x_ref.ravel() <= 1), 'All entries should be at most 1.'
+        
+        if cell is not None:
             # 
-            assert np.all(cell.contains_points(x)), \
-                'Not all points contained in the cell'
-                
+            # Determine whether necessary to compute inverse Jacobian or Hessian
             #
-            # Map points to reference cell
-            # 
-            
-            # Analyze derivative to determine whether to include 
-            # the hessian and/or jacobian.
-            jacobian = any(der[0]==1 or der[0]==2 for der in derivatives)
-            hessian  = any(der[0]==2 for der in derivatives)
-            if hessian:
-                #
-                # Return jacobian and hessian
-                # 
-                x_ref, J, H = \
-                    cell.reference_map(x, jacobian=jacobian, \
-                                       hessian=hessian,\
-                                       mapsto='reference')
-            elif jacobian:
-                #
-                # Return only jacobian
-                # 
-                x_ref, J = \
-                    cell.reference_map(x, jacobian=jacobian,\
-                                       mapsto='reference')
-            else: 
-                #
-                # Return only point
-                # 
-                x_ref = cell.reference_map(x, mapsto='reference')
+            if any(der[0]==1 or der[0]==2 for der in derivatives):
+                assert jac_p2r is not None, 'When computing first or second '+\
+                    'derivatives, input "jac_p2r" is needed.'
+                    
+            if any(der[0]==2 for der in derivatives):
+                assert hess_p2r is not None, 'When computing the second '+\
+                    'derivative, input "hess_p2r" is needed.'
+        
         #
         # Check local_dof numbers
         # 
@@ -641,7 +608,11 @@ class QuadFE(Element):
             all((i>=0) and (i<=n_dofs) for i in local_dofs),
             'Local dofs not in range.'
         n_dofs_loc = len(local_dofs)
-        phi = []    
+        
+        #
+        # Compute shape functions
+        #
+        phi = []        
         for der in derivatives:
             p = np.zeros((n_points,n_dofs_loc))
             if der[0] == 0:
@@ -660,7 +631,7 @@ class QuadFE(Element):
                         #
                         # Interval
                         # 
-                        ds_dx = np.array(J)
+                        ds_dx = np.array(jac_p2r)
                         for i in range(n_dofs_loc):
                             p[:,i] = self.dphi(local_dofs[i], x_ref, var=i_var).ravel()
                             p[:,i] = ds_dx*p[:,i]
@@ -669,7 +640,7 @@ class QuadFE(Element):
                             #
                             # Rectangular cells are simpler
                             # 
-                            dst_dxy = np.array([Ji[i_var,i_var] for Ji in J])
+                            dst_dxy = np.array([Ji[i_var,i_var] for Ji in jac_p2r])
                             for i in range(n_dofs_loc):
                                 p[:,i] = self.dphi(local_dofs[i], x_ref, var=i_var)
                                 p[:,i] = dst_dxy*p[:,i]
@@ -677,8 +648,8 @@ class QuadFE(Element):
                             #
                             # Quadrilateral cells
                             # 
-                            ds_dxy = np.array([Ji[0,i_var] for Ji in J])
-                            dt_dxy = np.array([Ji[1,i_var] for Ji in J])
+                            ds_dxy = np.array([Ji[0,i_var] for Ji in jac_p2r])
+                            dt_dxy = np.array([Ji[1,i_var] for Ji in jac_p2r])
                             for i in range(n_dofs_loc):
                                 dN_ds = self.dphi(local_dofs[i], x_ref, var=0)
                                 dN_dt = self.dphi(local_dofs[i], x_ref, var=1)
@@ -686,6 +657,7 @@ class QuadFE(Element):
                 else:
                     for i in range(n_dofs_loc):
                         p[:,i] = self.dphi(local_dofs[i], x_ref, var=i_var)
+                        
             elif der[0]==2:
                 #
                 # Second derivatives
@@ -699,7 +671,7 @@ class QuadFE(Element):
                         #
                         # Interval
                         # 
-                        ds_dx = np.array(J)
+                        ds_dx = np.array(jac_p2r)
                         for i in range(n_dofs_loc):
                             p[:,i] = (ds_dx)**2*self.d2phi(local_dofs[i], x_ref, der[1:]).ravel()
                     elif isinstance(cell, QuadCell):
@@ -707,8 +679,8 @@ class QuadFE(Element):
                             #
                             # Rectangular cell: mixed derivatives 0
                             # 
-                            dri_dxi = np.array([Ji[i_var,i_var] for Ji in J])
-                            drj_dxj = np.array([Ji[j_var,j_var] for Ji in J])
+                            dri_dxi = np.array([Ji[i_var,i_var] for Ji in jac_p2r])
+                            drj_dxj = np.array([Ji[j_var,j_var] for Ji in jac_p2r])
                             for i in range(n_dofs_loc):
                                 p[:,i] = \
                                     dri_dxi*drj_dxj*self.d2phi(local_dofs[i], x_ref, der[1:])
@@ -717,15 +689,15 @@ class QuadFE(Element):
                             #
                             # General quadrilateral
                             # 
-                            # First partial dertivatives of (s,t) wrt xi, xj
-                            s_xi = np.array([Ji[0,i_var] for Ji in J]) 
-                            s_xj = np.array([Ji[0,j_var] for Ji in J])
-                            t_xi = np.array([Ji[1,i_var] for Ji in J])
-                            t_xj = np.array([Ji[1,j_var] for Ji in J])
+                            # First partial derivatives of (s,t) wrt xi, xj
+                            s_xi = np.array([Ji[0,i_var] for Ji in jac_p2r]) 
+                            s_xj = np.array([Ji[0,j_var] for Ji in jac_p2r])
+                            t_xi = np.array([Ji[1,i_var] for Ji in jac_p2r])
+                            t_xj = np.array([Ji[1,j_var] for Ji in jac_p2r])
                             
                             # Second mixed partial derivatives of (s,t) wrt xi, xj
-                            s_xixj = np.array([Hi[i_var,j_var,0] for Hi in H])
-                            t_xixj = np.array([Hi[i_var,j_var,1] for Hi in H])
+                            s_xixj = np.array([Hi[i_var,j_var,0] for Hi in hess_p2r])
+                            t_xixj = np.array([Hi[i_var,j_var,1] for Hi in hess_p2r])
                             
                             for i in range(n_dofs_loc):
                                 #

@@ -290,9 +290,21 @@ class GaussRule(object):
         return self.__dim
     
     
-    def mapped_rule(self, region):
+    def mapped_rule(self, region, jac_p2r=False, hess_p2r=False):
         """
         Return the rule associated with a specific Cell, Interval, or HalfEdge
+        as well as the inverse jacobians and hessians associated with the 
+        transformation.
+        
+        Inputs:
+        
+            region: object, region (Interval, HalfEdge, or Cell) to which rule 
+                is mapped.
+                
+            jac_p2r, hess_p2r: bool, indicate whether the jacobian and hessian
+                of the inverse mapping should be returned. These are useful 
+                when evaluating the gradients and second derivatives of shape
+                functions. 
         """
         #
         # Map quadrature rule to entity (cell/halfedge)
@@ -309,7 +321,12 @@ class GaussRule(object):
             w_ref = self.weights()
             
             # Map reference quadrature nodes to cell 
-            xg, jac = region.reference_map(x_ref, jacobian=True)
+            xg, mg = region.reference_map(x_ref, jac_r2p=True, 
+                                          jac_p2r=jac_p2r,
+                                          hess_p2r=hess_p2r)
+            
+            # Get jacobian of forward mapping
+            jac = mg['jac_r2p']
             
             # Modify the quadrature weights
             wg = w_ref*np.array(jac)
@@ -326,7 +343,11 @@ class GaussRule(object):
             w_ref = self.weights()
             
             # Map reference nodes to halfedge
-            xg, jac = region.reference_map(x_ref, jacobian=True)
+            xg, mg = region.reference_map(x_ref, jac_r2p=True,
+                                           jac_p2r=jac_p2r,
+                                           hess_p2r=hess_p2r)
+            # Get jaobian of forward mapping
+            jac = mg['jac_r2p'] 
             
             # Modify the quadrature weights
             wg = w_ref*np.array(np.linalg.norm(jac[0]))
@@ -342,7 +363,12 @@ class GaussRule(object):
             w_ref = self.weights()
             
             # Map reference quaddrature nodes to quadcell
-            xg, jac = region.reference_map(x_ref, jacobian=True)
+            xg, mg = region.reference_map(x_ref, jac_r2p=True,
+                                          jac_p2r=jac_p2r,
+                                          hess_p2r=hess_p2r)
+            
+            # Get Jacobian of forward mapping
+            jac = mg['jac_r2p']
             
             # Modify quadrature weights
             wg = w_ref*np.array([np.linalg.det(j) for j in jac])
@@ -350,9 +376,12 @@ class GaussRule(object):
         else:
             raise Exception('Only Intervals, HalfEdges, & QuadCells supported')
         #
-        # Return Gauss nodes and weights
+        # Return Gauss nodes and weights, and Jacobian/Hessian of inverse map
         # 
-        return xg, wg
+        if any([jac_p2r,hess_p2r]):
+            return xg, wg, mg
+        else:
+            return xg, wg
     
     
     
@@ -1703,13 +1732,13 @@ class Assembler(object):
         
         """       
         t_shape_info = 0
-        t_gauss_rules = 0 
+        #t_gauss_rules = 0 
         t_shape_eval = 0
         t_form_eval = 0
         t_get_node_address = 0
         t_af_update = 0
         t_af_consolidate = 0
-        t_reference_map = 0          
+        #t_reference_map = 0          
         #
         # Assemble forms over mesh cells
         #      
@@ -1733,20 +1762,20 @@ class Assembler(object):
             # 
             # Compute Gauss nodes and weights on cell
             # 
-            tic = time.time()
-            xi_g, wi_g = self.gauss_rules(ci_shape_info)
-            t_gauss_rules += time.time()-tic
+            #tic = time.time()
+            #xi_g, wi_g = self.gauss_rules(ci_shape_info)
+            #t_gauss_rules += time.time()-tic
             
-            tic = time.time()
-            ci.reference_map(xi_g[ci], mapsto='reference')
-            t_reference_map += time.time()-tic
+            #tic = time.time()
+            #ci.reference_map(xi_g[ci], mapsto='reference')
+            #t_reference_map += time.time()-tic
             
             
             #
             # Compute shape functions on cell
             #
             tic = time.time()  
-            phii = self.shape_eval(ci_shape_info, xi_g, ci)
+            xi_g, wi_g, phii = self.shape_eval(ci_shape_info, ci)
             t_shape_eval += time.time()-tic
             
             #
@@ -1897,13 +1926,11 @@ class Assembler(object):
         
         print('Timings')
         print('Shape infor',t_shape_info)
-        print('Gauss Rule', t_gauss_rules) 
         print('Shape Eval', t_shape_eval)
         print('Form Eval', t_form_eval)
         print('Get node address', t_get_node_address)
         print('AF update', t_af_update)
         print('AF consolidate', t_af_consolidate)
-        print('Reference Map',t_reference_map)
         '''   
         #
         # Assemble forms over boundary edges 
@@ -2709,42 +2736,80 @@ class Assembler(object):
             
             wg: dict, of Gauss weights on cell, indexed by cell's subregionss
         
+            mg: dict, of mapped gradients, indexed recursively by the cell's 
+                subregions and 'jac_p2r' and/or 'hess_p2r' 
         """
-        xg, wg = {}, {}
+        xg, wg, mg = {}, {}, {}
         for region in shape_info.keys():
+            
+            #
+            # Determine whether shape derivatives will be needed
+            # 
+            if any([basis.derivative()[0]==1 for basis in shape_info[region]]):
+                #
+                # Need Jacobian of Inverse Mapping 
+                # 
+                jac_p2r = True
+            else:
+                jac_p2r = False
+                
+            if any([basis.derivative()[0]==2 for basis in shape_info[region]]):
+                #
+                # Need Hessian of inverse mapping
+                # 
+                hess_p2r = True
+            else:
+                hess_p2r = False
+            
             #
             # Map quadrature rule to entity (cell/halfedge)
-            # 
+            #    
             if isinstance(region, Interval):
                 #
                 # Interval
                 # 
-                xg[region], wg[region] = self.cell_rule.mapped_rule(region)
+                xg[region], wg[region], mg[region] = \
+                    self.cell_rule.mapped_rule(region, jac_p2r=jac_p2r, 
+                                               hess_p2r=hess_p2r)
+                    
             elif isinstance(region, HalfEdge):
                 #
-                # Edge
+                # HalfEdge
                 #
-                xg[region], wg[region] = self.edge_rule.mapped_rule(region)
+                xg[region], wg[region], mg[region] = \
+                    self.edge_rule.mapped_rule(region, jac_p2r=jac_p2r,
+                                               hess_p2r=hess_p2r)
+                    
             elif isinstance(region, QuadCell):
                 #
                 # Quadrilateral
                 #
-                xg[region], wg[region] = self.cell_rule.mapped_rule(region)
+                xg[region], wg[region], mg[region] = \
+                    self.cell_rule.mapped_rule(region, jac_p2r=jac_p2r,
+                                               hess_p2r=hess_p2r)
+                    
             elif isinstance(region, Vertex):
                 #
                 # Vertex
                 # 
                 xg[region], wg[region] = convert_to_array(region.coordinates()), 1
             else:
-                raise Exception('Only Intervals, HalfEdges, Vertices, & QuadCells supported')  
-        return xg, wg
-        
+                raise Exception('Only Intervals, HalfEdges, Vertices, & '+\
+                                'QuadCells supported.')
+        # 
+        # Return results
+        #         
+        if any([hess_p2r,jac_p2r]):
+            return xg, wg, mg
+        else:  
+            return xg, wg
         
                                         
-    def shape_eval(self, shape_info, xg, cell):
+    def shape_eval(self, shape_info, cell):
         """
-        Evaluate the element shape functions (and their derivatives) at the 
-        Gauss quadrature points in each region specified by "shape_info". 
+        (i) Map reference quadrature rule and (ii) evaluate the element shape 
+        functions (and their derivatives) at the mapped quadrature points in 
+        each region specified by "shape_info". 
         
         
         Inputs:
@@ -2752,22 +2817,134 @@ class Assembler(object):
             shape_info: dictionary, whose keys are the integration regions 
                 (QuadCell, Interval, or HalfEdge) over which to integrate and 
                 whose values are the basis functions to be integrated. 
-            
-            xg: dictionary of Gauss nodes, one set for each region
-             
+                         
             cell: cell over which to integrate
                     
                     
         Output:
         
+            xg: dictionary (indexed by regions), of mapped quadrature nodes.
+            
+            wg: dictionary (indexed by regions), of mapped quadrature weights.
+            
             phi: dictionary phi[region][basis] of shape functions evaluated at
-                the Gauss points.
+                the quadrature nodes.
+                
+                
         """
-        phi = {}
+        # Initialize 
+        xg, wg, phi = {}, {}, {}
+        
+        
+        # Iterate over integration regions
         for region in shape_info.keys():
+            
+            # 
+            # Determine whether shape derivatives will be needed for region
+            # 
+            if any([basis.derivative()[0] in [1,2] for basis in shape_info[region]]):
+                #
+                # Need Jacobian of inverse mapping 
+                # 
+                jac_p2r = True
+            else:
+                jac_p2r = False
+                
+            if any([basis.derivative()[0]==2 for basis in shape_info[region]]):
+                #
+                # Need Hessian of inverse mapping
+                # 
+                hess_p2r = True
+            else:
+                hess_p2r = False
+             
             #
-            # Iterate over regions
+            # Map reference quadrature nodes to physical ones
             #
+                
+                
+            
+            if isinstance(region, Interval):
+                #
+                # Interval
+                #
+                # Check compatiblity
+                assert self.dim()==1, 'Interval requires a 1D rule.'
+                
+                # Get reference nodes and weights
+                x_ref = self.cell_rule.nodes()
+                w_ref = self.cell_rule.weights()  
+            
+                # Map to physical region
+                xg[region], mg = \
+                    region.reference_map(x_ref, jac_r2p=True, 
+                                         jac_p2r=jac_p2r, 
+                                         hess_p2r=hess_p2r)
+                                     
+                # Get jacobian of forward mapping
+                jac = mg['jac_r2p']
+                
+                # Modify the quadrature weights
+                wg[region] = w_ref*np.array(jac)
+                
+            elif isinstance(region, HalfEdge):
+                #
+                # Edge
+                # 
+                # Check compatibility
+                assert self.mesh.dim()==1, 'Half Edge requires a 1D rule.'
+                
+                # Reference nodes and weights
+                x_ref = self.edge_rule.nodes()
+                w_ref = self.edge_rule.weights()
+                
+                # Map to physical region
+                xg[region], mg = \
+                    region.reference_map(x_ref, jac_r2p=True, 
+                                         jac_p2r=jac_p2r, 
+                                         hess_p2r=hess_p2r)
+                
+                # Get jaobian of forward mapping
+                jac = mg['jac_r2p'] 
+                
+                # Modify the quadrature weights
+                wg[region] = w_ref*np.array(np.linalg.norm(jac[0]))
+                
+            elif isinstance(region, QuadCell):
+                #
+                # Quadrilateral
+                #
+                # Check compatibility
+                assert self.mesh.dim()==2, 'QuadCell requires 2D rule.'
+                
+                # Get reference nodes and weights
+                x_ref = self.cell_rule.nodes()
+                w_ref = self.cell_rule.weights()                
+                
+                # Map to physical region
+                xg[region], mg = \
+                    region.reference_map(x_ref, jac_r2p=True, 
+                                         jac_p2r=jac_p2r, 
+                                         hess_p2r=hess_p2r)
+                    
+                # Get Jacobian of forward mapping
+                jac = mg['jac_r2p']
+                
+                # Modify quadrature weights
+                wg[region] = w_ref*np.array([np.linalg.det(j) for j in jac])
+                
+            elif isinstance(region, Vertex):
+                #
+                # Vertex (special case)
+                # 
+                xg[region], wg[region] = convert_to_array(region.coordinates()), 1
+            else:
+                raise Exception('Only Intervals, HalfEdges, Vertices & '+\
+                                'QuadCells supported')
+                
+            #
+            # Evaluate (derivatives of) basis functions at the quadrature nodes
+            # 
             phi[region] = {}
             for basis in shape_info[region]:
                 #
@@ -2779,57 +2956,17 @@ class Assembler(object):
                     #
                     element = basis.dofhandler().element
                     D = basis.derivative()
-                    p = element.shape(xg[region], derivatives=D, cell=cell)
+                    jac_p2r = mg['jac_p2r'] if D[0] in [1,2] else None
+                    hess_p2r = mg['hess_p2r'] if D[0]==2 else None 
+                        
+                    p = element.shape(x_ref=x_ref, derivatives=D, cell=cell, 
+                                      jac_p2r=jac_p2r, hess_p2r=hess_p2r)
                     phi[region][basis] = p
-        return phi        
+        
+        # Return mapped quadrature nodes, weights, and shape functions 
+        return xg, wg, phi        
             
-    
-    def shape_eval_v2(self,shape_info):
-        """
-        Map reference quadrature nodes from reference to physical region, and 
-        evaluate the relevant shape functions (and their derivatives).
-        
-        Inputs:
-        
-            shape_info: whose keys are the integration regions 
-                (QuadCell, Interval, or HalfEdge) over which to integrate and 
-                whose values are the basis functions to be integrated.
-                
-        
-        NOTE: This function combines shape_eval and gauss_rule, both of which
-            are computational bottlenecks
-        """
-        xg, wg = {}, {}
-        phi = {}
-        for region in shape_info.keys():
-            phi[region] = {}
-            #
-            # Map quadrature rule to entity (cell/halfedge)
-            # 
-            if isinstance(region, Interval):
-                #
-                # Interval
-                # 
-                xg[region], wg[region] = self.cell_rule.mapped_rule(region)
-            elif isinstance(region, HalfEdge):
-                #
-                # Edge
-                #
-                xg[region], wg[region] = self.edge_rule.mapped_rule(region)
-            elif isinstance(region, QuadCell):
-                #
-                # Quadrilateral
-                #
-                xg[region], wg[region] = self.cell_rule.mapped_rule(region)
-            elif isinstance(region, Vertex):
-                #
-                # Vertex
-                # 
-                xg[region], wg[region] = convert_to_array(region.coordinates()), 1
-            else:
-                raise Exception('Only Intervals, HalfEdges, Vertices, & QuadCells supported')  
-        return xg, wg
-          
+     
     def interpolate(self, marker_coarse, marker_fine, u_coarse=None):
         """
         Interpolate a coarse grid function at fine grid points.

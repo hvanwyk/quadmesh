@@ -794,7 +794,7 @@ class TestDofHandler(unittest.TestCase):
                 dofs_loc_supp = [i for i in range(element.n_dofs()) if dofs_glb[i] in js]
                 #x_dofs = c_00.reference_map(element.reference_nodes())
                 
-                phi_supp = element.shape(x_hgnd, cell=c_00, local_dofs=dofs_loc_supp)
+                #phi_supp = element.shape(x_hgnd, cell=c_00, local_dofs=dofs_loc_supp)
                 #print(phi_supp, js)
                 
                 # Evaluate test function at hanging node 
@@ -891,7 +891,7 @@ class TestDofHandler(unittest.TestCase):
         mesh = QuadMesh()
         element = QuadFE(2,'Q1')
         dofhandler = DofHandler(mesh, element)
-        for dummy in range(9):
+        for dummy in range(7):
             mesh.cells.refine()
             comment.tic()
             dofhandler.distribute_dofs()

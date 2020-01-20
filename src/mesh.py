@@ -2434,7 +2434,7 @@ class HalfEdge(Tree):
             'Reference point should be between 0 and 1.'
             
         elif mapsto=='reference':
-            x = convert_to_array(x_in, dim=self.head().dim())
+            x_in = convert_to_array(x_in, dim=self.head().dim())
             #
             # Check that points lie on the HalfEdge
             # 
@@ -2455,7 +2455,7 @@ class HalfEdge(Tree):
                 #
                 # Not a vertical line
                 # 
-                x_trg = list((x[:,0]-x0)/(x1-x0))
+                x_trg = list((x_in[:,0]-x0)/(x1-x0))
             elif not np.isclose(y0, y1):
                 #
                 # Not a horizontal line

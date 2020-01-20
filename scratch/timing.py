@@ -76,7 +76,7 @@ K   = Constant(1)  # permeability
 # =============================================================================
 # Mesh
 comment.tic('initializing mesh')
-mesh = QuadMesh(resolution=(200,200))
+mesh = QuadMesh(resolution=(150,150))
 comment.toc()
 
 comment.tic('iterating over mesh cells')

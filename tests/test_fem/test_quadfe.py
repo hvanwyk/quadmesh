@@ -288,6 +288,8 @@ class TestQuadFE(unittest.TestCase):
                 self.assertAlmostEqual(np.dot(weights,np.dot(phi,f_nodes)),\
                                  cell_integrals[etype][i],places=8,\
                                  msg='Incorrect integral.')
+        # On Physical cell
+        
         #
         # Non-rectangular quadcell
         #
@@ -314,20 +316,27 @@ class TestQuadFE(unittest.TestCase):
             element = QuadFE(2, etype)
             n_dofs = element.n_dofs()
             x_ref = element.reference_nodes()
-            x = cell.reference_map(x_ref)
+            x, mg = cell.reference_map(x_ref, jac_p2r=True, hess_p2r=True)
             #
             # Sanity check
             # 
             I = np.eye(n_dofs)
-            self.assertTrue(np.allclose(element.shape(x, cell),I),\
+            shape = element.shape(x_ref, cell, jac_p2r=mg['jac_p2r'],
+                                  hess_p2r=mg['hess_p2r'])
+            self.assertTrue(np.allclose(shape,I),\
                             'Shape functions incorrect at reference nodes.')
-            y = cell.reference_map(np.random.rand(5,2))
+            
+            # Random points in the reference domain
+            y_ref = np.random.rand(5,2)
+            y, mg = cell.reference_map(y_ref, jac_p2r=True, hess_p2r=True)
+           
             self.assertTrue(all(cell.contains_points(y)),\
                             'Cell should contain all mapped points')
             f_nodes = test_functions[etype][0](x[:,0],x[:,1])
             
             for i in range(3):
-                phi = element.shape(y, cell=cell, derivatives=derivatives[i])
+                phi = element.shape(y_ref, region=cell, derivatives=derivatives[i],
+                                    jac_p2r=mg['jac_p2r'], hess_p2r=mg['hess_p2r'])
                 f = test_functions[etype][i]
                 #
                 # Interpolation
