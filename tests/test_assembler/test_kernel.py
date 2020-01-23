@@ -195,7 +195,7 @@ class TestIKernel(unittest.TestCase):
         # 1D 
         # 
         
-        # Define Kernel functoin
+        # Define Kernel function
         def k_fn(x,y,c = 2):
             return x*y + c
         

@@ -102,12 +102,8 @@ class TestIIForm(unittest.TestCase):
             cj_sinfo = assembler.shape_info(cj)
             
             # Gauss nodes and weights on cell 
-            xj_g, wj_g = assembler.gauss_rules(cj_sinfo)
-            
-            
-            # Shape functions on cell 
-            phij = assembler.shape_eval(cj_sinfo, xj_g, cj)
-            
+            xj_g, wj_g, phij = assembler.shape_eval(cj_sinfo, cj)
+                        
             #
             # Evaluate form
             # 
@@ -201,14 +197,9 @@ class TestIIForm(unittest.TestCase):
             cj_sinfo = assembler.shape_info(cj)
             
             # Gauss nodes and weights on cell 
-            xi_g, wi_g = assembler.gauss_rules(ci_sinfo)
-            xj_g, wj_g = assembler.gauss_rules(cj_sinfo)
-            
-            
-            # Shape functions on cell 
-            phii = assembler.shape_eval(ci_sinfo, xi_g, ci)
-            phij = assembler.shape_eval(cj_sinfo, xj_g, cj)
-            
+            xi_g, wi_g, phii = assembler.shape_eval(ci_sinfo,ci)
+            xj_g, wj_g, phij = assembler.shape_eval(cj_sinfo,cj)
+                        
             #
             # Evaluate form
             # 

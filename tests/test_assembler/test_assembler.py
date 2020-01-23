@@ -231,12 +231,11 @@ class TestAssembler(unittest.TestCase):
         si = system.shape_info(cell)
         
         # Compute local Gauss nodes
-        xg,wg = system.gauss_rules(si)
+        xg,wg,phi = system.shape_eval(si, cell)
         self.assertTrue(cell in xg)
         self.assertTrue(cell in wg)
         
         # Compute local shape functions
-        phi = system.shape_eval(si, xg, cell)
         self.assertTrue(cell in phi)
         self.assertTrue(u in phi[cell])
         self.assertTrue(v in phi[cell])

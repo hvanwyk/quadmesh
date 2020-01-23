@@ -1628,7 +1628,7 @@ class Explicit(Map):
         Outputs:
              
             f(x): If function is deterministic (i.e. n_samples is None), then 
-                f(x) is an (n_points, ) numpy array. Otherwise, f(x) is an 
+                f(x) is an (n_points, 1) numpy array. Otherwise, f(x) is an 
                 (n_points, n_samples) numpy array of outputs   
         """ 
         x = self.parse_x(x)
@@ -2082,6 +2082,11 @@ class Nodal(Map):
                     # For each cell
                     #
                     
+                    # Map physical point to reference element
+                    y = xx[i][i_points]
+                    x_ref, mg = cell.reference_map(y, mapsto='reference',
+                                                   jac_p2r=True, hess_p2r=True)
+                    
                     # Record point indices
                     pidx[i].append(i_points)
                     
@@ -2091,8 +2096,11 @@ class Nodal(Map):
                     dofs[i].append(dofi)
                     
                     # Compute the shape functions 
-                    y = xx[i][i_points]
-                    phii = element.shape(y, cell=cell, derivatives=derivative[i])
+                    
+                    phii = element.shape(x_ref, cell=cell, 
+                                         derivatives=derivative[i],
+                                         jac_p2r=mg['jac_p2r'],
+                                         hess_p2r=mg['hess_p2r'])
                     phis[i].append(phii)
                     
                 udofs[i] = list(udofs[i])

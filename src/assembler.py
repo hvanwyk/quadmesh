@@ -305,6 +305,8 @@ class GaussRule(object):
                 of the inverse mapping should be returned. These are useful 
                 when evaluating the gradients and second derivatives of shape
                 functions. 
+                
+        TODO: Delete
         """
         #
         # Map quadrature rule to entity (cell/halfedge)
@@ -526,7 +528,7 @@ class Kernel(object):
             
     
     
-    def eval(self, x, region=None):
+    def eval(self, x, region=None, **kwargs):
         """
         Evaluate the kernel at the points stored in x 
         
@@ -1820,14 +1822,14 @@ class Assembler(object):
                             cj_sinfo = self.shape_info(cj)
                             
                             # 
-                            # Compute Gauss nodes and weights on cell
+                            # Compute shape function on on cell
                             # 
-                            xj_g, wj_g = self.gauss_rules(cj_sinfo)
+                            xj_g, wj_g, phij = self.shape_eval(cj_sinfo, cj)
                             
                             #
                             # Compute shape functions on cell
                             #  
-                            phij = self.shape_eval(cj_sinfo, xj_g, cj)
+                            #phij = self.shape_eval(cj_sinfo, xj_g, cj)
                            
                             #
                             # Evaluate integral form
@@ -2738,6 +2740,8 @@ class Assembler(object):
         
             mg: dict, of mapped gradients, indexed recursively by the cell's 
                 subregions and 'jac_p2r' and/or 'hess_p2r' 
+                
+        TODO: Delete
         """
         xg, wg, mg = {}, {}, {}
         for region in shape_info.keys():
@@ -2828,13 +2832,10 @@ class Assembler(object):
             wg: dictionary (indexed by regions), of mapped quadrature weights.
             
             phi: dictionary phi[region][basis] of shape functions evaluated at
-                the quadrature nodes.
-                
-                
+                the quadrature nodes.    
         """
         # Initialize 
         xg, wg, phi = {}, {}, {}
-        
         
         # Iterate over integration regions
         for region in shape_info.keys():
@@ -2861,15 +2862,12 @@ class Assembler(object):
             #
             # Map reference quadrature nodes to physical ones
             #
-                
-                
-            
             if isinstance(region, Interval):
                 #
                 # Interval
                 #
                 # Check compatiblity
-                assert self.dim()==1, 'Interval requires a 1D rule.'
+                assert self.mesh.dim()==1, 'Interval requires a 1D rule.'
                 
                 # Get reference nodes and weights
                 x_ref = self.cell_rule.nodes()

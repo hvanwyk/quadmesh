@@ -848,7 +848,7 @@ class TestConstant(unittest.TestCase):
         pass
     
         
-        
+'''        
 class TestFunction(unittest.TestCase):
     """
     Test Function class
@@ -913,10 +913,10 @@ class TestFunction(unittest.TestCase):
         #
         # Interpolate function: discontinuous elements
         #
-        '''
+        """
         Note: The plots in row 2 should be the same as those in row 1, with
             the exception of DQ0.
-        '''
+        """
         discontinuous_etype = ['DQ0','DQ1','DQ2','DQ3']
         for i in range(4):
             etype = discontinuous_etype[i]
@@ -1229,4 +1229,4 @@ class TestFunction(unittest.TestCase):
     
     def test_times(self):
         pass
-        
+'''        

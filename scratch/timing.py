@@ -76,7 +76,7 @@ K   = Constant(1)  # permeability
 # =============================================================================
 # Mesh
 comment.tic('initializing mesh')
-mesh = QuadMesh(resolution=(150,150))
+mesh = QuadMesh(resolution=(100,100))
 comment.toc()
 
 comment.tic('iterating over mesh cells')
@@ -85,7 +85,7 @@ for cell in mesh.cells.get_leaves():
 comment.toc()
 
 # Elements
-element = QuadFE(2,'Q1')  # element for pressure
+element = QuadFE(2,'Q2')  # element for pressure
 
 # Dofhandlers
 dofhandler = DofHandler(mesh, element)
