@@ -16,7 +16,6 @@ from mpl_toolkits.mplot3d import Axes3D
 import time
 import numpy as np
 from assembler import Assembler
-from function import Function
 
 
 class Plot(object):
@@ -80,7 +79,8 @@ class Plot(object):
             #
             x0, x1 = mesh.bounding_box()
             l = x1 - x0
-            axis.set_xlim([x0-0.1*l, x1+0.1*l])
+            #axis.set_xlim([x0-0.1*l, x1+0.1*l])
+            axis.set_xlim([x0,x1])
             axis.set_ylim([-0.1,0.1])
         elif mesh.dim()==2:
             #
@@ -217,7 +217,7 @@ class Plot(object):
         if dofs:
             assert dofhandler is not None, 'Plotting Dofs requires dofhandler.'
             
-            axis = self.dofs(axis, dofhandler)
+            axis = self.dofs(axis, dofhandler, doflabels=doflabels)
     
         
         if not show_axis:
@@ -385,7 +385,7 @@ class Plot(object):
             if mesh.dim()==2:
                 assert isinstance(cell, QuadCell), 'Can only map QuadCells'
             x = cell.reference_map(x_ref)
-            cell_dofs = dofhandler.get_global_dofs(cell)
+            cell_dofs = dofhandler.get_cell_dofs(cell)
             if cell_dofs is not None:
                 for i in range(n_dofs):
                     if cell_dofs[i] is not None:
@@ -682,7 +682,7 @@ class Plot(object):
         #
         # Check if input is a Function object
         # 
-        assert isinstance(f, Function), 'Can only plot Function objects.'
+        assert isinstance(f, Map), 'Can only plot Map objects.'
         
         if mesh is None:
             if f.mesh is not None:
@@ -737,7 +737,7 @@ class Plot(object):
                     assert derivative==(0,),\
                         'Discretize before plotting derivatives.'
                     f_loc = f
-                elif isinstance(f, Function):
+                elif isinstance(f, Map):
                     #
                     # Function object
                     #
@@ -910,7 +910,7 @@ class Plot(object):
             assert mesh is not None, \
             'For "explicit" or "constant" functions, mesh must be specified.'  
         else:
-            mesh = f.dofhandler().mesh
+            mesh = f.basis().dofhandler().mesh
             
         assert mesh.dim()==1, 'Line plots are for 1D functions'
         
@@ -950,7 +950,7 @@ class Plot(object):
             # For discontinous elements, add a np.nan value
             # 
             if isinstance(f, Nodal):
-                if f.dofhandler().element.torn_element():
+                if f.basis().dofhandler().element.torn_element():
                     x.append(x1)
                     fx.append(np.nan)
         
@@ -964,7 +964,7 @@ class Plot(object):
         #
         # Axis limits
         # 
-        spc = 0.1
+        spc = 0
 
         x0, x1 = mesh.bounding_box()
         hx = x1 - x0

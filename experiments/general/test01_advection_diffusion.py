@@ -92,27 +92,13 @@ for resolution in [(5,5), (10,10), (20,20), (40,40)]:
             # Assembler system
             # 
             assembler = Assembler([problem], mesh)
+            assembler.add_dirichlet_constraint(None, ue)
             assembler.assemble()
-            
-            #
-            # Solve Linear System
-            # 
-            system = LinearSystem()
-            
-            #
-            # Add Dirichlet Boundary conditions
-            # 
-            system.add_dirichlet_constraint(None, ue)
-            
-            #
-            # Solve system
-            # 
-            system.solve_system()
             
             #
             # Get solution
             # 
-            ua = system.get_solution()
+            ua = assembler.solve()
             
             #
             # Compute the error

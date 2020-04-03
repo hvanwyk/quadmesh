@@ -1,7 +1,7 @@
 from gmrf import Covariance
 from gmrf import GaussianField
 
-import TasmanianSG
+import Tasmanian
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,16 +14,12 @@ class TestGaussHermite(unittest.TestCase):
         Test modes of a standard normal density 
         """
         # Initialize sparse grid
-        tasmanian_library="/home/hans-werner/bin/TASMANIAN-6.0/"+\
-                          "libtasmaniansparsegrid.so"
-        grid = TasmanianSG.TasmanianSparseGrid(tasmanian_library=tasmanian_library)
-        
         dim = 1
         level = 3
         moments = [1,0,1,0,3]
         
         # Define Gauss-Hermite physicist's rule exp(-x**2)
-        grid.makeGlobalGrid(dim, 1, level, "level", "gauss-hermite")
+        grid = Tasmanian.makeGlobalGrid(dim, 1, level, "level", "gauss-hermite")
         
         # 
         # Explicit
@@ -72,26 +68,19 @@ class TestGaussHermite(unittest.TestCase):
         K = V.dot(Lmd.dot(V.T))
         
         mu = np.array([1,2,3,4])[:,None]
-        
-        
-        
+                
         # Zero mean Gaussian field
         dim = 4
         eta = GaussianField(dim, mean=mu, K=K, mode='covariance')
         n_vars = eta.covariance().size()
         level = 1
-    
-        # Initialize sparse grid
-        tasmanian_library="/home/hans-werner/bin/TASMANIAN-6.0/"+\
-                          "libtasmaniansparsegrid.so"
-        grid = TasmanianSG.TasmanianSparseGrid(tasmanian_library=tasmanian_library)
         
-        # Define Gauss-Hermite physicist's rule exp(-x**2)
-        grid.makeGlobalGrid(n_vars, 4, level, "level", "gauss-hermite-odd")
+        # Define Gauss-Hermite physicist's rule exp(-x**2)    
+        grid = Tasmanian.makeGlobalGrid(n_vars, 4, level, "level", "gauss-hermite-odd")
+        
         
         # Evaluate the Gaussian random field at the Gauss points
         z = grid.getPoints()
-        
         y = np.sqrt(2)*z
 
         const_norm = np.sqrt(np.pi)**n_vars
@@ -108,23 +97,17 @@ class TestGaussHermite(unittest.TestCase):
         I /= const_norm    
         II /= const_norm
         
-        print(grid.getNumPoints())
-        print(I)
-        print(II)
-        
         self.assertTrue(np.allclose(II,K))
         self.assertTrue(np.allclose(I,mu.ravel()))
         
         
     def test_interpolant(self):
-        tasmanian_library="/home/hans-werner/bin/TASMANIAN-6.0/"+\
-                          "libtasmaniansparsegrid.so"
-        grid = TasmanianSG.TasmanianSparseGrid(tasmanian_library=tasmanian_library)
-        #f = lambda x: np.exp(-np.abs(x))
-        f = lambda x: np.sum(x**3,axis=1)[:,None]
         dim = 1
         level = 3
-        grid.makeGlobalGrid(dim,1,level,'level','gauss-hermite')
+        grid = Tasmanian.makeGlobalGrid(dim,1,level,'level','gauss-hermite')
+        #f = lambda x: np.exp(-np.abs(x))
+        f = lambda x: np.sum(x**3,axis=1)[:,None]
+        
         
         # Evaluate function at abscissae
         z = grid.getPoints()
@@ -144,12 +127,9 @@ class TestGaussHermite(unittest.TestCase):
         #
         # Use sparse grid interpolant to sample
         # 
-        tasmanian_library="/home/hans-werner/bin/TASMANIAN-6.0/"+\
-                          "libtasmaniansparsegrid.so"
-        grid = TasmanianSG.TasmanianSparseGrid(tasmanian_library=tasmanian_library)
         dim = 1
         level = 3
-        grid.makeGlobalGrid(dim,1,level,'level','gauss-hermite')
+        grid = Tasmanian.makeGlobalGrid(dim,1,level,'level','gauss-hermite')
  
         # Convert from physicist's to probabilist's variable       
         z = np.sqrt(2)*grid.getPoints()
@@ -181,12 +161,9 @@ class TestGaussHermite(unittest.TestCase):
         #
         # Define Sparse Grid on [-1,1]^2
         # 
-        tasmanian_library="/home/hans-werner/bin/TASMANIAN-6.0/"+\
-                          "libtasmaniansparsegrid.so"
-        grid = TasmanianSG.TasmanianSparseGrid(tasmanian_library=tasmanian_library)
         dim = 2
         level = 40
-        grid.makeGlobalGrid(dim,1,level,'level','gauss-legendre')
+        grid = Tasmanian.makeGlobalGrid(dim,1,level,'level','gauss-legendre')
         n_points = grid.getNumPoints()
         y = grid.getPoints()
         
@@ -196,8 +173,6 @@ class TestGaussHermite(unittest.TestCase):
         z = norm.ppf(0.5*y+0.5)
         dz = 0.5**dim
         
-        print(TasmanianSG.lsTsgGlobalRules)
-        print(n_points)
         #
         # Define Gaussian Field
         # 
@@ -222,6 +197,3 @@ class TestGaussHermite(unittest.TestCase):
         for i in range(n_points):
             ma += Y[:,i]*w[i]
             Ka += X[1,i]*X[0,i]*w[i]
-        print(ma)
-        TasmanianSG.lsTsgGlobalRules
-        print(Ka)

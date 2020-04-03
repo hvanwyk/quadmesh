@@ -4,10 +4,9 @@ from assembler import Assembler
 from assembler import GaussRule
 from assembler import Form
 from assembler import Kernel
-from fem import QuadFE, DofHandler
+from fem import QuadFE, DofHandler, Basis
 from function import Explicit, Nodal, Constant
 import numpy as np
-import matplotlib.pyplot as plt
 
 class TestKernel(unittest.TestCase):
     """
@@ -65,8 +64,19 @@ class TestKernel(unittest.TestCase):
         mesh = Mesh1D(resolution=(1,))
         Q1 = QuadFE(1,'Q1')
         Q2 = QuadFE(1,'Q2')
-        f1 = Nodal(lambda x: x+2, mesh=mesh, element=Q1)
-        f2 = Nodal(lambda x: x**2 + 1, mesh=mesh, element=Q2)
+        
+        dQ1 = DofHandler(mesh,Q1)
+        dQ2 = DofHandler(mesh,Q2)
+        
+        # Distribute dofs
+        [dQ.distribute_dofs() for dQ in [dQ1,dQ2]]
+        
+        # Basis functions
+        phi1 = Basis(dQ1,'u')
+        phi2 = Basis(dQ2,'u')
+        
+        f1 = Nodal(lambda x: x+2, basis=phi1)
+        f2 = Nodal(lambda x: x**2 + 1, basis=phi2)
         k = Kernel([f1,f2], F=F)
         
         # Check evaluation
@@ -99,11 +109,13 @@ class TestKernel(unittest.TestCase):
         xv = dh.get_dof_vertices()
         n_dofs = dh.n_dofs()
         
+        phi = Basis(dh, 'u')
+        
         # Evaluate parameterized function at mesh dof vertices
         f2_m  = np.empty((n_dofs, n_samples))
         for i in range(n_samples):
             f2_m[:,i] = xv.ravel() + a[i]*xv.ravel()**2
-        f2 = Nodal(data=f2_m, dofhandler=dh)
+        f2 = Nodal(data=f2_m, basis=phi)
         
         # Define kernel
         F = lambda f1, f2, one: f1 + f2 + one
@@ -123,7 +135,7 @@ class TestKernel(unittest.TestCase):
         # 
         f1 = Constant(data=a)
         f2 = Explicit(lambda x: 1 + x**2, dim=1)
-        f3 = Nodal(data=f2_m[:,-1], dofhandler=dh)
+        f3 = Nodal(data=f2_m[:,-1], basis=phi)
         
         F = lambda f1, f2, f3: f1 + f2 + f3
         k = Kernel([f1,f2,f3], F=F)
@@ -143,8 +155,19 @@ class TestKernel(unittest.TestCase):
         Q1 = QuadFE(1,'Q1')
         Q2 = QuadFE(1,'Q2')
         
-        f1 = Nodal(lambda x: x, mesh=mesh, element=Q1)
-        f2 = Nodal(lambda x: -2+2*x**2, mesh=mesh, element=Q2)
+        dQ1 = DofHandler(mesh,Q1)
+        dQ2 = DofHandler(mesh,Q2)
+        
+        # Distribute dofs
+        [dQ.distribute_dofs() for dQ in [dQ1,dQ2]]
+        
+        # Basis
+        p1 = Basis(dQ1)
+        p2 = Basis(dQ2) 
+        
+        
+        f1 = Nodal(lambda x: x, basis=p1)
+        f2 = Nodal(lambda x: -2+2*x**2, basis=p2)
         one = Constant(np.array([1,2]))
     
         F = lambda f1, f2, one: 2*f1**2 + f2 + one

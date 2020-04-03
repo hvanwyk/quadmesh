@@ -40,14 +40,12 @@ from fem import DofHandler
 from fem import Basis
 
 from mesh import QuadMesh
-from mesh import Mesh1D
 
 from function import Nodal
 from function import Explicit
 from function import Constant
 
 from plot import Plot
-from solver import LinearSystem
 
 import numpy as np
 import scipy
@@ -56,8 +54,11 @@ from scipy.sparse import linalg as spla
 import matplotlib.pyplot as plt
 from matplotlib import animation
 
+from diagnostics import Verbose
+
 def test_ft():
-    plot = Plot(0.5)
+    plot = Plot()
+    vb = Verbose()
     
     # =============================================================================
     # Parameters
@@ -75,8 +76,13 @@ def test_ft():
     # Mesh and Elements
     # =============================================================================
     # Mesh
-    mesh = QuadMesh(resolution=(40,40))
-     
+    mesh = QuadMesh(resolution=(30,30))
+    
+    # Mark left and right regions
+    mesh.mark_region('left',lambda x,y: np.abs(x)<1e-9, entity_type='half_edge')
+    mesh.mark_region('right',lambda x,y: np.abs(x-1)<1e-9, entity_type='half_edge')
+    
+    
     # Elements
     p_element = QuadFE(2,'Q1')  # element for pressure
     c_element = QuadFE(2,'Q1')  # element for concentration
@@ -86,12 +92,12 @@ def test_ft():
     c_dofhandler = DofHandler(mesh, c_element)
     
     p_dofhandler.distribute_dofs()
-    print('number of dofs:',p_dofhandler.n_dofs())
+    c_dofhandler.distribute_dofs()
     
     # Basis functions
     p_ux = Basis(p_dofhandler, 'ux')
     p_uy = Basis(p_dofhandler, 'uy')
-    p_u = Basis(p_dofhandler, 'u')
+    p_u =  Basis(p_dofhandler, 'u')
     
     
     p_inflow = lambda x,y: np.ones(shape=x.shape)
@@ -101,47 +107,46 @@ def test_ft():
     # =============================================================================
     # Solve the steady state flow equations
     # =============================================================================
-    print('Solving flow equations')
+    vb.comment('Solving flow equations')
     
     # Define problem
     flow_problem = [Form(1,test=p_ux,trial=p_ux), 
                     Form(1,test=p_uy,trial=p_uy), 
                     Form(0,test=p_u)] 
     
-    # Assembler
-    assembler = Assembler(flow_problem, mesh)
+    # Assemble 
+    vb.tic('assembly')
+    assembler = Assembler(flow_problem)
+    assembler.add_dirichlet('left',1)
+    assembler.add_dirichlet('right',0)
     assembler.assemble()
-    A = assembler.af[0]['bilinear'].get_matrix()
-    b = assembler.af[0]['linear'].get_matrix()
-    
-    # Linear System
-    system = LinearSystem(p_u, A=A, b=b)
-    
-    # Dirichlet conditions
-    mesh.mark_region('left', lambda x,y: np.abs(x)<1e-9, 
-                     entity_type='half_edge')
-    
-    mesh.mark_region('right', lambda x,y: np.abs(x-1)<1e-9, 
-                     entity_type='half_edge')
-    #plot = Plot()
-    #plot.mesh(mesh, regions=[('left','edge'), ('right','edge')])
-    
-    # Add Dirichlet constraints
-    system.add_dirichlet_constraint('left', 1)
-    system.add_dirichlet_constraint('right', 0)
-    system.set_constraint_relation()
+    vb.toc()
     
     # Solve linear system
-    system.solve_system()
-    u = system.get_solution()
+    vb.tic('solve')
+    A = assembler.get_matrix().tocsr()
+    b = assembler.get_vector()
+    x0 = assembler.assembled_bnd()
     
-    #plot.wire(u)
+    # Interior nodes
+    pa = np.zeros((p_u.n_dofs(),1))
+    int_dofs = assembler.get_dofs('interior')
+    pa[int_dofs,0] = spla.spsolve(A,b-x0)
     
-    dh = DofHandler(mesh, QuadFE(2,'DQ2'))
-    dh.distribute_dofs()
-    x = dh.get_dof_vertices()
-    y = u.eval(x, derivative='fx')
+    # Resolve Dirichlet conditions
+    dir_dofs, dir_vals = assembler.get_dirichlet(asdict=False)
+    pa[dir_dofs] = dir_vals
+    vb.toc()
     
+    # Pressure function
+    pfn = Nodal(data=pa, basis=p_u)
+    
+ 
+    px = pfn.differentiate((1,0))
+    py = pfn.differentiate((1,1))
+    
+    #plot.contour(px)
+        
     # =============================================================================
     # Transport Equations
     # =============================================================================
@@ -157,46 +162,89 @@ def test_ft():
     
     print('assembling transport equations')
     k_phi = Kernel(f=phi)
-    k_advx = Kernel(f=[K,u], derivatives=['k','ux'], F=lambda K,ux: -K*ux)
-    k_advy = Kernel(f=[K,u], derivatives=['k','uy'], F=lambda K,uy: -K*uy)
+    k_advx = Kernel(f=[K,px], F=lambda K,px: -K*px)
+    k_advy = Kernel(f=[K,py], F=lambda K,py: -K*py)
     tht = 1
     m = [Form(kernel=k_phi, test=c, trial=c)]
     s = [Form(kernel=k_advx, test=c, trial=cx),
          Form(kernel=k_advy, test=c, trial=cy),
          Form(kernel=Kernel(D), test=cx, trial=cx),
          Form(kernel=Kernel(D), test=cy, trial=cy)]
+    
     problems = [m,s]
-    assembler = Assembler(problems, mesh=mesh)
+    assembler = Assembler(problems)
+    assembler.add_dirichlet('left',0, i_problem=0)
+    assembler.add_dirichlet('left',0, i_problem=1)
     assembler.assemble()
-    M = assembler.af[0]['bilinear'].get_matrix()
-    S = assembler.af[1]['bilinear'].get_matrix()
     
+    x0 = assembler.assembled_bnd()
     
-    c_dofhandler.distribute_dofs(subforest_flag=None)
-    ca = c0.interpolant(dofhandler=c_dofhandler)
-    c0 = ca.data()
-    #plot = Plot(5)
-    #plot.wire(ca)
+    # Interior nodes
+    int_dofs = assembler.get_dofs('interior')
+    
+    # Dirichlet conditions
+    dir_dofs, dir_vals = assembler.get_dirichlet(asdict=False)
+    
+    # System matrices
+    M = assembler.get_matrix(i_problem=0)
+    S = assembler.get_matrix(i_problem=1)
+    
+    # Initialize c0 and cp
+    c0 = np.ones((c.n_dofs(),1))
+    cp = np.zeros((c.n_dofs(),1))
+    c_fn = Nodal(data=c0, basis=c) 
+    
+    #
+    # Compute solution 
+    #  
     print('time stepping')
     for i in range(N):
-        print(i)
-        A = M + tht*dt*S
-        b = M.dot(c0)-(1-tht)*dt*S.dot(c0)
-        if i==0:
-            system = LinearSystem(c, A=A, b=b)
-        else:
-            system.set_matrix(A)
-            system.set_rhs(b)
-            
-        system.add_dirichlet_constraint('left',0)
-        system.set_constraint_relation()
-        system.solve_system()
-        cp = system.get_solution(as_function=False)
-        c0 = cp
-        ca.add_data(data=cp)
         
-        #plot.wire(system.get_solution(as_function=True))
-
+        # Build system
+        A = M + tht*dt*S
+        b = M.dot(c0[int_dofs])-(1-tht)*dt*S.dot(c0[int_dofs])
+                
+        # Solve linear system
+        cp[int_dofs,0] = spla.spsolve(A,b)
+        
+        # Add Dirichlet conditions
+        cp[dir_dofs] = dir_vals
+        
+        # Record current iterate
+        c_fn.add_samples(data=cp)
+        
+        # Update c0
+        c0 = cp.copy()
+        
+        #plot.contour(c_fn, n_sample=i)
+    
+    #
+    # Quantity of interest
+    #
+    def F(c,px,py, entity=None):
+        """
+        Compute c(x,y,t)*(grad p * n)
+        """
+        n = entity.unit_normal()
+        return c*(px*n[0]+py*n[1])
+    
+    px.set_subsample(i=np.arange(41))
+    py.set_subsample(i=np.arange(41))
+    
+    #kernel = Kernel(f=[c_fn,px,py], F=F)
+    kernel = Kernel(c_fn)
+    
+    print(kernel.n_subsample())
+    form = Form(kernel, flag='right', dmu='ds')
+    assembler = Assembler(form, mesh=mesh)
+    assembler.assemble()
+    QQ = assembler.assembled_forms()[0].aggregate_data()['array']
+    
+    Q = np.array([assembler.get_scalar(i_sample=i) for i in np.arange(N+1)])
+    t = np.linspace(0,T,N+1)
+    plt.plot(t,Q)
+    plt.show()
+    print(Q)
 if __name__ == '__main__':
     test_ft()
     

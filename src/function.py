@@ -1,8 +1,10 @@
-from fem import DofHandler, QuadFE
+from fem import DofHandler, QuadFE, Basis
 from fem import parse_derivative_info
 from mesh import convert_to_array, Vertex, Mesh, Interval, Cell
 import numbers
 import numpy as np
+import time
+from diagnostics import Verbose
 
 # TODO: Default sample size is 1 (not None)
 
@@ -10,7 +12,7 @@ class Map(object):
     """
     Function Class 
     """
-    def __init__(self, mesh=None, element=None, dofhandler=None, \
+    def __init__(self, basis=None, mesh=None, element=None, dofhandler=None, \
                  subforest_flag=None, subregion_flag=None, \
                  dim=None, n_variables=1, symmetric=False, \
                  subsample=None):
@@ -35,6 +37,8 @@ class Map(object):
             
             *n_variables [1], int, number of input variables
         
+            *symmetric: bool, (if n_variables==2), is f(x,y) = f(y,x)? 
+            
             
         Note: We allow for the option of specifying multiple realizations 
         
@@ -43,12 +47,26 @@ class Map(object):
             - If the function has multiple realizations, its function values 
                 are stored in an (n_dofs, n_samples) array. 
         """
+        #
+        # Store basis function
+        # 
+        self.__basis = basis
+        
+        # Subsample
+        self.__subsample = subsample
+        self.__subregion_flag = subregion_flag
         
         #
         # Store sub-mesh and sub-region flags
         # 
-        self.__subforest_flag = subforest_flag
-        self.__subregion_flag = subregion_flag
+        if basis is None:
+            subforest_flag = None
+        else:
+            subforest_flag = basis.subforest_flag()
+        self.__subforest_flag = subforest_flag    
+            
+        #self.__subforest_flag = subforest_flag
+        #self.__subregion_flag = subregion_flag
         
         # =====================================================================
         # Parse DofHandler, Mesh, Element
@@ -98,42 +116,21 @@ class Map(object):
             self.__element = element
         
         
-        # =====================================================================
+        # 
         # Parse Dimensions
-        # =====================================================================
-        if dim is None:
+        # 
+        if basis is not None:
             #
-            # Dimension not explicitly passed -> get it from mesh
+            # Get dimension from basis
             # 
-            if mesh is not None:
-                dim = mesh.dim()
-            elif dofhandler is not None:
-                dim = dofhandler.mesh.dim()
-            elif element is not None:
-                dim = element.dim()
-        else:
+            dim = basis.dofhandler().mesh.dim()
+        if dim is not None:
             #
-            # Dimension given -> check consistency
-            # 
             # Check format
+            #
             assert type(dim) is int, 'Input "dim" should be an integer.'
             assert 0<dim and dim <= 2, 'Input "dim" should be in {1,2}.'
-            
-            # Check mesh compatibility
-            if mesh is not None:
-                assert dim==mesh.dim(), \
-                'Mesh dimension incompatible with input "dim".'
-                
-            # Check dofhandler compatibility
-            if dofhandler is not None:
-                assert dim==dofhandler.mesh.dim(),\
-                'Mesh dimension incompatible with dofhandler dim.'
-             
-            # Check element compatibility
-            if element is not None:
-                assert dim==element.dim(), \
-                'Element dimension incompatible with input dim.'    
-                
+           
         # Store dimension
         self.__dim = dim
         
@@ -147,16 +144,14 @@ class Map(object):
             
         self.__n_variables = n_variables
         
+        #
+        # Parse symmetry
+        #
         # If function is symmetric, it should have 2 variables
         if symmetric:
             assert self.n_variables()<=2, \
             'Symmetric functions should be at most bivariate'
         self.__symmetric = symmetric
-    
-        # 
-        # Initialize subsample
-        # 
-        self.set_subsample(subsample) 
         
         
     def n_variables(self):
@@ -186,6 +181,8 @@ class Map(object):
             We allow subsamples to be determined for deterministic functions.
             In this case, copies of the deterministic function values will be
             returned for each subsample.
+            
+        TODO: DELETE!
         """
         if i is not None:
             #
@@ -207,6 +204,8 @@ class Map(object):
         """
         Returns the index set representing the subsample or else a list of
         integers from 0 to n_samples-1.
+        
+        TODO: DELETE!
         """
         if self.__subsample is None and self.n_samples() is not None:
             #
@@ -223,6 +222,8 @@ class Map(object):
     def n_subsample(self):
         """
         Returns size of the subsample
+        
+        TODO: DELETE
         """
         if self.__subsample is None:
             return self.n_samples()
@@ -243,34 +244,27 @@ class Map(object):
         """
         return self.__symmetric
     
+    
+    def basis(self):
+        """
+        Returns the function's basis function
+        """
+        return self.__basis
+    
 
     def mesh(self):
         """
         Returns the function's mesh
         """
-        if self.__dofhandler is not None:
-            #
-            # Mesh attached to the dofhandler
-            # 
-            return self.dofhandler().mesh
-        else:
-            #
-            # Return mesh
-            #
-            return self.__mesh 
-    
-    
-    def element(self):
-        """
-        Returns the function's element
-        """
-        return self.__element
+        if self.__basis is not None:
+            return self.__basis.dofhandler().mesh
     
     
     def dofhandler(self):
         """
         Returns the function's dofhandler 
         """
+        
         return self.__dofhandler
     
     
@@ -283,14 +277,13 @@ class Map(object):
     
     def subregion_flag(self):
         """
-        Returns the subregion flag
         """
         return self.__subregion_flag
-
-
+    
+    
     def parse_x(self, x):
         """
-        Parse input variable x
+        Parse input variable x 
         
         Input:
             
@@ -408,7 +401,8 @@ class Map(object):
         
         dofhandler.distribute_dofs(subforest_flag=subforest_flag)
         dofs = dofhandler.get_region_dofs(subforest_flag=subforest_flag)
-        x = dofhandler.get_dof_vertices(dofs)       
+        x = dofhandler.get_dof_vertices(dofs)
+        basis = Basis(dofhandler,subforest_flag=subforest_flag)       
         #
         # Evaluate function at dof vertices
         #
@@ -416,10 +410,9 @@ class Map(object):
         #
         # Define new function
         #
-        return Nodal(data=fv, dofhandler=dofhandler, \
-                      subforest_flag=subforest_flag) 
+        return Nodal(data=fv, basis=basis) 
     
-    
+'''    
 class Function(object):
     """
     Function class for finite element objects.
@@ -1413,7 +1406,7 @@ class Function(object):
                 fg_fn = self.fn()*g.fn()
                 fg = Function(fg_fn, 'constant')
         return fg
-
+'''
 
 class Explicit(Map):
     """
@@ -1457,12 +1450,7 @@ class Explicit(Map):
         assert self.n_variables() in [1,2], \
             'The number of inputs should be 1 or 2.'
        
-        # Subsample index should not exceed sample size
-        if self.subsample() is not None:
-            if self.n_samples() > 1:
-                assert self.subsample().max()<self.n_samples(), \
-                'Subsample index out of bounds.'
-
+       
     def n_samples(self):
         """
         Determine the number of samples
@@ -1633,27 +1621,22 @@ class Explicit(Map):
         """ 
         x = self.parse_x(x)
         n_points = x[0].shape[0]
-                
-        # =====================================================================
-        # Parse sample size
-        # =====================================================================
-        subsample = self.subsample()
-        n_subsample = len(subsample)
+        n_samples = self.n_samples()
         
         # =====================================================================
         # Evaluate function(s)
         # =====================================================================
-        if self.n_samples()>1:
+        if n_samples>1:
             #
-            # Subsample is proper
+            # Multiple samples 
             # 
-            fx = np.empty((n_points, n_subsample))
-            for i in subsample:
+            fx = np.empty((n_points, n_samples))
+            for i in range(self.n_samples()):
                 fi, pi = self.__f[i], self.__parameters[i]   
                 fx[:,i] = fi(*x, **pi).ravel()
         else:
             #
-            # Subsample
+            # Sample size is 1
             # 
             fx = np.empty((n_points, 1))
             f, p = self.__f[0], self.__parameters[0]
@@ -1667,8 +1650,8 @@ class Nodal(Map):
     """
     Nodal functions
     """    
-    def __init__(self, f=None, parameters={}, data=None, mesh=None, \
-                 element=None, dofhandler=None, subforest_flag=None, \
+    def __init__(self, f=None, parameters={}, data=None, basis=None, \
+                 mesh=None, element=None, dofhandler=None, subforest_flag=None, \
                  subregion_flag=None, dim=None, n_variables=1, \
                  subsample=None, symmetric=False):
         """
@@ -1688,7 +1671,7 @@ class Nodal(Map):
             
             For other inputs, see Map constructor
         """
-        Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, \
+        Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, basis=basis,\
                      subforest_flag=subforest_flag, subregion_flag=subregion_flag, \
                      dim=dim, n_variables=n_variables, subsample=subsample,\
                      symmetric=symmetric)
@@ -1704,15 +1687,14 @@ class Nodal(Map):
         assert self.dim() in [1,2], \
             'Dimension should be 1 or 2 for nodal functions.'
             
-        # Dofhandler should be given
-        assert self.dofhandler() is not None, \
-            'DofHandler required for nodal functions.'
+        # Basis should be given
+        assert self.basis() is not None, \
+            'Basis required for nodal functions.'
         
         #
         # Store nodal values
         # 
         self.set_data(data=data, f=f, parameters=parameters)
-        
         
         
     def n_samples(self):
@@ -1739,24 +1721,21 @@ class Nodal(Map):
             
             f: (list of) lambda function(s) 
             
-        TODO: Can only define univariate and bivariate functions using Explicit
+        NOTE: Can currently only define univariate and bivariate functions 
+            using list of lambda functions.
         """
         if data is not None:
             #
             # Function determined by values
             # 
             # Check consistency with dofhandler
-            sf = self.subforest_flag()
-            n_dofs = self.dofhandler().n_dofs(subforest_flag=sf)
+            n_dofs = self.basis().n_dofs()
             assert data.shape[0]==n_dofs, \
             'Shape of input "values" inconsistent with dofhandler.'
             if len(data.shape)<2:
                 # Data passed as a 1D array, convert to matrix 
                 data = data[:,None]
-            
-            # Store data
-            self.__data = data
-            
+                    
         elif f is not None:
             #
             # Function (or list of functions) given
@@ -1769,11 +1748,9 @@ class Nodal(Map):
             #
             # Get Dof-vertices
             # 
-            dofhandler = self.dofhandler()
-            sf = self.subforest_flag()
-            dofs = dofhandler.get_region_dofs(subforest_flag=sf)
+            dofs = self.basis().dofs()
             n_dofs = len(dofs)
-            x = dofhandler.get_dof_vertices(dofs) 
+            x = self.basis().dofhandler().get_dof_vertices(dofs) 
             
             n_variables = self.n_variables()
             if n_variables==1:
@@ -1793,16 +1770,45 @@ class Nodal(Map):
                 # Sampled function
                 # 
                 data = fn.eval((x1,x2)).reshape((n_dofs,n_dofs,n_samples))
-            self.__data = data    
-        else:
-            raise Exception('Specify either "data" or "f".')
+        
+        #
+        # Store data
+        #     
+        self.__data = data    
+        
+        
+        if self.data() is not None:
+            # Check that dimensions are consistent
+            assert self.n_variables()+1==len(data.shape), \
+            'Sampled function data dimension incorrect' 
+        
+        
+    
+    
+    def modify_data(self, data, i_sample=0, dofs=None):
+        """
+        Modify nodal data
+        
+        Inputs:
+        
+            data: double, (n_dofs, 1) array
+            
+            i_sample: int, sample index
+            
+            dofs: int, list of indices 
+        """
+        if len(data.shape)==2:
+            assert data.shape[1]==1, \
+            'Data should be of size (n_dofs,) or (n_dofs,1)'
+            
+            # Turn into 1d array
+            data = data.ravel()
+            
+        idx = self.basis().d2i(dofs)
+        self.__data[idx,i_sample] = data
 
-        # Check that dimensions are consistent
-        assert self.n_variables()+1==len(data.shape), \
-        'Sampled function data dimension incorrect'
-    
-    
-    def add_data(self, data=None, f=None, parameters=None):
+
+    def add_samples(self, data):
         """
         Add new sample paths
         
@@ -1810,15 +1816,28 @@ class Nodal(Map):
         
             data: (n_dofs, n_samples), array 
             
-            f: (list of) functions, 
+            i_sample: int, sample index
             
-            parameters: (compatible list of) function parameters  
+            dofs: int, list of dof indices
+            append
         """
-        if data is not None:
-            n_dofs, dummy = data.shape
+        if self.data() is None:
+            #
+            # Store new data           
+            # 
+            self.set_data(data)
+        else:
+            #
+            # Add to old data
+            #
+            n_dofs = data.shape[0]
             sf = self.subforest_flag()
-            assert n_dofs==self.dofhandler().n_dofs(subforest_flag=sf),\
+            assert n_dofs==self.basis().dofhandler().n_dofs(subforest_flag=sf),\
                 'Data size is not consistent'
+            
+            # Convert 1D data array to to 2D
+            if len(data.shape)==1:
+                data = data[:,None]
             
             new_data = np.append(self.data(),data,axis=1)
             self.set_data(new_data)
@@ -1892,10 +1911,10 @@ class Nodal(Map):
         #
         # Get dof information
         #
-        dh = self.dofhandler()
+        dh = self.basis().dofhandler()
         mesh = dh.mesh
-        element = self.dofhandler().element
-        gdofs = dh.get_region_dofs(subforest_flag=sf, entity_flag=rf)
+        element = dh.element
+        
         # =====================================================================
         # Shape functions provided
         # =====================================================================
@@ -1912,9 +1931,13 @@ class Nodal(Map):
             
             #
             # Parse dofs
-            # 
-            assert dofs is not None, \
-            'When shape function provided, require input "dofs".'
+            #
+            if dofs is None:
+                #
+                # Get local dofs if not specified
+                #
+                dofs = [b.dofs(cell) for b in phi] 
+            
             
             if type(dofs) is tuple:
                 # Convert tuple to list
@@ -1933,14 +1956,15 @@ class Nodal(Map):
             'Number of dof-lists incompatible with nunmber of variables.'
             
             #
-            # Get local nodes
+            # Get local nodes 
             # 
             i_f = []
             for i in range(n_variables):
                 #
                 # Convert dofs to array indices
-                #
-                i_f.append([gdofs.index(j) for j in dofs[i]])
+                # 
+                i_f.append(self.basis().d2i(dofs[i]))
+            
             
             #
             # Add sub-sample information   
@@ -2358,7 +2382,8 @@ class Nodal(Map):
         """
         sf = self.subforest_flag()
         dim = self.dim()  
-        mesh, element = self.mesh(), self.dofhandler().element
+        basis = self.basis() 
+        mesh, element = basis.dofhandler().mesh, basis.dofhandler().element
         
         #
         # Tear element if necessary 
@@ -2373,6 +2398,8 @@ class Nodal(Map):
         # 
         dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs()
+        basis = Basis(dofhandler)
+        
         #
         # Determine dof vertices
         #
@@ -2385,8 +2412,7 @@ class Nodal(Map):
         #
         # Define new function
         #
-        return Nodal(data=fv, dofhandler=dofhandler, \
-                     subforest_flag=sf) 
+        return Nodal(data=fv, basis=basis, subforest_flag=sf) 
     
     
 class Constant(Map):

@@ -5,7 +5,7 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse import linalg
 import numbers
-           
+from diagnostics import Verbose    
   
 class LinearSystem(object):
     """
@@ -747,6 +747,7 @@ class LinearSystem(object):
             invert_matrix
             resolve_constraints
         """
+        comment = Verbose()
         #
         # Parse right hand side
         # 
@@ -764,21 +765,27 @@ class LinearSystem(object):
         #
         # Define constraint system
         # 
+        comment.tic('Setting constraint relation')
         if self.get_C() is None:
             self.set_constraint_relation()
-            
+        comment.toc()
+        
         #
         # Apply constraints to A
-        # 
+        #
+        comment.tic('Constraining matrix') 
         if not self.matrix_is_constrained():
             self.constrain_matrix()
-            
+        comment.toc()
+        
         #
         # Apply constraints to b
-        # 
+        #
+        comment.tic('constraining vector') 
         if not self.rhs_is_constrained():
             self.constrain_rhs()
-            
+        comment.toc()
+        
         #
         # Factor matrix
         # 
@@ -788,14 +795,17 @@ class LinearSystem(object):
             
         #
         # Solve the system
-        # 
+        #
+        comment.tic('Inverting matrix') 
         self.invert_matrix(factor=factor)
-        
+        comment.toc()
         
         #
         # Resolve constraints
         #
+        comment.tic('Resolving constraints')
         self.resolve_constraints()
+        comment.toc()
         
     
     def get_solution(self, as_function=True):
@@ -811,7 +821,5 @@ class LinearSystem(object):
             #
             # Return solution as nodal function
             # 
-            u = Nodal(data=self.__u, \
-                     dofhandler=self.get_dofhandler(), \
-                     subforest_flag=self.get_basis().subforest_flag())
+            u = Nodal(data=self.__u, basis=self.get_basis())
             return u

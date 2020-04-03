@@ -3,6 +3,7 @@ from mesh import Mesh1D
 
 from fem import DofHandler
 from fem import QuadFE
+from fem import Basis
 
 from function import Nodal
 from function import Constant 
@@ -25,6 +26,7 @@ class TestEllipticField(unittest.TestCase):
         element = QuadFE(dim, 'Q3')
         dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs()
+        basis = Basis(dofhandler,'u')
         
         alph = 2
         kppa = 1
@@ -35,7 +37,7 @@ class TestEllipticField(unittest.TestCase):
         
         p = lambda x: 10/np.pi*(0.75*np.sin(np.pi*x[:,0]/10)+\
                                 0.25*np.sin(np.pi*x[:,1]/10))
-        f = Nodal(f=p, dofhandler=dofhandler)
+        f = Nodal(f=p, basis=basis)
         fx = f.differentiate((1,0))
         fy = f.differentiate((1,1))
         
@@ -68,7 +70,7 @@ class TestEllipticField(unittest.TestCase):
         # 
         u = EllipticField(dofhandler, kappa=1, tau=tau, gamma=2)
         Q = u.precision()
-        v = Nodal(data=u.sample(mode='precision', decomposition='chol'), dofhandler=dofhandler)
+        v = Nodal(data=u.sample(mode='precision', decomposition='chol'), basis=basis)
         
         
         plot = Plot(20)

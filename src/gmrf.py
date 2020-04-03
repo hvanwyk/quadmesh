@@ -16,7 +16,6 @@ from fem import Element
 from fem import DofHandler
 from fem import Basis
 
-from function import Function
 from function import Map
 from function import Nodal
 from function import Explicit
@@ -368,6 +367,9 @@ def rational(x, y, a, M=None, periodic=False, box=None):
 class CovKernel(Kernel):
     """
     Integral kernel
+    
+    TODO: It's better to define a class for covariance functions and integrate the Kernel
+    into Covariance class (when assembling).
     """
     def __init__(self, name=None, parameters=None, dim=1, cov_fn=None):
         """
@@ -428,7 +430,7 @@ class CovKernel(Kernel):
      
 class SPDMatrix(object):
     """
-    Symmetric positive definite operator
+    Semi-positive definite operator
     """
     def __init__(self, K):
         """
@@ -1242,7 +1244,7 @@ class Covariance(SPDMatrix):
             # Assemble mass matrix
             assembler = Assembler([[m]], mesh, subforest_flag=sf)
             assembler.assemble()
-            M = assembler.af[0]['bilinear'].get_matrix().toarray()
+            M = assembler.get_matrix(i_problem=0).toarray()
             
             # Define discretized covariance operator
             C = M.dot(K.dot(M.T))
@@ -2191,8 +2193,7 @@ class GaussianField(object):
         return np.random.normal(size=(n,n_samples)) 
       
 
-    
-    
+'''    
 class KLField(GaussianField):
     """
     Karhunen-Loeve expansion
@@ -2436,7 +2437,7 @@ class KLField(GaussianField):
         Lmd = np.diag(lmd)
         return V.dot(Lmd.dot(z))
         
-   
+'''
 
 class EllipticField(GaussianField):
     """
@@ -2469,12 +2470,12 @@ class EllipticField(GaussianField):
         dofhandler.set_dof_vertices()
         self.__dofhandler = dofhandler
         n_dofs = dofhandler.n_dofs(subforest_flag=subforest_flag)
-        
+        basis = Basis(dofhandler,'u')
         #
         # Parse mean
         # 
         if mean is None:
-            mean = Nodal(data=np.zeros((n_dofs,1)), dofhandler=dofhandler)
+            mean = Nodal(data=np.zeros((n_dofs,1)), basis=basis)
         else:
             assert isinstance(mean, Nodal), \
             'Input "mean" should be a "Nodal" object.'
@@ -2562,12 +2563,12 @@ class EllipticField(GaussianField):
         #
         # Get system matrix
         # 
-        K = assembler.af[0]['bilinear'].get_matrix()
+        K = assembler.get_matrix(0)
         
         #
         # Lumped mass matrix
         # 
-        M = assembler.af[1]['bilinear'].get_matrix()
+        M = assembler.get_matrix(1)
         m_lumped = np.array(M.sum(axis=1)).squeeze()
         
             
@@ -2871,8 +2872,7 @@ class GMRF(object):
         
         Cholesky:
             Exploits sparsity
-            
-        
+                    
         Singular value decomposition (KL)
             Computationally expensive
             Conditioning is easy

@@ -4,7 +4,6 @@ from mesh import Mesh1D
 from mesh import convert_to_array
 from fem import QuadFE
 from fem import DofHandler
-from function import Function
 from plot import Plot
 import matplotlib.pyplot as plt
 

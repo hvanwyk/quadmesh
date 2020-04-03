@@ -335,7 +335,7 @@ class TestQuadFE(unittest.TestCase):
             f_nodes = test_functions[etype][0](x[:,0],x[:,1])
             
             for i in range(3):
-                phi = element.shape(y_ref, region=cell, derivatives=derivatives[i],
+                phi = element.shape(y_ref, cell=cell, derivatives=derivatives[i],
                                     jac_p2r=mg['jac_p2r'], hess_p2r=mg['hess_p2r'])
                 f = test_functions[etype][i]
                 #

@@ -3,6 +3,8 @@ from mesh import Vertex, HalfEdge
 from mesh import Cell, QuadCell, Interval
 from mesh import RInterval, RQuadCell
 from mesh import convert_to_array
+from diagnostics import Verbose
+
 
 def parse_derivative_info(dstring):
         """
@@ -529,7 +531,7 @@ class QuadFE(Element):
                 the shape function is mapped. When computing derivatives, 
                 shape functions are modified to account for the coordinate 
                 mapping, using inverse jacobians or hessians. If region is None
-                then the shape function is evaluated on refence element.
+                then the shape function is evaluated on reference element.
              
             derivatives: list of tuples, (order,i,j) where 
                 
@@ -557,7 +559,6 @@ class QuadFE(Element):
         Note: To compute the reference points for a point x in the region,  
             use the 'reference_map' function.
             
-        TODO: Make sure about HalfEdges
         """
         x_ref = convert_to_array(x_ref, self.dim())
         n_points = x_ref.shape[0]
@@ -740,6 +741,8 @@ class QuadFE(Element):
             constraint: double, dictionary whose keys are the fine node numbers  
             
         Notes: This works only for 2D quadcells
+        
+        TODO: Delete?
         """        
         dpe = self.n_dofs('edge')
         edge_shapefn_index = [0] + [i for i in range(2,dpe+2)] + [1]
@@ -965,12 +968,18 @@ class Basis(object):
         #
         assert isinstance(dofhandler, DofHandler), \
         'Input "dofhandler" should be of type "DofHandler".'
-        dofhandler.distribute_dofs(subforest_flag=subforest_flag)
-        dofhandler.set_dof_vertices()
+                
         self.__dofhandler = dofhandler
         self.__subforest_flag = subforest_flag
         self.__derivative = parse_derivative_info(derivative)
-    
+        
+        dofs = self.dofs()
+        d2i = -np.ones(dofs[-1]+1, dtype=np.int)
+        d2i[dofs] = np.arange(len(dofs))
+        
+        self.__i2d = np.array(dofs)
+        self.__d2i = d2i
+        
     '''
     def __eq__(self, other):
         """
@@ -1000,6 +1009,66 @@ class Basis(object):
         return self.__derivative
     
     
+    def same_mesh(self, basis):
+        """
+        Determine whether input basis has the same mesh and subforest
+        flag as self.
+        
+        Inputs:
+            
+            basis: Basis, to be compared. 
+           
+        Output:
+        
+            issame: bool, indicating whether basis functions share dofhandler
+                and subforest_flag
+        """
+        # 
+        # Basis functions differ in their dofhandlers
+        # 
+        if self.dofhandler().mesh != basis.dofhandler().mesh:
+            return False
+        
+        #
+        # Basis functions differ in their subforest_flags
+        # 
+        if self.subforest_flag() != basis.subforest_flag():
+            return False
+        
+        # Same
+        return True
+        
+    
+    def same_dofs(self, basis):
+        """
+        Determine whether input basis has the same dofhandler and subforest
+        flag as self.
+        
+        Inputs:
+            
+            basis: Basis, to be compared. 
+           
+        Output:
+        
+            issame: bool, indicating whether basis functions share dofhandler
+                and subforest_flag
+        """
+        # 
+        # Basis functions differ in their dofhandlers
+        # 
+        if self.dofhandler() != basis.dofhandler():
+            return False
+        
+        #
+        # Basis functions differ in their subforest_flags
+        # 
+        if self.subforest_flag() != basis.subforest_flag():
+            return False
+        
+        # Same
+        return True
+    
+    
     def dofs(self, cell=None):
         """
         Returns the dofs of the shape functions defined over a cell. 
@@ -1009,7 +1078,7 @@ class Basis(object):
         
         if cell is not None:
             #
-            # Cel provided 
+            # Cell provided 
             # 
             
             # Determine smallest cell in subforest that contains given cell
@@ -1023,6 +1092,27 @@ class Basis(object):
             # 
             dofs = dofhandler.get_region_dofs(subforest_flag=subforest_flag)
         return dofs
+    
+    
+    def n_dofs(self):
+        """
+        Get numer of dofs
+        """
+        return self.dofhandler().n_dofs(subforest_flag=self.subforest_flag())
+    
+    
+    def d2i(self, dofs):
+        """
+        Dof-to-index mapping
+        """
+        return self.__d2i[dofs]
+        
+        
+    def i2d(self, idx):
+        """
+        Index-to-dof mapping
+        """
+        return self.__i2d[idx]
     
     
     def eval(self, x, cell):
@@ -1059,7 +1149,7 @@ class DofHandler(object):
                             'supporting_dofs': [], 
                             'coefficients': [],
                             'affine_terms': []}
-        self.__hanging_nodes = {}  # TODO: delete
+        self.__hanging_nodes = {}
         self.__l2g = {}     # TODO: delete
         self.__dof_count = 0
         self.__dof_vertices = {}
@@ -1999,7 +2089,7 @@ class DofHandler(object):
     def get_region_dofs(self, entity_type='cell', entity_flag=None, 
                         interior=False, on_boundary=False, subforest_flag=None):
         """
-        Returns all global dofs of a specific entity type within a mesh region.
+        Returns all global dofs (sorted) of a specific entity type within a mesh region.
         
         
         Inputs: 
@@ -2407,7 +2497,7 @@ class DofHandler(object):
                                     if constrained_dof not in self.constraints['constrained_dofs']:
                                         #
                                         # Update Constraints
-                                        # 
+                                        # TODO: Delete
                                         self.constraints['constrained_dofs'].append(constrained_dof)
                                         self.constraints['supporting_dofs'].append(supporting_dofs)
                                         self.constraints['coefficients'].append(constraint_coefficients)
@@ -2418,26 +2508,40 @@ class DofHandler(object):
         if subforest_flag is not None:
             self.__hanging_nodes[subforest_flag] = hanging_nodes
         else:
-            self.__hanging_nodes = hanging_nodes                
+            self.__hanging_nodes['default'] = hanging_nodes                
 
       
     def get_hanging_nodes(self, subforest_flag=None):
         """
-        Returns hanging nodes of current mesh
+        Returns hanging nodes of current (sub)mesh
         """
-        if hasattr(self,'__hanging_nodes'): 
-            if subforest_flag is None:
-                return self.__hanging_nodes
-            else:
-                return self.__hanging_nodes[subforest_flag]
+        if subforest_flag is None:
+            #
+            # Default 
+            #  
+            if 'default' not in self.__hanging_nodes:
+                #
+                # Set hanging nodes first
+                # 
+                self.set_hanging_nodes()
+            return self.__hanging_nodes['default']
         else:
-            self.set_hanging_nodes()
-            return self.__hanging_nodes
-        
+            #
+            # With Subforest flag
+            # 
+            if subforest_flag not in self.__hanging_nodes:
+                #
+                # Set hanging nodes first
+                # 
+                self.set_hanging_nodes(subforest_flag=subforest_flag)
+            return self.__hanging_nodes[subforest_flag]
+            
     
     def has_hanging_nodes(self, subforest_flag=None):
         """
         Determine whether there are hanging nodes
+        
+        TODO: Delete
         """
         if self.mesh.dim()==1:
             #

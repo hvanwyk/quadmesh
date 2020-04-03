@@ -9,7 +9,7 @@ from mesh import Mesh1D
 from mesh import QuadMesh
 from mesh import Vertex
 from mesh import HalfEdge
-from solver import LS
+from solver import LinearSystem as LS
 from plot import Plot
 import numpy as np
 
@@ -17,7 +17,7 @@ import numpy as np
 # =============================================================================
 # Computational mesh
 # =============================================================================
-mesh = QuadMesh(box=[-0.5,0.5,-0.5,0.5], resolution=(40,40))
+mesh = QuadMesh(box=[-0.5,0.5,-0.5,0.5], resolution=(20,20))
 
 
 # Mark slit region
@@ -44,6 +44,8 @@ mesh.tear_region('B')
 # =============================================================================
 Q1 = QuadFE(2, 'Q1')
 dofhandler = DofHandler(mesh, Q1)
+dofhandler.distribute_dofs()
+
 u = Basis(dofhandler, 'u')
 ux = Basis(dofhandler, 'ux')
 uy = Basis(dofhandler, 'uy')
@@ -65,8 +67,8 @@ assembler.assemble()
 print('done')
 
 print('solving',  end=' ')
-A = assembler.af[0]['bilinear'].get_matrix()
-b = np.zeros(dofhandler.n_dofs())
+A = assembler.get_matrix()
+b = np.zeros(u.n_dofs())
 system = LS(u, A=A, b=b)
 system.add_dirichlet_constraint('B',uB)
 system.add_dirichlet_constraint('perimeter',0)

@@ -58,6 +58,8 @@ from matplotlib import animation
 
 import time
 from diagnostics import Verbose
+
+
 # =============================================================================
 # Parameters
 # =============================================================================
@@ -85,7 +87,7 @@ for cell in mesh.cells.get_leaves():
 comment.toc()
 
 # Elements
-element = QuadFE(2,'Q2')  # element for pressure
+element = QuadFE(2,'Q1')  # element for pressure
 
 # Dofhandlers
 dofhandler = DofHandler(mesh, element)
@@ -100,7 +102,15 @@ print('number of dofs:',dofhandler.n_dofs())
 p_u  = Basis(dofhandler, 'u')
 p_ux = Basis(dofhandler, 'ux')
 p_uy = Basis(dofhandler, 'uy')
+pp_u = Basis(dofhandler,'u')
 
+
+f = lambda x:x[:,0]*(1-x[:,0])*x[:,1]*(1-x[:,1])
+qq = Explicit(f=f, dim=2)
+fNodal = Nodal(f=f, basis=p_u)
+
+
+qk = Kernel(f=[qq],F=lambda qq,mu=3: 3*qq)
 
 p_inflow = lambda x,y: np.ones(shape=x.shape)
 p_outflow = lambda x,y: np.zeros(shape=x.shape)
@@ -111,9 +121,10 @@ c_inflow = lambda x,y: np.zeros(shape=x.shape)
 # =============================================================================
 
 # Define problem
-flow_problem = [Form(1,test=p_ux,trial=p_ux), 
+
+flow_problem = [Form(fNodal), 
                 Form(1,test=p_uy,trial=p_uy), 
-                Form(0,test=p_u)] 
+                Form(1,test=p_u)] 
 
 # Assembler
 
@@ -128,5 +139,9 @@ assembler.assemble()
 toc = time.time()-tic
 print('assembly time', toc)
 
-A = assembler.af[0]['bilinear'].get_matrix()
-b = assembler.af[0]['linear'].get_matrix()
+tic = time.time()
+A = assembler.get_matrix()
+print('forming bilinear array', time.time()-tic)
+
+b = assembler.get_vector()
+c = assembler.get_scalar()

@@ -17,3 +17,28 @@ class TestBasis(unittest.TestCase):
         
         self.assertNotEqual(px, p)
         
+    def test_same_dofs(self):
+        #
+        # Construct nested mesh
+        # 
+        mesh = QuadMesh()
+        mesh.record(0)
+        
+        for dummy in range(2):
+            mesh.cells.refine()
+        #
+        # Define dofhandler
+        #
+        element = QuadFE(mesh.dim(),'Q1')
+        dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+    
+        #
+        # Define basis functions
+        #
+        phi0 = Basis(dofhandler, 'u', subforest_flag=0)
+        phi0_x = Basis(dofhandler, 'ux', subforest_flag=0)
+        phi1 = Basis(dofhandler, 'u')
+        
+        self.assertTrue(phi0.same_mesh(phi0_x))
+        self.assertFalse(phi0.same_mesh(phi1))

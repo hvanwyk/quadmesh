@@ -7,8 +7,8 @@ from mesh import DCEL
 
 from fem import QuadFE
 from fem import DofHandler
+from fem import Basis
 
-from function import Function
 from function import Map
 from function import Constant
 from function import Explicit
@@ -38,47 +38,23 @@ class TestMap(unittest.TestCase):
         #
         # Exceptions
         # 
-        
 
-        # Mesh dimension incompatible with specified dimension
         mesh = Mesh1D()
-        self.assertRaises(Exception, Map, **{'dim':2, 'mesh':mesh})
         
         # Mesh dimension incompatible with element
         element = QuadFE(2, 'DQ1')
-        self.assertRaises(Exception, Map, **{'mesh':mesh, 'element':element})
+        #self.assertRaises(Exception, Map, **{'mesh':mesh, 'element':element})
 
         # Dofhandler incompatibility
         element = QuadFE(1, 'Q1')
         dofhandler = DofHandler(mesh, element)
-        self.assertRaises(Exception, Map, **{'dofhandler': dofhandler, 
-                                             'dim':2})
+        #self.assertRaises(Exception, Map, **{'dofhandler': dofhandler, 
+        #                                     'dim':2})
         
         # function returns the same mesh
         f1 = Map(dofhandler=dofhandler)
         f2 = Map(mesh=mesh)
         self.assertEqual(f1.mesh(),f2.mesh())
-        
-        
-    def test_dim(self):
-        """
-        Test how the function parses dimension
-        """
-        # Dimension parsed via mesh
-        mesh = QuadMesh()
-        f = Map(mesh=mesh)
-        self.assertEqual(f.dim(), 2)
-        
-        # Dimension parsed via element
-        element = QuadFE(1,'Q1')
-        f = Map(element=element)
-        self.assertEqual(f.dim(),1)
-        
-        # Dimension parsed via dofhandler
-        element = QuadFE(2,'Q1')
-        dofhandler = DofHandler(mesh, element)
-        f = Map(dofhandler=dofhandler)
-        self.assertEqual(f.dim(),2)
         
     
     def interpolate(self):
@@ -122,7 +98,8 @@ class TestMap(unittest.TestCase):
                 mesh = QuadMesh(box=[0,5,0,5])
             element = QuadFE(dim, 'Q2')
             dofhandler = DofHandler(mesh, element)
-            
+            dofhandler.distribute_dofs()
+            basis = Basis(dofhandler)
             for n_variables in [1,2]:
                 #
                 # Iterate over number of variables
@@ -138,7 +115,7 @@ class TestMap(unittest.TestCase):
                              subsample=subsample)
                 
                 # Nodal        
-                fn = Nodal(f, n_variables=n_variables, dim=dim, \
+                fn = Nodal(f, n_variables=n_variables, basis=basis, dim=dim, \
                            dofhandler=dofhandler, subsample=subsample)
                 
                 # Constant
@@ -446,9 +423,13 @@ class TestNodal(unittest.TestCase):
         # Nominal case
         mesh = QuadMesh()
         element = QuadFE(2,'Q1')
+        dofhandler = DofHandler(mesh,element)
+        dofhandler.distribute_dofs()
+        basis = Basis(dofhandler)
+        
         data = np.arange(0,4)
         
-        f = Nodal(data=data, mesh=mesh, element=element)
+        f = Nodal(data=data, basis=basis, mesh=mesh, element=element)
         self.assertEqual(f.dim(),2)
         self.assertTrue(np.allclose(f.data().ravel(),data))
         
@@ -492,6 +473,9 @@ class TestNodal(unittest.TestCase):
             dofhandler.distribute_dofs()
             n_dofs = dofhandler.n_dofs()
             
+            # Set basis
+            basis = Basis(dofhandler)
+            
             # Determine the shapes of the data
             det_shapes = {1: (n_dofs, 1),  2: (n_dofs,n_dofs, 1)}
             smp_shapes = {1: (n_dofs, 2), 2: (n_dofs, n_dofs, 2)}
@@ -511,8 +495,7 @@ class TestNodal(unittest.TestCase):
                 #
                 # Deterministic
                 # 
-                f = Nodal(f=fn, mesh=mesh, element=element, 
-                          dim=dim, n_variables=n_variables)
+                f = Nodal(f=fn, basis=basis, n_variables=n_variables)
                 
                 # Check shape
                 self.assertEqual(f.data().shape, det_shapes[n_variables])
@@ -528,8 +511,7 @@ class TestNodal(unittest.TestCase):
                 #
                 # Sampled 
                 # 
-                f = Nodal(f=fn, parameters=parm, mesh=mesh, element=element, 
-                          dim=dim, n_variables=n_variables)
+                f = Nodal(f=fn, parameters=parm, basis=basis, n_variables=n_variables)
                 
                 # Check shape
                 self.assertEqual(f.data().shape, smp_shapes[n_variables])
@@ -555,8 +537,7 @@ class TestNodal(unittest.TestCase):
         # 
         meshes = {1: Mesh1D(), 2: QuadMesh()}
         elements = {1: QuadFE(1, 'Q2'), 2: QuadFE(2, 'Q2')}
-        
-        
+            
         # Use function to set data
         fns = {1: {1: lambda x: 2*x[:,0]**2, 
                    2: lambda x,y: 2*x[:,0] + 2*y[:,0]}, 
@@ -572,6 +553,9 @@ class TestNodal(unittest.TestCase):
         for dim in [1,2]:
             mesh = meshes[dim]
             element = elements[dim]
+            dofhandler = DofHandler(mesh,element)
+            dofhandler.distribute_dofs()
+            basis = Basis(dofhandler)
             for n_variables in [1,2]:
                 fn = fns[dim][n_variables]
                 parm = parms[dim][n_variables]
@@ -579,14 +563,14 @@ class TestNodal(unittest.TestCase):
                 # Deterministic
                 # 
                 f = Nodal(f=fn,  
-                          mesh=mesh, element=element, 
+                          mesh=mesh, basis=basis, element=element, 
                           dim=dim, n_variables=n_variables)
                 self.assertEqual(f.n_samples(),1)
                 
                 #
                 # Sampled
                 # 
-                f = Nodal(f=fn, parameters=parm,
+                f = Nodal(f=fn, parameters=parm, basis=basis,
                           mesh=mesh, element=element, 
                           dim=dim, n_variables=n_variables)
                 self.assertEqual(f.n_samples(),2)
@@ -640,11 +624,13 @@ class TestNodal(unittest.TestCase):
                 
             element = elements[dim]
             fn = fns[dim]
-            
+            dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
+            basis = Basis(dofhandler)
             #
             # Deterministic
             # 
-            f = Nodal(f=fn, mesh=mesh, element=element, 
+            f = Nodal(f=fn, basis=basis, mesh=mesh, element=element, 
                       dim=dim, n_variables=1)
             
             count = 0
@@ -658,7 +644,7 @@ class TestNodal(unittest.TestCase):
             # Sampled
             #
             parm = parms[dim] 
-            f = Nodal(f=fn, parameters=parm, mesh=mesh, element=element, dim=dim)
+            f = Nodal(f=fn, parameters=parm, basis=basis, mesh=mesh, element=element, dim=dim)
             count = 0
             for derivative in derivatives[dim]:
                 # Evaluate the derivative
@@ -688,6 +674,9 @@ class TestNodal(unittest.TestCase):
         dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs()
         
+        # Basis
+        basis = Basis(dofhandler)
+
         # Define phi
         n_points = 5
         phi = np.random.rand(n_points,2)
@@ -700,7 +689,7 @@ class TestNodal(unittest.TestCase):
         data = np.random.rand(n_dofs)
         
         # Define deterministic function
-        f = Nodal(data=data, dofhandler=dofhandler)
+        f = Nodal(data=data, basis=basis)
         
         # Evaluate and check dimensions
         fx = f.eval(phi=phi, dofs=dofs) 
@@ -713,7 +702,7 @@ class TestNodal(unittest.TestCase):
         data = np.random.rand(n_dofs,n_samples)
         
         # Define stochastic function
-        f = Nodal(data=data, dofhandler=dofhandler)
+        f = Nodal(data=data, basis=basis, dofhandler=dofhandler)
         
         # Evaluate and check dimensions
         fx = f.eval(phi=phi, dofs=dofs)
@@ -725,7 +714,7 @@ class TestNodal(unittest.TestCase):
         data = np.random.rand(n_dofs, n_dofs, 1)
         
         # Define deterministic function
-        f = Nodal(data=data, dofhandler=dofhandler, n_variables=2)
+        f = Nodal(data=data, basis=basis, dofhandler=dofhandler, n_variables=2)
         fx = f.eval(phi=(phi,phi), dofs=(dofs,dofs))
         self.assertEqual(fx.shape, (n_points,1))
         
@@ -735,7 +724,7 @@ class TestNodal(unittest.TestCase):
         data = np.random.rand(n_dofs, n_dofs, n_samples)
         
         # Define stochastic function
-        f = Nodal(data=data, dofhandler=dofhandler, n_variables=2)
+        f = Nodal(data=data, basis=basis, dofhandler=dofhandler, n_variables=2)
         fx = f.eval(phi=(phi,phi), dofs=(dofs,dofs))
         self.assertEqual(fx.shape, (n_points, n_samples))
         
@@ -743,7 +732,7 @@ class TestNodal(unittest.TestCase):
         # Trivariate deterministic
         # 
         data = np.random.rand(n_dofs, n_dofs, n_dofs,1)
-        f = Nodal(data=data, dofhandler=dofhandler, n_variables=3)
+        f = Nodal(data=data, basis=basis, dofhandler=dofhandler, n_variables=3)
         
     
     def test_eval_x(self):
@@ -774,7 +763,8 @@ class TestNodal(unittest.TestCase):
             element = elements[dim]
             dofhandler = DofHandler(mesh, element)
             dofhandler.distribute_dofs()
-            dofhandler.get_region_dofs()
+            #dofhandler.get_region_dofs()
+            basis = Basis(dofhandler)
             #
             # Define random points in domain
             #
@@ -804,7 +794,7 @@ class TestNodal(unittest.TestCase):
                 #
                 # Deterministic
                 # 
-                f = Nodal(f=fn,  
+                f = Nodal(f=fn,basis=basis,
                           mesh=mesh, element=element, 
                           dim=dim, n_variables=n_variables)
                 
@@ -820,7 +810,7 @@ class TestNodal(unittest.TestCase):
                 #
                 # Sampled
                 # 
-                f = Nodal(f=fn, parameters=parm,
+                f = Nodal(f=fn, parameters=parm, basis=basis,
                           mesh=mesh, element=element, 
                           dim=dim, n_variables=n_variables)
                 self.assertEqual(f.n_samples(),2)

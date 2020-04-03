@@ -26,10 +26,13 @@ left = mesh.mark_region('left', lambda x,y: abs(x)<1e-10)
 # Piecewise constants
 E0 = QuadFE(mesh.dim(),'DQ0')
 V0 = DofHandler(mesh,E0)
+V0.distribute_dofs()
 
 # Piecewise linears
 E1 = QuadFE(mesh.dim(),'Q1')
 V1 = DofHandler(mesh,E1)
+V1.distribute_dofs()
+
 v = Basis(V1,'v')
 v_x = Basis(V1,'vx')
 v_y = Basis(V1,'vy')

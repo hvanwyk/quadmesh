@@ -38,10 +38,12 @@ class TestLinearSystem(unittest.TestCase):
         for etype in ['Q1','Q2','Q3']:
             element = QuadFE(1,etype)
             dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
+            phi = Basis(dofhandler)
             #
             # Exact solution 
             # 
-            ue = Nodal(f=lambda x: x, dofhandler=dofhandler) 
+            ue = Nodal(f=lambda x: x, basis=phi) 
             
             #
             # Define Basis functions 
@@ -67,9 +69,9 @@ class TestLinearSystem(unittest.TestCase):
             #
             # Form linear system
             # 
-            system = LinearSystem(assembler, 0)
-            A = assembler.af[0]['bilinear'].get_matrix()
-            b = assembler.af[0]['linear'].get_matrix()
+            
+            A = assembler.get_matrix()
+            b = assembler.get_vector()
           
             system = LinearSystem(u, A=A, b=b)
             
@@ -115,13 +117,16 @@ class TestLinearSystem(unittest.TestCase):
         for etype in ['Q2','Q3']:
             element = QuadFE(1,etype)
             dofhandler = DofHandler(mesh, element)
-            
-            # Exact solution
-            ue = Nodal(f=lambda x:x*(1-x), dofhandler=dofhandler)
+            dofhandler.distribute_dofs()
             
             # Basis functions 
             ux = Basis(dofhandler, 'ux')
             u = Basis(dofhandler, 'u')
+            
+            # Exact solution
+            ue = Nodal(f=lambda x:x*(1-x), basis=u)
+            
+     
             
             # Define coefficient functions
             one = Constant(1)
@@ -136,11 +141,10 @@ class TestLinearSystem(unittest.TestCase):
             assembler = Assembler(problem, mesh)
             assembler.assemble()
             
-            A = assembler.af[0]['bilinear'].get_matrix()
-            b = assembler.af[0]['linear'].get_matrix()
+            A = assembler.get_matrix()
+            b = assembler.get_vector()
             
             # Set up linear system
-            #system = LinearSystem(assembler, 0)
             system = LinearSystem(u, A=A, b=b)
             
             # Boundary functions
@@ -165,12 +169,20 @@ class TestLinearSystem(unittest.TestCase):
     
     
     def test03_1d_mixed(self):
+        """
+        TODO: Sort out Neumann conditions 
+        
         mesh = Mesh1D()
         element = QuadFE(1,'Q3')
         dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+        
+        # Basis functions 
+        u = Basis(dofhandler, 'u')
+        ux = Basis(dofhandler, 'ux')
         
         # Exact solution
-        ue = Nodal(f=lambda x: x*(1-x), dofhandler=dofhandler)
+        ue = Nodal(f=lambda x: x*(1-x), basis=u)
         
         # Mark mesh regions
         bnd_right = lambda x: np.abs(x-1)<1e-9
@@ -183,10 +195,7 @@ class TestLinearSystem(unittest.TestCase):
         # Forms
         #
         
-        # Basis functions 
-        u = Basis(dofhandler, 'u')
-        ux = Basis(dofhandler, 'ux')
-        
+       
         # Linear form
         L  = Form(kernel=Kernel(Constant(2)), test=u)
         
@@ -214,7 +223,6 @@ class TestLinearSystem(unittest.TestCase):
         system.add_dirichlet_constraint('left',0)
         system.set_constraint_relation()
         
-        
         #
         # Solve
         # 
@@ -224,7 +232,7 @@ class TestLinearSystem(unittest.TestCase):
         ua = system.get_solution(as_function=True)
         
         self.assertTrue(np.allclose(ua.data(), ue.data()))
-    
+        """
     
     def test04_1d_periodic(self):
         #
@@ -235,9 +243,14 @@ class TestLinearSystem(unittest.TestCase):
         mesh = Mesh1D(resolution=(100,), periodic=True)
         element = QuadFE(1,'Q3')
         dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+        
+        # Basis functions
+        u = Basis(dofhandler, 'u')
+        ux = Basis(dofhandler, 'ux')
                   
         # Exact solution
-        ue = Nodal(f=lambda x: np.sin(2*np.pi*x), dofhandler=dofhandler)
+        ue = Nodal(f=lambda x: np.sin(2*np.pi*x), basis=u)
         
         #
         # Mark dirichlet regions
@@ -249,9 +262,6 @@ class TestLinearSystem(unittest.TestCase):
         # Set up forms
         #
         
-        # Basis functions
-        u = Basis(dofhandler, 'u')
-        ux = Basis(dofhandler, 'ux')
         
         # Bilinear form
         a = Form(kernel=Kernel(Constant(1)), trial=ux, test=ux)
@@ -266,8 +276,8 @@ class TestLinearSystem(unittest.TestCase):
         problem = [a,L]
         assembler = Assembler(problem, mesh)
         assembler.assemble()
-        A = assembler.af[0]['bilinear'].get_matrix()
-        b = assembler.af[0]['linear'].get_matrix()
+        A = assembler.get_matrix()
+        b = assembler.get_vector()
         
         #
         # Linear System
@@ -318,6 +328,7 @@ class TestLinearSystem(unittest.TestCase):
             # 
             element = QuadFE(2,etype)            
             dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
             
             #
             # Basis 
@@ -329,7 +340,7 @@ class TestLinearSystem(unittest.TestCase):
             #
             # Construct forms
             # 
-            ue = Nodal(f=lambda x: x[:,0], dofhandler=dofhandler)
+            ue = Nodal(f=lambda x: x[:,0], basis=u)
             ax = Form(kernel=Kernel(Constant(1)), trial=ux, test=ux)
             ay = Form(kernel=Kernel(Constant(1)), trial=uy, test=uy)
             L = Form(kernel=Kernel(Constant(0)), test=u)
@@ -344,8 +355,8 @@ class TestLinearSystem(unittest.TestCase):
             #
             # Get system matrices
             # 
-            A = assembler.af[0]['bilinear'].get_matrix()
-            b = assembler.af[0]['linear'].get_matrix()
+            A = assembler.get_matrix()
+            b = assembler.get_vector()
             
             #
             # Linear System
@@ -377,6 +388,9 @@ class TestLinearSystem(unittest.TestCase):
         """
         Dirichlet problem with Neumann data on right and Dirichlet data on left
         """
+        """
+        TODO: Sort out Neumann data
+        
         #
         # Define Mesh
         # 
@@ -396,6 +410,8 @@ class TestLinearSystem(unittest.TestCase):
             #
             element = QuadFE(2,etype)
             dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
+            
             u = Basis(dofhandler, 'u')
             ux = Basis(dofhandler, 'ux')
             uy = Basis(dofhandler, 'uy')
@@ -403,7 +419,7 @@ class TestLinearSystem(unittest.TestCase):
             #
             # Exact solution
             # 
-            ue = Nodal(f=lambda x: x[:,0], dofhandler=dofhandler)
+            ue = Nodal(f=lambda x: x[:,0], basis=u)
             xv = dofhandler.get_dof_vertices()
             #
             # Set up forms
@@ -445,12 +461,14 @@ class TestLinearSystem(unittest.TestCase):
             # 
             ua = system.get_solution(as_function=True)
             self.assertTrue(np.allclose(ue.data(), ua.data()))
-    
+        """
     
     def test07_1d_mesh_refinement(self):
         """
         Define the input parameters and solution on different resolution meshes
         """
+        """
+        TODO: Kernel on coarser mesh
         #
         # Define mesh at two different resolutoins
         # 
@@ -472,10 +490,13 @@ class TestLinearSystem(unittest.TestCase):
         dhDQ0 = DofHandler(mesh, DQ0)
         dhQ1 = DofHandler(mesh, Q1)
         
+        dhDQ0.distribute_dofs()
+        phi = Basis(dhDQ0,'u',subforest_flag=0)
+        
         #
         # Diffusion parameter on coarse mesh
         # 
-        q = Nodal(data=np.array([1]), dofhandler=dhDQ0, subforest_flag=0)
+        q = Nodal(data=np.array([1]), basis=phi)
         f = Constant(0)
         
         #
@@ -533,7 +554,7 @@ class TestLinearSystem(unittest.TestCase):
         ua = system.get_solution(as_function=True)
         ue = Nodal(f=lambda x: x, dofhandler=dhQ1)        
         self.assertTrue(np.allclose(ua.data(), ue.data()))
-    
+        """
     
     def test08_1d_sampled_rhs(self):
         #
@@ -549,6 +570,13 @@ class TestLinearSystem(unittest.TestCase):
         Q3 = QuadFE(1,'Q3')
         dofhandler = DofHandler(mesh, Q3)
         dofhandler.distribute_dofs()
+        
+        #
+        # Basis
+        # 
+        v = Basis(dofhandler, 'u')
+        vx = Basis(dofhandler, 'ux')
+        
         
         #
         # Define sampled right hand side and exact solution
@@ -569,21 +597,16 @@ class TestLinearSystem(unittest.TestCase):
             
             
         # Define sampled function
-        fn = Nodal(data=fdata, dofhandler=dofhandler)
-        ue = Nodal(data=udata, dofhandler=dofhandler)
+        fn = Nodal(data=fdata, basis=v)
+        ue = Nodal(data=udata, basis=v)
         
-        #
-        # Basis
-        # 
-        u = Basis(dofhandler, 'u')
-        ux = Basis(dofhandler, 'ux')
-        
+     
         #
         # Forms
         # 
         one = Constant(1) 
-        a = Form(Kernel(one), test=ux, trial=ux)
-        L = Form(Kernel(fn), test=u)
+        a = Form(Kernel(one), test=vx, trial=vx)
+        L = Form(Kernel(fn), test=v)
         problem = [a,L]
         
         #
@@ -591,12 +614,12 @@ class TestLinearSystem(unittest.TestCase):
         # 
         assembler = Assembler(problem, mesh)
         assembler.assemble()
-        A = assembler.af[0]['bilinear'].get_matrix()
-        b = assembler.af[0]['linear'].get_matrix()
+        A = assembler.get_matrix()
+        b = assembler.get_vector()
         #
         # Linear System
         # 
-        system = LinearSystem(u, A=A, b=b)
+        system = LinearSystem(v, A=A, b=b)
         
         # Set constraints
         system.add_dirichlet_constraint('left',0)
@@ -612,7 +635,9 @@ class TestLinearSystem(unittest.TestCase):
         ua = system.get_solution(as_function=True)
         
         # Check that the solution is close
-        self.assertTrue(np.allclose(ue.data(), ua.data()))
+        print(ue.data()[:,[0]])
+        print(ua.data())
+        self.assertTrue(np.allclose(ue.data()[:,[0]], ua.data()))
         
         
         
@@ -636,6 +661,12 @@ class TestLinearSystem(unittest.TestCase):
         dofhandler.distribute_dofs()
         
         #
+        # Basis
+        # 
+        u = Basis(dofhandler, 'u')
+        ux = Basis(dofhandler, 'ux')
+        
+        #
         # Define sampled right hand side and exact solution
         # 
         xv = dofhandler.get_dof_vertices()
@@ -644,24 +675,18 @@ class TestLinearSystem(unittest.TestCase):
         n_samples = 6
         a = np.arange(n_samples)
         
-        f = lambda x, a: a*x
-        u = lambda x,a: a/6*(x-x**3)+x
+        ffn = lambda x, a: a*x
+        ufn = lambda x,a: a/6*(x-x**3)+x
         fdata = np.zeros((n_points,n_samples))
         udata = np.zeros((n_points,n_samples))
         for i in range(n_samples):
-            fdata[:,i] = f(xv,a[i]).ravel()
-            udata[:,i] = u(xv,a[i]).ravel()
+            fdata[:,i] = ffn(xv,a[i]).ravel()
+            udata[:,i] = ufn(xv,a[i]).ravel()
             
             
         # Define sampled function
-        fn = Nodal(data=fdata, dofhandler=dofhandler)
-        ue = Nodal(data=udata, dofhandler=dofhandler)
-        
-        #
-        # Basis
-        # 
-        u = Basis(dofhandler, 'u')
-        ux = Basis(dofhandler, 'ux')
+        fn = Nodal(data=fdata, basis=u)
+        ue = Nodal(data=udata, basis=u)
         
         #
         # Forms
@@ -677,8 +702,8 @@ class TestLinearSystem(unittest.TestCase):
         assembler = Assembler(problem, mesh)
         assembler.assemble()
         
-        A = assembler.af[0]['bilinear'].get_matrix()
-        b = assembler.af[1]['linear'].get_matrix()
+        A = assembler.get_matrix()
+        b = assembler.get_vector(i_problem=1)
         
         #
         # Linear System
@@ -688,7 +713,7 @@ class TestLinearSystem(unittest.TestCase):
         # Set constraints
         system.add_dirichlet_constraint('left',0)
         system.add_dirichlet_constraint('right',1)
-        system.solve_system(b[:,0])
+        system.solve_system(b)
         
         
         # Extract finite element solution
@@ -702,7 +727,8 @@ class TestLinearSystem(unittest.TestCase):
         system2.solve_system()
         u2 = system2.get_solution(as_function=True)
         
+   
         
         # Check that the solution is close
         self.assertTrue(np.allclose(ue.data()[:,0], ua.data()[:,0]))
-        self.assertTrue(np.allclose(ue.data(), u2.data()))
+        self.assertTrue(np.allclose(ue.data()[:,[0]], u2.data()))

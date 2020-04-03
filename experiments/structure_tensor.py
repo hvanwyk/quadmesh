@@ -4,7 +4,7 @@ Created on Thu Apr  6 21:20:08 2017
 
 @author: hans-werner
 """
-
+'''
 import os
 from skimage import io, feature
 import numpy as np
@@ -136,7 +136,7 @@ for ix in np.arange(0,nx,dx):
         
 plt.show()
 
-"""
+
 l1, l2 = feature.structure_tensor_eigvals(Axx, Axy, Ayy)
 #
 # Test Case
@@ -192,4 +192,4 @@ e.set_clip_box(ax.bbox)
 #ax.set_ylim(0,4)
 
 plt.show();
-"""
+'''

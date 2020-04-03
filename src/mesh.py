@@ -1595,7 +1595,7 @@ class Forest(object):
         
             subforest_flag: flag, used to specify the subforest being refined
             
-            refinemenet_flag: flag, specifying the nodes within the submesh that
+            refinement_flag: flag, specifying the nodes within the submesh that
                 are being refined. 
                 
             new_label: flag, new label to be applied to refined submesh
@@ -2376,8 +2376,7 @@ class HalfEdge(Tree):
      
     def reference_map(self, x_in, mapsto='physical',
                       jac_p2r=False, jac_r2p=False,
-                      hess_p2r=False, hess_r2p=False,
-                      jacobian=False, hessian=False):
+                      hess_p2r=False, hess_r2p=False):
         """
         Map points x from the reference interval to the physical HalfEdge or 
         vice versa.
@@ -2501,7 +2500,8 @@ class HalfEdge(Tree):
             # No gradients of the mapping sought
             # 
             return x_trg
-            
+        
+        """    
         # TODO: Remove this...
         #
         # Compute the Jacobian
@@ -2534,8 +2534,7 @@ class HalfEdge(Tree):
             return x_trg, hess
         else: 
             return x_trg
-
-
+        """
    
 
 class Interval(HalfEdge):
@@ -3439,9 +3438,11 @@ class QuadCell(Cell, Tree):
         else:
             is_rectangle = True
             for i in range(4):
-                he = half_edges[i]
-                he_nxt = half_edges[(i+1)%4]
-                if abs(np.dot(he.to_vector(), he_nxt.to_vector())) > 1e-9:
+                he = half_edges[i].to_vector()
+                he_nxt = half_edges[(i+1)%4].to_vector()
+                on_axis = min(abs(he)) <1e-12 
+                perpendicular = abs(np.dot(he, he_nxt)) < 1e-12 
+                if  not (perpendicular and on_axis):
                     is_rectangle = False
                     break
         self._is_rectangle = is_rectangle
@@ -3635,33 +3636,9 @@ class QuadCell(Cell, Tree):
                     hessians.
                 
                 hess_r2p: double, n-list of (2,2,2) reference-to-phyiscal 
-                    hessians.        
-
-        
-        Inputs: 
-        
-            x_in: double, list of of n (2,) arrays of input points, either in 
-                the physical cell (if mapsto='reference') or in the reference
-                cell (if mapsto='physical'). 
-                
-            jacobian: bool, specify whether to return the Jacobian of the
-                transformation.
-                
-            hessian: bool, specify whether to return the Hessian tensor of the
-                transformation.
-            
-            mapsto: str, 'reference' if mapping onto the refence cell [0,1]^2
-                or 'physical' if mapping onto the physical cell. Default is 
-                'physical'
-                        
-                
-        Outputs:
-        
-            x_mapped: double, (n,2) array of mapped points
-            
-            jac: double, list of n (2,2) arrays of jacobian matrices 
-            
-            hess: double, list of n (2,2,2) arrays of hessian matrices           
+                    hessians. 
+                    
+        TODO: Modify the inverse map using Hua1990                
         """
         #
         # Convert input to array
@@ -3694,7 +3671,7 @@ class QuadCell(Cell, Tree):
             y = p_sw_y*(1-s)*(1-t) + p_se_y*s*(1-t) +\
                 p_ne_y*s*t + p_nw_y*(1-s)*t
              
-            # Store points in a list
+            # Store points in an array
             x_trg = np.array([x,y]).T
             
         elif mapsto=='reference':
@@ -3857,97 +3834,7 @@ class QuadCell(Cell, Tree):
             # 
             return x_trg
         
-        # TODO: Remove everything below
-        if jacobian:
-            #
-            # Compute Jacobian of the forward mapping 
-            #
-            xs = -p_sw_x*(1-t) + p_se_x*(1-t) + p_ne_x*t - p_nw_x*t  # J11 
-            ys = -p_sw_y*(1-t) + p_se_y*(1-t) + p_ne_y*t - p_nw_y*t  # J21
-            xt = -p_sw_x*(1-s) - p_se_x*s + p_ne_x*s + p_nw_x*(1-s)  # J12
-            yt = -p_sw_y*(1-s) - p_se_y*s + p_ne_y*s + p_nw_y*(1-s)  # J22
-              
-            if mapsto=='physical':
-                jac = [\
-                       np.array([[xs[i], xt[i]],\
-                                 [ys[i], yt[i]]])\
-                       for i in range(n)\
-                       ]
-            elif mapsto=='reference':
-                #
-                # Compute matrix inverse of jacobian for backward mapping
-                #
-                Det = xs*yt-xt*ys
-                sx =  yt/Det
-                sy = -xt/Det
-                tx = -ys/Det
-                ty =  xs/Det
-                jac = [ \
-                       np.array([[sx[i], sy[i]],\
-                                 [tx[i], ty[i]]])\
-                       for i in range(n)\
-                       ]
-                
-        if hessian:
-            hess = []
-            if mapsto=='physical':
-                if self.is_rectangle():
-                    for i in range(n):
-                        hess.append(np.zeros((2,2,2)))
-                else:
-                    for i in range(n):
-                        h = np.zeros((2,2,2))
-                        xts = p_sw_x - p_se_x + p_ne_x - p_nw_x
-                        yts = p_sw_y - p_se_y + p_ne_y - p_nw_y
-                        h[:,:,0] = np.array([[0, xts], [xts, 0]])
-                        h[:,:,1] = np.array([[0, yts], [yts, 0]])
-                        hess.append(h)
-            elif mapsto=='reference':
-                if self.is_rectangle():
-                    hess = [np.zeros((2,2,2)) for dummy in range(n)]
-                else:
-                    Dx = p_sw_x - p_se_x + p_ne_x - p_nw_x
-                    Dy = p_sw_y - p_se_y + p_ne_y - p_nw_y
-                    
-                    dxt_dx = Dx*sx
-                    dxt_dy = Dx*sy
-                    dyt_dx = Dy*sx
-                    dyt_dy = Dy*sy
-                    dxs_dx = Dx*tx
-                    dxs_dy = Dx*ty
-                    dys_dx = Dy*tx
-                    dys_dy = Dy*ty
-                    
-                    dDet_dx = dxs_dx*yt + dyt_dx*xs - dys_dx*xt - dxt_dx*ys
-                    dDet_dy = dxs_dy*yt + dyt_dy*xs - dys_dy*xt - dxt_dy*ys
-                    
-                    sxx =  dyt_dx/Det - yt*dDet_dx/Det**2
-                    sxy =  dyt_dy/Det - yt*dDet_dy/Det**2
-                    syy = -dxt_dy/Det + xt*dDet_dy/Det**2
-                    txx = -dys_dx/Det + ys*dDet_dx/Det**2
-                    txy = -dys_dy/Det + ys*dDet_dy/Det**2
-                    tyy =  dxs_dy/Det - xs*dDet_dy/Det**2
-                    
-                    for i in range(n):
-                        h = np.zeros((2,2,2))
-                        h[:,:,0] = np.array([[sxx[i], sxy[i]], 
-                                             [sxy[i], syy[i]]])
-                        
-                        h[:,:,1] = np.array([[txx[i], txy[i]], 
-                                             [txy[i], tyy[i]]])
-                        hess.append(h)
-        #
-        # Return output
-        #    
-        if jacobian and hessian:
-            return x_trg, jac, hess
-        elif jacobian and not hessian:
-            return x_trg, jac
-        elif hessian and not jacobian:
-            return x_trg, hess
-        else: 
-            return x_trg
-
+       
 
 class RVertex(Vertex):
     """
