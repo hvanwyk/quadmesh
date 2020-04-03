@@ -218,7 +218,7 @@ def sensitivity_sample_qoi(exp_q,dq,dofhandler):
     
 def test00_finite_elements():
     """
-    
+    TODO: Resolve kernel function with different resolution
     """
     # 
     # Construct reference solution
@@ -361,7 +361,15 @@ def test00_finite_elements():
     ax.set_ylabel(r'$|J-J^h|$')
     plt.tight_layout()
     fig.savefig('fig/ex02_gauss_fem_error.eps')
-        
+
+
+def test005_sensitivity():
+    """
+    Test the validity of the sensitivity code
+    """
+    pass
+  
+  
 def test01_problem():
     """
     Illustrate the problem:  Plot sample paths of the input q, of the output, 
@@ -949,6 +957,7 @@ def test06_linearization():
     #
     # Covariance
     # 
+    # l = 0.05 
     cov = Covariance(dQ1, name='gaussian', parameters={'l':0.05})
     cov.compute_eig_decomp()
     lmd, V = cov.get_eig_decomp()
@@ -1274,10 +1283,10 @@ u_error = Nodal(dofhandler=dofhandler, data=du)
 """
 
 if __name__ == '__main__':
-    #test00_finite_elements()
+    test00_finite_elements()
     #test01_problem()
     #test02_reference()
     #test03_truncation()
     #test04_sparse_grid()
     #test05_conditioning()
-    test06_linearization()
+    #test06_linearization()
