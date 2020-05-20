@@ -575,6 +575,10 @@ class Kernel(object):
         Output:
         
             Kernel function evaluated at point x.
+            
+        TODO: FIX KERNEL! Interaction with assembler
+            - Different mesh sizes
+            - Derivatives vs. Basis functions.
         """
         #
         # Evaluate constituent functions 
@@ -727,31 +731,56 @@ class Form(object):
 
         
 
-    def basis(self):
+    def basis(self, mesh=None, subforest_flag=None):
         """
-        Returns a list of the form's basis functions (trial, and test)
+        Returns a list of the form's basis functions (trial, test, and Kernel)
+        
+        Inputs:
+        
+            mesh: Mesh, reference mesh 
+            
+            subforest_flag: reference submesh flag
+        
         
         Output: 
         
             basis: Basis, list of basis functions.
             
+            
         """
         basis = []
         if self.test is not None:
             #
-            # Add test function
+            # Add test basis
             # 
             basis.append(self.test)
         if self.trial is not None:
             #
-            # Add trial function
+            # Add trial basis
             #
             basis.append(self.trial)
         
         # 
-        # Add basis functions (over same mesh).
+        # Add basis functions from kernel
         # 
-        basis.extend(self.kernel.basis())
+        kernel_basis = self.kernel.basis()
+        if mesh is None:
+            #
+            # No reference mesh: return all kernel basis functions
+            # 
+            basis.extend(kernel_basis)
+        else:
+            #
+            # Return only functions with compatible mesh/subforest_flag
+            # 
+            for phi in kernel_basis:
+                if phi.same_mesh(mesh=mesh, subforest_flag=subforest_flag):
+                    #
+                    # Check that basis defined over same mesh
+                    #
+                    basis.append(phi)
+                    
+        # Return basis list 
         return basis
     
     
@@ -2635,8 +2664,14 @@ class Assembler(object):
         info = {}
         for problem in self.problems:
             for form in problem:
-                basis = form.basis()
+                #
+                # Form basis functions on same mesh/flag
+                # 
+                basis = form.basis(self.mesh(), self.subforest_flag())
                 for region in form.regions(cell):
+                    #
+                    # Record form's regions
+                    # 
                     if not region in info.keys():
                         info[region] = set()
                     info[region].update(basis)
@@ -3160,7 +3195,7 @@ class Assembler(object):
         #
         # Solve linear system on interior dofs
         # 
-        int_dofs = self.get_dofs('interior')
+        int_dofs = self.get_dofs('interior', i_problem=i_problem)
         u[int_dofs] = spla.spsolve(A,b-x0)
         
         #    
@@ -3170,7 +3205,7 @@ class Assembler(object):
         u[dir_dofs] = dir_vals[:,0]
         
         # Resolve hanging nodes
-        C = self.hanging_node_matrix()
+        C = self.hanging_node_matrix(i_problem=i_problem)
         u += C.dot(u)
             
         return u

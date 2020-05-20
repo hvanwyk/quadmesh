@@ -1009,30 +1009,53 @@ class Basis(object):
         return self.__derivative
     
     
-    def same_mesh(self, basis):
+    def same_mesh(self, basis=None, mesh=None, subforest_flag=None):
         """
-        Determine whether input basis has the same mesh and subforest
-        flag as self.
+        Determine whether input basis mesh/flag matches a reference mesh,
+        specified either directly, or by via another basis function. 
         
         Inputs:
             
             basis: Basis, to be compared. 
+            
+            mesh: Mesh, 
+            
+            subforest_flag: submesh flag 
            
         Output:
         
-            issame: bool, indicating whether basis functions share dofhandler
+            issame: bool, indicating whether basis functions share mesh
                 and subforest_flag
+                
+        NOTE: We check only whether the Mesh adress matches. Basis functions
+            defined on different instances of the identical mesh don't have
+            the same mesh.
         """
+        if basis is not None:
+            #
+            # Use basis
+            # 
+            ref_mesh = basis.dofhandler().mesh
+            ref_flag = basis.subforest_flag()
+        else:
+            #
+            # Use mesh and flag
+            #  
+            assert mesh is not None, 'Specify either basis or mesh'
+            ref_mesh = mesh
+            ref_flag = subforest_flag
+        
+        
         # 
         # Basis functions differ in their dofhandlers
         # 
-        if self.dofhandler().mesh != basis.dofhandler().mesh:
+        if self.dofhandler().mesh != ref_mesh:
             return False
         
         #
         # Basis functions differ in their subforest_flags
         # 
-        if self.subforest_flag() != basis.subforest_flag():
+        if self.subforest_flag() != ref_flag:
             return False
         
         # Same
