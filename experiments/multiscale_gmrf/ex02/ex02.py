@@ -269,8 +269,8 @@ def gradient(q, u):
     dh  = phi.dofhandler()
     phi_x = Basis(dh,'ux')
     
-    
     adjoint_eqn = [Form(q, test=phi_x, trial=phi_x), Form(0, test=phi)]
+
 
 def sample_qoi(q, dofhandler, return_state=False):
     """
@@ -333,7 +333,6 @@ def sample_qoi(q, dofhandler, return_state=False):
         return J,U 
     else:
         return J
-
 
 
 def sensitivity_sample_qoi(exp_q,dofhandler):
@@ -1953,7 +1952,7 @@ u_error = Nodal(dofhandler=dofhandler, data=du)
 
 if __name__ == '__main__':
     #test00_finite_elements()
-    test00_sensitivity()
+    #test00_sensitivity()
     #test01_problem()
     #test02_reference()
     #test03_truncation()
