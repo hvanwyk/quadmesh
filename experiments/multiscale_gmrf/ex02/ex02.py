@@ -1524,12 +1524,14 @@ def test06_linearization():
     for i in range(n_eps):
         log_qper[:,i] = log_qref + epsilons[i]*dlog_q
     
+    """
     plt.plot(x, log_qref, label='ref')
     for i in range(n_eps):
         plt.plot(x, log_qper[:,i],label='%d'%(i))
+    """
     
     assert np.allclose(log_qper[:,0], np.log(q.ravel()))
-     
+      
     plt.legend()    
     plt.show()
     
