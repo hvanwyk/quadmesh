@@ -24,8 +24,8 @@ import matplotlib.pyplot as plt
 Consider the elliptic equation
 
 -d/dx(e^q dy/dx) = f
-y(0) = 1
-y(1) = 0
+y(0) = 0
+y(1) = 1
 
 on (0,1), where q is a normal gaussian field.
 
@@ -54,11 +54,11 @@ def sample_q0(V, lmd, d0, z0):
     V0 = V[:,:d0]
     Lmd0 = np.diag(np.sqrt(lmd[:d0]))
     
-    # Form log of q0
-    log_q0 = V0.dot(Lmd0.dot(z0)) 
+    # Form q0
+    q0 = V0.dot(Lmd0.dot(z0)) 
     
     # Return result
-    return np.exp(log_q0)
+    return q0
 
 
 def sample_q_given_q0(q0, V, lmd, d0, z1):
@@ -80,14 +80,77 @@ def sample_q_given_q0(q0, V, lmd, d0, z1):
     Lmd1 = np.diag(np.sqrt(lmd[d0:]))   
     
     # Form log of q1
-    log_q1 = V1.dot(Lmd1.dot(z1))
+    q1 = V1.dot(Lmd1.dot(z1))
 
     # Form log q given q0
-    log_q0 = np.log(q0)
-    log_q = log_q0[:,None] + log_q1
+    q = q0[:,None] + q1
     
     # Return q given q0
-    return np.exp(log_q)
+    return q
+
+
+def sample_qoi(q, dofhandler, return_state=False):
+    """
+    Compute the Quantity of Interest 
+    
+        J(u) = -exp(q(1))*u'(1),
+        
+    where u solves 
+    
+        -d/dx ( exp(q)* du/dx) = 1
+        u(0) = 0,  u(1) = 1
+        
+    for a sample of q's. 
+    
+    Inputs:
+    
+        q: Nodal, (n_dofs, n_samples) function representing the log porosity
+        
+        dofhandler: DofHandler
+        
+    """    
+    # Basis
+    phi   = Basis(dofhandler, 'v')
+    phi_x = Basis(dofhandler, 'vx')
+    n_dofs = phi.n_dofs()
+        
+    # Define problem
+    expq_fn = Nodal(data=np.exp(q), basis=phi)
+    
+    problem = [[Form(expq_fn, test=phi_x, trial=phi_x), Form(1, test=phi)],
+               [Form(expq_fn, test=phi_x, dmu='dv', flag='right')]]
+    
+    # Define assembler
+    assembler = Assembler(problem)
+    
+    # Incorporate Dirichlet conditions 
+    assembler.add_dirichlet('left',0)
+    assembler.add_dirichlet('right',1)
+    
+    n_samples = expq_fn.n_subsample()
+    
+    # Assemble system
+    assembler.assemble()
+    
+    if return_state:
+        U = np.empty((n_dofs,n_samples))
+        
+    J = np.zeros(n_samples)
+    for i in range(n_samples):
+        # Solve system
+        u = assembler.solve(i_problem=0, i_matrix=i, i_vector=0)
+        
+        # Compute quantity of interest
+        J[i] = -u.dot(assembler.get_vector(1,i))
+        
+        if return_state:
+            U[:,i] = u
+    
+    if return_state:
+        return J,U 
+    else:
+        return J
+
 
 
 def dJdq_per(q, dq, dofhandler, eps=1e-6):
@@ -116,10 +179,10 @@ def dJdq_per(q, dq, dofhandler, eps=1e-6):
         eps: 1e-7 finite difference parameter
     """
     # Compute qoi at reference parameter
-    J_ref = sample_qoi(q, dofhandler)
+    J_ref = sample_qoi(q.data(), dofhandler)
     
     # Compute qoi at perturbed parameter
-    J_per = sample_qoi(q+eps*dq, dofhandler)
+    J_per = sample_qoi(q.data()+eps*dq.data(), dofhandler)
     
     # Compute finite difference
     dJ = (J_per - J_ref)/eps
@@ -127,36 +190,59 @@ def dJdq_per(q, dq, dofhandler, eps=1e-6):
     return dJ 
     
 
-def dJdq_adj(q, u, dq, dofhandler):
+def dJdq_adj(q, u, dq=None):
     """
     Compute the directional derivative dJ(q,dq) by solving the adjoint equation 
     
         -(exp(q)v')' = 0, 
-        v(0)=0, v(1)=-1 
+        v(0)=0, v(1)=1 
         
     and computing
     
         ( v, (exp(q)*dq(1)*u')' ) + exp(q(1))*dq(1)*u'(1) = -(exp(q)*dq u', v')
+        
+        
+    Inputs: 
     
+        q: Nodal, single reference log diffusitivity 
+        
+        u: Nodal, single reference system response
+        
+        dq: Nodal/None, sampled perturbation vector (or None) 
+        
+    
+    Output:
+    
+        dJdq: Derivative of J wrt q
+        
+            If dq = Nodal, return directional derivative in direction dq
+            
+            If dq = None, return gradient
     """
-    # Define finite element basis
-    phi = Basis(dofhandler, 'u')
-    phi_x = Basis(dofhandler, 'ux')
+    #
+    # Finite Element Specification
+    # 
     
-    # Define finite element functions
-    expq_fn = Nodal(data=np.exp(q), basis=phi)
-    u_fn = Nodal(data=u, basis=phi)
-    ux_fn = Nodal(data=u, basis=phi_x)
+    # Reference solution
+    u_dh = u.basis().dofhandler()
+    phi = Basis(u_dh, 'u') 
+    phi_x = Basis(u_dh, 'ux')
+    ux = Nodal(data=u.data(), basis=phi_x)
+    
+    # Reference diffusivity
+    q_dh = q.basis().dofhandler()
+    psi = Basis(q_dh, 'q')
+    exp_q = Nodal(data=np.exp(q.data()), basis=psi)
     
     # Define adjoint equations
-    adjoint_eqn = [Form(exp_qref, test=phi_x, trial=phi_x), Form(0, test=phi)]
+    adjoint_eqn = [Form(exp_q, test=phi_x, trial=phi_x), Form(0, test=phi)]
     
     # Assembler
     assembler = Assembler(adjoint_eqn)
     
     # Apply Dirichlet BC
     assembler.add_dirichlet('left', 0)
-    assembler.add_dirichlet('right',-1)
+    assembler.add_dirichlet('right',1)
     
     # Assemble
     assembler.assemble()
@@ -165,17 +251,50 @@ def dJdq_adj(q, u, dq, dofhandler):
     v = assembler.solve()
     
     # Get derivative
-    vx_fn = Nodal(data=v, basis=phi)
+    vx = Nodal(data=v, basis=phi_x)
     
     # Assemble 
     
-    # Adjoint qoi
-    k_adj = Kernel(f=[expq_fn, dq_fn, ux_fn, vx_fn], F=lambda eq,dq,ux,vx: -eq*dq*ux*vx)
-    adj_qoi = [Form(k_adj)]
+    if dq is None:
+        #
+        # Compute the gradient
+        #
+        
+        # Kernel 
+        k_adj = Kernel(f=[exp_q, ux, vx], F=lambda eq,ux,vx: -eq*ux*vx)
+        
+        # Linear form 
+        adj_qoi = [Form(k_adj, test=psi)]
+        
+        # Assemble
+        assembler = Assembler(adj_qoi)
+        assembler.assemble()
+        
+        # Get gradient vector
+        dJdq = assembler.get_vector() 
+    else:
+        #
+        # Compute the directional derivative
+        # 
+        
+        # Kernel 
+        k_adj = Kernel(f=[exp_q, dq, ux, vx], 
+                       F=lambda eq,dq,ux,vx: -eq*dq*ux*vx)
+        
+        # Constant form
+        adj_qoi = [Form(k_adj)]
     
-    assembler = Assembler(adj_qoi, mesh=dofhandler.mesh)
+        # Assemble
+        assembler = Assembler(adj_qoi, mesh=u_dh.mesh)
+        assembler.assemble()
+        
+        # Get directional derivatives for each direction
+        dJdq = np.array([assembler.get_scalar(i_sample=i) for i in range(dq.n_samples())])
+    # Return 
+    return dJdq
 
-def dJdq_sen(q, u, dq, dofhandler):
+
+def dJdq_sen(q, u, dq):
     """
     Compute the directional derivative dJ(q,dq) by means of the sensitivity 
     equation.
@@ -185,22 +304,29 @@ def dJdq_sen(q, u, dq, dofhandler):
         
     and computing 
     
-        dJ(q,dq) = exp(q(1))*dq(1)*u'(1) + exp(q(1))*s'(1)
+        dJ(q,dq) = -exp(q(1))*dq(1)*u'(1) - exp(q(1))*s'(1)
         
     """
-    # Finite Element Basis  
-    phi = Basis(dofhandler, 'u')
-    phi_x = Basis(dofhandler, 'ux')
+    #
+    # Finite Element Specification  
+    #
     
-    # Define finite element functions
-    u_fn = Nodal(data=u, basis=phi)
-    ux_fn = Nodal(data=u, basis=phi_x)
-    expq_fn = Nodal(data=np.exp(q), basis=phi)
-    dq_fn = Nodal(data=dq, basis=phi)
+    # Reference state
+    u_dh = u.basis().dofhandler()
+    mesh = u_dh.mesh
+    phi = Basis(u_dh, 'u')
+    phi_x = Basis(u_dh, 'ux')
+    ux_fn = Nodal(data=u.data(), basis=phi_x)
+
+    # Reference diffusivitity
+    q_dh = q.basis().dofhandler()
+    psi = q.basis()
+    exp_q = Nodal(data=np.exp(q.data()), basis=phi)
+    
     
     # Define sensitivity equation
-    ker_sen = Kernel(f=[expq_fn, dq, ux_fn], F=lambda eq, dq, ux: -eq*dq*ux)
-    sensitivity_eqn = [Form(expq_fn, test=phi_x, trial=phi_x), 
+    ker_sen = Kernel(f=[exp_q, dq, ux_fn], F=lambda eq, dq, ux: -eq*dq*ux)
+    sensitivity_eqn = [Form(exp_q, test=phi_x, trial=phi_x), 
                        Form(ker_sen, test=phi_x)]
 
     # Assembler
@@ -215,7 +341,7 @@ def dJdq_sen(q, u, dq, dofhandler):
     
     # Solve for sensitivity
     s_fn = Nodal(basis=phi)
-    for i in range(dq_fn.n_samples()):
+    for i in range(dq.n_samples()):
         # Solve for ith sensitivity
         s = assembler.solve(i_vector=i)
         s_fn.add_samples(s) 
@@ -224,8 +350,8 @@ def dJdq_sen(q, u, dq, dofhandler):
     sx_fn = Nodal(data=s_fn.data(), basis=phi_x) 
     
      # Sensitivity
-    k_sens = Kernel(f=[expq_fn, dq_fn, ux_fn, sx_fn], 
-                    F=lambda eq,dq,ux,sx: eq*dq*ux+eq*sx)
+    k_sens = Kernel(f=[exp_q, dq, ux_fn, sx_fn], 
+                    F=lambda eq,dq,ux,sx: -eq*dq*ux-eq*sx)
     sens_qoi = Form(k_sens, dmu='dv', flag='right')
     
     # Assemble 
@@ -234,107 +360,12 @@ def dJdq_sen(q, u, dq, dofhandler):
 
     # Differential
     dJ = np.array([assembler.get_scalar(i_sample=i) \
-                   for i in range(dq_fn.n_samples())])
+                   for i in range(dq.n_samples())])
     
     return dJ 
      
      
-def gradient(q, u):
-    """
-    Compute the gradient dJdq at q and state u, using the adjoint formulation
-    
-        dJdq = (v,f), 
-        
-    where v is the solution of the adjoint equation
-    
-        -(q v')' = 0, v(0)=0, v(1)=-1
-        
-    and f = (q u')'.
-    
-    Inputs:
-    
-        q: Nodal, diffusion coefficient (possibly sampled)
-        
-        u: Nodal, corresponding state (possibly sampled)
-        
-    
-    Output:
-    
-        dJdq: double, (nx,n_samples) array of (sampled) gradient vectors
-    """
-    #
-    # Finite element basis 
-    # 
-    phi = u.basis()
-    dh  = phi.dofhandler()
-    phi_x = Basis(dh,'ux')
-    
-    adjoint_eqn = [Form(q, test=phi_x, trial=phi_x), Form(0, test=phi)]
-
-
-def sample_qoi(q, dofhandler, return_state=False):
-    """
-    Compute the Quantity of Interest 
-    
-        J(u) = q(1)*u'(1),
-        
-    where u solves 
-    
-        -d/dx ( q du/dx) = 1
-        u(0) = 0,  u(1) = 1
-        
-    for a sample of q's. 
-    
-    Inputs:
-    
-        q: Nodal, (n_dofs, n_samples) function representing the log porosity
-        
-        dofhandler: DofHandler
-        
-    """    
-    # Basis
-    phi   = Basis(dofhandler, 'v')
-    phi_x = Basis(dofhandler, 'vx')
-    n_dofs = phi.n_dofs()
-        
-    # Define problem
-    qfn = Nodal(data=q, basis=phi)
-    
-    problem = [[Form(qfn, test=phi_x, trial=phi_x), Form(1, test=phi)],
-               [Form(qfn, test=phi_x, dmu='dv', flag='right')]]
-    
-    # Define assembler
-    assembler = Assembler(problem)
-    
-    # Incorporate Dirichlet conditions 
-    assembler.add_dirichlet('left',0)
-    assembler.add_dirichlet('right',1)
-    
-    n_samples = qfn.n_subsample()
-    
-    # Assemble system
-    assembler.assemble()
-    
-    if return_state:
-        U = np.empty((n_dofs,n_samples))
-        
-    J = np.zeros(n_samples)
-    for i in range(n_samples):
-        # Solve system
-        u = assembler.solve(i_problem=0, i_matrix=i, i_vector=0)
-        
-        # Compute quantity of interest
-        J[i] = u.dot(assembler.get_vector(1,i))
-        
-        if return_state:
-            U[:,i] = u
-    
-    if return_state:
-        return J,U 
-    else:
-        return J
-
-
+     
 def sensitivity_sample_qoi(exp_q,dofhandler):
     """
     Sample QoI by means of Taylor expansion
@@ -396,9 +427,9 @@ def sensitivity_sample_qoi(exp_q,dofhandler):
     return dJ
     
         
-def test00_finite_elements():
+def test01_finite_elements():
     """
-    
+    Test accuracy of the finite element approximation
     """
     # 
     # Construct reference solution
@@ -543,7 +574,7 @@ def test00_finite_elements():
     fig.savefig('fig/ex02_gauss_fem_error.eps')
      
 
-def test00_sensitivity():
+def test02_sensitivity():
     """
     Check that the sensitivity calculation works. Compare 
     
@@ -715,153 +746,70 @@ def test00_sensitivity():
     # Check derivative by the adjoint equation
     dJdq = 1  
     assert np.allclose(dJ_adj,dJdq)  
-    
-    """
-    print(J_ref)
-    print(J_per)
-    print(dJ)
-    print(dJ_adj)
-    """
-    """
-    #
-    # Covariance
-    # 
-    cov = Covariance(dQ1, name='gaussian', parameters={'l':0.05})
-    cov.compute_eig_decomp()
-    lmd, V = cov.get_eig_decomp()
-    d = len(lmd)
-    
-    #
-    # Two samples of q  
-    # 
-    z = np.random.randn(d,2)
-    expq = sample_q0(V, lmd, d, z)
-    q = np.log(expq)
-    
-    #
-    # Reference and perturbations
-    #
-    q_ref = q[:,0]  # reference log permeability  
-    #q_ref = np.zeros(nx)
-    dq = q[:,1]-q[:,0]  # perturbation direction
-    
-    # Generate perturbed problems
-    
-    """
-    
-    """
-    #
-    # Plot
-    # 
-    q_min, q_max = np.min(q), np.max(q)
-    
-    q_ref_fn = Nodal(basis=phi, data=q_ref)
-    q_per_fn = Nodal(basis=phi, data=q_per)
-    dq_fn = Nodal(basis=phi, data=dq)
-    
-    fig, ax = plt.subplots(2,1)
-    plt.autoscale(enable=True,tight=True)
-    plot = Plot(quickview=False)
-    ax[0] = plot.line(q_ref_fn, axis=ax[0], 
-                   plot_kwargs={'color':'k', 'linestyle':'solid'})
-    ax[0] = plot.line(q_per_fn, axis=ax[0], i_sample=np.arange(n_eps), 
-                   plot_kwargs={'color':'k', 'linestyle':'dashed'})
-    ax[0].set_ylim([q_min, q_max])
-    
-    ax[1] = plot.line(dq_fn, axis=ax[1], 
-                      plot_kwargs={'color':'k','linestyle':'solid'})
-    plt.show()
-    """
-    
-    """
-    
-    problem = [[Form(exp_qref, test=phi_x, trial=phi_x), Form(1, test=phi)],
-               [Form(exp_qref, test=phi_x, dmu='dv', flag='right')],
-               [Form(exp_qper, test=phi_x, trial=phi_x), Form(1, test=phi)],
-               [Form(exp_qper, test=phi_x, dmu='dv', flag='right')],
-               [Form(exp_qref, test=phi_x, trial=phi_x), Form(0, test=phi)]]
-    
-    # Define assembler
-    assembler = Assembler(problem)
-    
-    # Incorporate Dirichlet conditions 
-    for i in [0,2]:
-        assembler.add_dirichlet('left',0, i_problem=i)
-        assembler.add_dirichlet('right',1, i_problem=i)
-    
-    # Boundary conditions for the adjoint equation
-    assembler.add_dirichlet('left',0, i_problem=4)
-    assembler.add_dirichlet('right',-1, i_problem=4)
-    
-    # Assemble system
-    assembler.assemble()
 
-    # Compute reference solution
-    u_ref = Nodal(basis=phi)
-    u_ref.add_samples(assembler.solve(i_problem=0))
-    
-    # Compute reference qoi
-    Ibnd = assembler.get_vector(i_problem=1)
-    J_ref = u_ref.data().ravel().dot(Ibnd)
-    
-    # Compute adjoint solution
-    u_adj = Nodal(basis=phi)
-    u_adj.add_samples(assembler.solve(i_problem=4))
-    
+
+def test03_dJdq():
+    """
+    Compute dJdq for a simple problem, check that it works
+    """
+    #  
+    # Mesh
+    #
+    mesh = Mesh1D(resolution=(20,))
+    mesh.mark_region('left', lambda x: np.abs(x)<1e-10)
+    mesh.mark_region('right', lambda x: np.abs(x-1)<1e-10)
     
     #
-    # Solve for each perturbation
+    # Element
+    #
+    Q = QuadFE(mesh.dim(), 'Q3')
+    dh = DofHandler(mesh, Q)
+    dh.distribute_dofs()
+    nx = dh.n_dofs()
+    x = dh.get_dof_vertices() 
+
+    #
+    # Basis
     # 
-    u_per = Nodal(basis=phi)
-    J_per = np.zeros(n_eps)
-    dJ = np.zeros(n_eps)
-    for i in range(n_eps):
-        
-        # Compute perturbed solution
-        up = assembler.solve(i_problem=2, i_matrix=i)
-        u_per.add_samples(up)
-        
-        # Compute perturbed quantity of interest
-        Ibnd = assembler.get_vector(i_problem=3, i_sample=i)
-        J_per[i] = up.dot(Ibnd)
-        
-        # Compute the finite difference gradient
-        dJ[i] = (J_per[i]-J_ref)/epsilons[i]
+    phi = Basis(dh, 'v')
+    phi_x = Basis(dh, 'vx')
     
-    plt.semilogx(epsilons, dJ,'.-')
+    #
+    # Parameters 
+    # 
     
-    print(dJ)
-    #plot = Plot()
-    x = np.linspace(0,1,201)
-    #assert np.allclose(u_ref.data().ravel(),-0.5*x**2 + 1.5*x)
+    # Reference q
+    q_ref = Nodal(data=np.zeros(nx), basis=phi)
+    
+    # Perturbation
+    dq = Nodal(data=np.ones(nx), basis=phi)
+    
+    #
+    # Sample Reference QoI
+    # 
+    J, u_ref = sample_qoi(q_ref.data(), dh, return_state=True)
+    u_ref = Nodal(data=u_ref, basis=phi)
+    
+    #
+    # Compute dJdq 
+    # 
+    
+    # Perturbation method
+    Jp_per = dJdq_per(q_ref, dq, dh)
+    
+    # Sensitivity method
+    Jp_sen = dJdq_sen(q_ref, u_ref, dq)
+    
+    # Adjoint method
+    Jp_adj = dJdq_adj(q_ref, u_ref, dq)
+    
+    # Check that the answers are close to -1
+    assert np.allclose(Jp_per, -1)
+    assert np.allclose(Jp_sen, -1)
+    assert np.allclose(Jp_adj, -1)
     
     
-    
-    #plt.plot(x,ue)
-    #plt.show()
-    #plot.line(u_ref)
-    #plot.line(u_adj)
-    
-    # Assemble
-    ux_ref = Nodal(data=u_ref.data(), basis=phi_x)
-    ux_adj = Nodal(data=u_adj.data(), basis=phi_x) 
-    
-    k = Kernel(f=[exp_qref, ux_ref, ux_adj],  
-               F=lambda eq,ux,vx: -eq*ux*vx)
-    
-    #plt.plot(x,exp_qref.data(), x,u_ref.data(), x, ue, '--', x,u_adj.data())
-    plt.show()
-    
-    problem = [Form(kernel=k, test=phi)]
-    assembler = Assembler(problem, mesh=mesh)
-    assembler.assemble()
-    
-    #print(assembler.get_scalar())
-    dJa = dq.dot(assembler.get_vector())
-    print(dJa)    
-    """
-    
-def test01_problem():
+def experiment01_problem():
     """
     Illustrate the problem:  Plot sample paths of the input q, of the output, 
         and histogram of the QoI.
@@ -995,7 +943,7 @@ def test01_problem():
     fig.savefig('fig/ex02_gauss_jhist.eps')
     
     
-def test02_reference():
+def experiment02_reference():
     """
     Convergence rate of MC
     """
@@ -1058,7 +1006,7 @@ def test02_reference():
     print(EX, VarX)
 
 
-def test03_truncation():
+def experiment03_truncation():
     """
     Investigate the error in truncation level
     """
@@ -1184,7 +1132,7 @@ def test03_truncation():
     fig.savefig('fig/ex02_gauss_trunc_stats.eps')
     
     
-def test04_sparse_grid():
+def experiment04_sparse_grid():
     """
     Test sparse grid
     """
@@ -1291,10 +1239,13 @@ def test04_sparse_grid():
     fig2.savefig('fig/ex02_gauss_sg_var_error.eps')    
         
     
-def test05_conditioning():
+def experiment05_conditioning():
     """
     Obtain an estimate of J using sparse grids on the coarse scale and MC as a
     correction. 
+    
+    REMARKS: This takes very long, especially since the convergence rate of the 
+    conditional samples is low. 
     """     
     #
     # Computational mesh
@@ -1420,11 +1371,182 @@ def test05_conditioning():
     
     J = sample_qoi(q1,dQ1)
     """
-def test06_sensitivity_sample():
+def experiment06_sensitivity_stats():
     """
-    Test function sensitivity sample
+    Compute the sensitivities
+    """
+    comment = Verbose()
+    comment.comment('Computing statistics for the sensitivity dJ_dq')
+    
+    #
+    # Computational mesh
+    # 
+    mesh = Mesh1D(resolution=(100,))
+    mesh.mark_region('left', lambda x: np.abs(x)<1e-10)
+    mesh.mark_region('right', lambda x: np.abs(x-1)<1e-10)
+    
+    #
+    # Element
+    #
+    Q1 = QuadFE(mesh.dim(), 'Q1')
+    dQ1 = DofHandler(mesh, Q1)
+    dQ1.distribute_dofs()
+    n_dofs = dQ1.n_dofs()
+    phi = Basis(dQ1, 'u')
+    
+    #
+    # Covariance
+    # 
+    cov = Covariance(dQ1, name='gaussian', parameters={'l':0.05})
+    cov.compute_eig_decomp()
+    lmd, V = cov.get_eig_decomp()
+    d = len(lmd)
+    
+    # Fix coarse truncation level
+    d0 = 10
+    
+    #
+    # Build Sparse Grid
+    #
+    grid = TasmanianSG.TasmanianSparseGrid()
+    dimensions = d0
+    outputs = 1
+    depth = 4
+    type = 'level'
+    rule = 'gauss-hermite'
+    grid.makeGlobalGrid(dimensions, outputs, depth, type, rule)
+    
+    # Sample Points
+    zzSG = grid.getPoints()
+    zSG = np.sqrt(2)*zzSG                # transform to N(0,1)
+    
+    # Quadrature Weights
+    wSG = grid.getQuadratureWeights()
+    wSG /= np.sqrt(np.pi)**d0     # normalize weights
+    
+    # Number of grid points
+    n0 = grid.getNumPoints()
+    
+    comment.comment('Element DOFs: {0}'.format(n_dofs))
+    comment.comment('Sparse Grid Size: {0}'.format(n0))
+    
+    #
+    # Sample low dimensional input parameter
+    #
+    comment.tic('Sampling reference') 
+    q0 = sample_q0(V,lmd,d0,zSG.T)
+    J0, u0 = sample_qoi(q0, dQ1, return_state=True)
+    comment.toc()
+    
+    comment.tic('Sampling gradient')
+    dJdq = np.zeros((n_dofs,n0))
+    for i in range(n0):
+        # Sample input and state
+        q = Nodal(data=q0[:,i], basis=phi)
+        u = Nodal(data=u0[:,i], basis=phi)
+        
+        # Compute gradient using adjoint approach
+        dJdq[:,i] = dJdq_adj(q, u)
+    comment.toc()
+    
+    # Compute sparse grid mean and variance
+    E_dJ = np.dot(dJdq,wSG)
+    V_dJ = np.dot(dJdq**2,wSG) - E_dJ**2
+    
+    E_dJ = Nodal(data=E_dJ,basis=phi)
+    V_dJ = Nodal(data=V_dJ,basis=phi)
+    
+    fig, ax = plt.subplots(nrows=1,ncols=2)
+    
+    plot = Plot(quickview=False)
+    ax[0] = plot.line(E_dJ,axis=ax[0])
+    ax[1] = plot.line(V_dJ,axis=ax[1])
+    plt.show()
+    
+def experiment07_rom_sample():
+    """
+    # =============================================================================
+    # Compute Reduced Order Model
+    # ============================================================================= 
+    M = assembler.af[1]['bilinear'].get_matrix()
+    y_train = y_data[:,i_train]
+    y_test = y_data[:,i_test]
+    U,S,Vt = la.svd(y_train)
+    
+    x = dofhandler.get_dof_vertices()
+    
+    m = 8
+    d = 7
+    
+    Um = U[:,:m]
+    plt.plot(x,Um,'k')
+    
+    # Test functions
+    i_left = dofhandler.get_region_dofs(entity_flag='left', entity_type='vertex')
+    B = Um[i_left,:].T
+    
+    plt.plot(np.tile(x[i_left],B.shape),B,'r.')
+    plt.show()
+    
+    Q,R = la.qr(B, mode='full')
+    psi = Um.dot(Q[:,1:])
+    plt.plot(x,psi)
+    plt.show()
+    
+    
+    rom_tol = 1e-10
+    rom_error = 1-np.cumsum(S)/np.sum(S)
+    n_rom = np.sum(rom_error>=rom_tol)
+    print(n_rom)
+    Ur = U[:,:n_rom]
+    
+    Am = np.empty((m,m))
+    Am[:d,:] = Q[:,1:].T.dot(Um.T.dot(A[0].dot(Um)))
+    Am[-1,:] = B.ravel()
+    
+    bm = np.zeros((m,1))
+    bm[:d,:] = Q[:,1:].T.dot(Um.T.dot(b.toarray()))
+    bm[-1,:] = 1
+    
+    
+    c = la.solve(Am,bm)
+    plt.plot(x,y_data[:,[0]],'k',x,Um.dot(c),'r') 
+    plt.show()
+    
+    print(Am.shape)
+    #plt.plot(x,Ur)
+    #plt.show()
+    
+    # =============================================================================
+    # Predict output using ROM
+    # ============================================================================= 
+    u_rom = np.empty((n,n_train))
+    br = b.T.dot(Ur).T 
+    for i in np.arange(n_train):
+        Ar = Ur.T.dot(A[i_train[i]].dot(Ur)) 
+        cr = la.solve(Ar, br)
+        u_rom[:,[i]] = Ur.dot(cr)
+    
+    
+    # =============================================================================
+    # Compare ROM output with direct numerical simulation
+    # ============================================================================= 
+    
+    #plt.plot(x,u_rom,'k',x,y_data[:,i_train])
+    #plt.show()
+    
+    du = np.empty((n,n_train))
+    for i in range(n_train):
+        du[:,i] = u_rom[:,i]-y_train[:,i]
+        #du[:,i] = Ur.dot(Ur.T.dot(u_test[:,i])) - u_test[:,i]
+    
+    
+    u_error = Nodal(dofhandler=dofhandler, data=du)
+    #u_error = np.dot(du.T, M.dot(du))
+    #plot.line(u_error, i_sample=np.arange(0,n_train))
     """
     pass
+
 
 def test06_linearization():
     """
@@ -1869,95 +1991,16 @@ plt.plot(x,y_ave_HYB, 'k--',label='hybrid')
 plt.legend()
 plt.show()
 """
-"""
-  
-# =============================================================================
-# Compute Reduced Order Model
-# ============================================================================= 
-M = assembler.af[1]['bilinear'].get_matrix()
-y_train = y_data[:,i_train]
-y_test = y_data[:,i_test]
-U,S,Vt = la.svd(y_train)
-
-x = dofhandler.get_dof_vertices()
-
-m = 8
-d = 7
-
-Um = U[:,:m]
-plt.plot(x,Um,'k')
-
-# Test functions
-i_left = dofhandler.get_region_dofs(entity_flag='left', entity_type='vertex')
-B = Um[i_left,:].T
-
-plt.plot(np.tile(x[i_left],B.shape),B,'r.')
-plt.show()
-
-Q,R = la.qr(B, mode='full')
-psi = Um.dot(Q[:,1:])
-plt.plot(x,psi)
-plt.show()
-
-
-rom_tol = 1e-10
-rom_error = 1-np.cumsum(S)/np.sum(S)
-n_rom = np.sum(rom_error>=rom_tol)
-print(n_rom)
-Ur = U[:,:n_rom]
-
-Am = np.empty((m,m))
-Am[:d,:] = Q[:,1:].T.dot(Um.T.dot(A[0].dot(Um)))
-Am[-1,:] = B.ravel()
-
-bm = np.zeros((m,1))
-bm[:d,:] = Q[:,1:].T.dot(Um.T.dot(b.toarray()))
-bm[-1,:] = 1
-
-
-c = la.solve(Am,bm)
-plt.plot(x,y_data[:,[0]],'k',x,Um.dot(c),'r') 
-plt.show()
-
-print(Am.shape)
-#plt.plot(x,Ur)
-#plt.show()
-
-# =============================================================================
-# Predict output using ROM
-# ============================================================================= 
-u_rom = np.empty((n,n_train))
-br = b.T.dot(Ur).T 
-for i in np.arange(n_train):
-    Ar = Ur.T.dot(A[i_train[i]].dot(Ur)) 
-    cr = la.solve(Ar, br)
-    u_rom[:,[i]] = Ur.dot(cr)
-
-
-# =============================================================================
-# Compare ROM output with direct numerical simulation
-# ============================================================================= 
-
-#plt.plot(x,u_rom,'k',x,y_data[:,i_train])
-#plt.show()
-
-du = np.empty((n,n_train))
-for i in range(n_train):
-    du[:,i] = u_rom[:,i]-y_train[:,i]
-    #du[:,i] = Ur.dot(Ur.T.dot(u_test[:,i])) - u_test[:,i]
-
-
-u_error = Nodal(dofhandler=dofhandler, data=du)
-#u_error = np.dot(du.T, M.dot(du))
-#plot.line(u_error, i_sample=np.arange(0,n_train))
-"""
 
 if __name__ == '__main__':
-    #test00_finite_elements()
-    #test00_sensitivity()
-    #test01_problem()
-    #test02_reference()
-    #test03_truncation()
-    #test04_sparse_grid()
-    #test05_conditioning()
-    test06_linearization()
+    #test01_finite_elements()
+    #test02_sensitivity()
+    #test03_dJdq()
+    #experiment01_problem()
+    #experiment02_reference()
+    #experiment03_truncation()
+    #experiment04_sparse_grid()
+    #experiment05_conditioning()
+    experiment06_sensitivity_stats()
+    #experiment07_linearization()
+    pass
