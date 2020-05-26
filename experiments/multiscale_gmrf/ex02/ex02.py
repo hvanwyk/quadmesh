@@ -748,6 +748,59 @@ def test02_sensitivity():
     assert np.allclose(dJ_adj,dJdq)  
 
 
+def test02a_sensitivity_gradient():
+    """
+    Test whether the sensitivity and adjoint calculations give the same gradient
+    """
+    # Mesh 
+    mesh = Mesh1D(resolution=(100,))
+    mesh.mark_region('left', lambda x: np.abs(x)<1e-10)
+    mesh.mark_region('right', lambda x: np.abs(1-x)<1e-10) 
+    
+    # Element 
+    Q = QuadFE(mesh.dim(), 'Q2')
+    dh = DofHandler(mesh, Q)
+    dh.distribute_dofs()
+    n_dofs = dh.n_dofs()
+    phi = Basis(dh,'u')
+    
+    # Covariance
+    cov = Covariance(dh, name='gaussian', parameters={'l':0.05})
+    cov.compute_eig_decomp()
+    lmd, V = cov.get_eig_decomp()
+    d = len(lmd)
+    
+    # Coarse field (single sample)
+    d0 = 2
+    z0 = np.random.randn(d0,1)
+    q0 = sample_q0(V, lmd, d0, z0)
+    q0_fn = Nodal(data=q0, basis=phi)
+    
+    # State
+    J0,u0 = sample_qoi(q0,dh,return_state=True)
+    u0_fn = Nodal(data=u0, basis=phi) 
+        
+    # Compute gradient using sensitivity
+    dJs = np.zeros(n_dofs)
+    for i in range(n_dofs):
+        # Define perturbation
+        dq = np.zeros(n_dofs)
+        dq[i] = 1
+        dq_fn = Nodal(data=dq, basis=phi)
+    
+        # Compute gradient using sensitivity
+        dJs[i] = dJdq_sen(q0_fn, u0_fn, dq_fn) 
+    
+    dJs_fn = Nodal(data=dJs, basis=phi)
+    plot = Plot()
+    plot.line(dJs_fn)
+    
+    # Compute gradient using adjoint method
+    dJa = dJdq_adj(q0_fn, u0_fn)
+    dJa_fn = Nodal(data=dJa, basis=phi)
+    print(dJa)
+    plot.line(dJa_fn)
+    
 def test03_dJdq():
     """
     Compute dJdq for a simple problem, check that it works
@@ -1995,12 +2048,13 @@ plt.show()
 if __name__ == '__main__':
     #test01_finite_elements()
     #test02_sensitivity()
+    test02a_sensitivity_gradient()
     #test03_dJdq()
     #experiment01_problem()
     #experiment02_reference()
     #experiment03_truncation()
     #experiment04_sparse_grid()
     #experiment05_conditioning()
-    experiment06_sensitivity_stats()
+    #experiment06_sensitivity_stats()
     #experiment07_linearization()
     pass
