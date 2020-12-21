@@ -1,12 +1,25 @@
 from mesh import convert_to_array
-from assembler import AssembledForm
 from function import Nodal
 import numpy as np
 from scipy import sparse
 from scipy.sparse import linalg
 import numbers
 from diagnostics import Verbose    
-  
+
+
+class NonlinearSystem(object):
+    """
+    
+    """
+    def __init__(self, residual, Jacobian):
+        """
+        Inputs:
+        
+            residual: function, 
+        """
+        pass
+
+
 class LinearSystem(object):
     """
     Linear system object consisting of a single coefficient matrix and possibly

@@ -597,7 +597,7 @@ class Kernel(object):
             f_vals.append(fv)
                
         #
-        # Combine functions using metafunction F 
+        # Combine functions using meta-function F 
         # 
         
         # Figure out which of the keyword parameters F can take

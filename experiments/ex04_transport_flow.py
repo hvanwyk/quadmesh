@@ -146,6 +146,7 @@ def test_ft():
     py = pfn.differentiate((1,1))
     
     #plot.contour(px)
+    #plt.show()
         
     # =============================================================================
     # Transport Equations
@@ -153,7 +154,7 @@ def test_ft():
     # Specify initial condition
     c0 = Constant(1)
     dt = 1e-1
-    T  = 4
+    T  = 6
     N  = int(np.ceil(T/dt))
     
     c = Basis(c_dofhandler, 'c')

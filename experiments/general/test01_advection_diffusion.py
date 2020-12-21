@@ -70,6 +70,7 @@ for resolution in [(5,5), (10,10), (20,20), (40,40)]:
             # 
             element = QuadFE(2, etype)
             dofhandler = DofHandler(mesh, element)
+            dofhandler.distribute_dofs()
             #
             # Define Basis Functions
             #
@@ -92,7 +93,7 @@ for resolution in [(5,5), (10,10), (20,20), (40,40)]:
             # Assembler system
             # 
             assembler = Assembler([problem], mesh)
-            assembler.add_dirichlet_constraint(None, ue)
+            assembler.add_dirichlet(None, ue)
             assembler.assemble()
             
             #
@@ -103,13 +104,14 @@ for resolution in [(5,5), (10,10), (20,20), (40,40)]:
             #
             # Compute the error
             # 
-            e_vec = ua.data() - ue.interpolant(mesh, element).data()
-            efn = Nodal(data=e_vec, dofhandler=dofhandler)
-    
+            e_vec = ua[:,None] - ue.interpolant(dofhandler).data()
+            efn = Nodal(data=e_vec, basis=u, dim=2)
+            
             #
             # Record error           
             # 
             errors[resolution][eps][etype] = max(np.abs(e_vec))
+            
 
 
 headers = ('Resolution','Q1:1', 'Q1:1e-3', 'Q1:1e-6','Q2:1', 'Q2:1e-3', 'Q2:1e-6')
@@ -117,8 +119,10 @@ print('{:<12} {:<10} {:<10} {:<10} {:<10} {:<10} {:<10}'.format(*headers))
 
 for resolution in errors.keys():
     er = errors[resolution]
-    row = [resolution[0],er[1]['Q1'], er[1e-3]['Q1'], er[1e-6]['Q1'], \
-           er[1]['Q2'], er[1e-3]['Q2'], er[1e-6]['Q2']]
+    
+    row = [resolution[0],er[1]['Q1'][0], er[1e-3]['Q1'][0], er[1e-6]['Q1'][0], \
+           er[1]['Q2'][0], er[1e-3]['Q2'][0], er[1e-6]['Q2'][0]]
+    print(row)
     print('{:<12} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e}'.format(*row))
 
 

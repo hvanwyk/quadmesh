@@ -161,8 +161,8 @@ class Plot(object):
         #
         # Plot mesh cells
         # 
-        cells = mesh.get_region(entity_type='cell', subforest_flag=subforest_flag)
-        axis = self.cells(axis, cells)
+        axis = self.cells(axis, mesh, subforest_flag=subforest_flag, 
+                          cell_numbers=cell_numbers)
         
         #
         # Plot regions
@@ -173,7 +173,6 @@ class Plot(object):
             # 
             assert type(regions) is list, 'Regions should be passed as list'
             colors = self.__color_cycle[:len(regions)]
-            
             for region, color in zip(regions,colors):
                 flag, entity_type = region
                                 
@@ -475,7 +474,7 @@ class Plot(object):
             #
             # Draw arrow
             # 
-            axis.annotate(s='', xy=he.head().coordinates(), \
+            axis.annotate(text='', xy=he.head().coordinates(), \
                           xytext=he.base().coordinates(),\
                           color = color, \
                           arrowprops=dict(arrowstyle="->", \
@@ -522,7 +521,8 @@ class Plot(object):
 
     
            
-    def cells(self, axis, cells, color='w', alpha=1):
+    def cells(self, axis, mesh, color='w', alpha=1, cell_flag=None, 
+              subforest_flag=None, cell_numbers=False):
         """
         Plot (selected) cells in a mesh
         
@@ -530,13 +530,17 @@ class Plot(object):
         
             axis: Axes, current axes
             
-            cells: cells are to be plotted
+            mesh: computational Mesh
             
             subforest_flag: str/int/tuple, submesh flag
             
             cell_flag: str/int/tuple, subregion flag
             
             color: str, cell color
+            
+            alpha: double, transparency
+            
+            cell_numbers: bool (False), whether to display cell numbers
             
         
         Outputs:
@@ -546,7 +550,8 @@ class Plot(object):
         #
         # Iterate over cells
         # 
-        for cell in cells: 
+        for cell in mesh.get_region(flag=cell_flag, entity_type='cell', 
+                                    subforest_flag=subforest_flag): 
             if isinstance(cell, Interval):
                 #
                 # 1D Mesh
