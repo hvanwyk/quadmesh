@@ -37,7 +37,7 @@ u1 = Explicit(f=lambda x,t: t[:,0]**3*np.sin(np.pi*x[:,0])*np.sin(np.pi*x[:,1]),
               dim=2, n_variables=2)
 
 #
-# Iterate over time
+# Iterate over time ss
 #
 u = np.empty()
 for i in range(nt):
