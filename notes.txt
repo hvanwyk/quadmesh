@@ -1,0 +1,128 @@
+Current Wishlist:
+
+0. Questions: 
+	Basis functions for bilinear forms - should they have separate names?
+
+1. GMRFs: 
+	
+	We want to implement the simulation and conditioning of GMRF's on a 
+	(nested) mesh.
+	
+	TODO:
+	
+	a. migrate the kl_expansion to the gmrf class. 
+	b. when initializing the field, specify the parametrization (kl, precision,
+	   covariance, others?)
+	c. implement pointwise conditioning (sample paths and field)
+	d. implement conditioning on hard constraints (sample paths and field)
+	e. implement conditioning on soft constraints (sample paths and field)
+	f. multiscale by local averaging (fix), or via Willsky?
+
+
+2. Function Class:
+
+	We want to define nodal-, mesh-, and explicit functions separately. 
+	This will make it easier to assemble, and to deal with different meshes, 
+	and -elements.
+
+	TODO: 
+
+	a. initialize function [done]
+	b. evaluate function and its derivatives  [done]
+		i. move shape_eval from 'System' to 'Elements' class [done] 
+		ii. allow for samples of functions (i.e. multiple columns) [done].
+		iii. introduce piecewise constant elements. [done]
+	c. Tests
+		
+
+	
+3. 1D Mesh: 
+
+	Extend the quadmesh to include one dimensional meshes. 
+	
+	TODO:
+	
+	a. define the BiCell class (lots of functions!) [done]
+	a.1. define BiNode class [done]
+	b. change Mesh class to be dimensionally aware
+	c. add 1D shape functions. [done]
+	d. modify plot function 
+	
+	Node Class:
+		copy
+		grid_size
+		max_depth
+		traverse
+		find_leaves (get_leaves)
+		get_root 
+		search_by_address (prev find_node) 
+		has_children
+		get_children
+		has_parent
+		get_parent
+		mark
+		unmark
+		is_marked
+		is_linked
+		cell (change from quadcell)
+		
+	QuadNode
+		is_balanced
+		balance
+		find_neighbor
+	
+	BiNode
+		no hanging nodes -> no need to balance tree.
+		find_neighbor
+		
+		
+
+4. Generalized 2D Mesh: 
+
+	Extend the QuadCell object to include trees of cells whose root cells
+	arrangement is given by a more general connectivity matrix.
+	
+	TODO: 
+	
+	a. write a function that imports a mesh from a gmsh file (generalize 
+	   'grid_size') [done].  
+	b. resolve how to orient cells consistently (e.g. goin 'N' twice and then
+	   'S' twice should get you back to the same cell. Perhaps loop over all 
+	   elements and resolve all neighbors (and reciprocally)0.  
+	c. Resolve this stupid problem with level 0 (the empty root). Maybe make
+	   the initial refinement by default. 
+	   
+	d. Modify QuadCell, BiCell classes
+		QuadCell:
+			- consolidate map_to_reference, map_from_reference, and derivative_multiplier
+			  into one function: reference_mapping  [done]
+			- use nodal basis functions to map from physical to reference cell. [done]
+			
+		BiCell: 
+			- reference_mapping: consolidates, map_to_reference, map_from_reference,
+			  and derivative multiplier. 
+			  
+			  
+		Node: Incorporate Grid object in Nodes
+	
+	
+5. Merge Cells and Nodes (submeshes via tags)
+	
+	Instead of using Nodes for the tree structure and Cells for the physical structure,
+	combine them. 
+	
+	TODO:
+	
+	a. Copy Node methods to Cells.
+	
+	b. Ensure
+	
+	
+Tree
+Forest
+Dcel
+Vertex 		 
+HalfEdge(Tree)
+Cell
+QuadCell(Cell, Tree) + reference map + split
+Mesh(Forest)  + boundary_edges + boundary_nodes +  
