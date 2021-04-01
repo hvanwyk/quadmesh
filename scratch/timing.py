@@ -87,7 +87,7 @@ for cell in mesh.cells.get_leaves():
 comment.toc()
 
 # Elements
-element = QuadFE(2,'Q1')  # element for pressure
+element = QuadFE(2,'Q2')  # element for pressure
 
 # Dofhandlers
 dofhandler = DofHandler(mesh, element)

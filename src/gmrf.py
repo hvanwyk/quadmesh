@@ -43,10 +43,15 @@ from sksparse.cholmod import  CholmodNotPositiveDefiniteError
 def modchol_ldlt(A,delta=None):
     """
     Modified Cholesky algorithm based on LDL' factorization.
-    [L D,P,D0] = modchol_ldlt(A,delta) computes a modified
-    Cholesky factorization P*(A + E)*P' = L*D*L', where 
-    P is a permutation matrix, L is unit lower triangular,
-    and D is block diagonal and positive definite with 1-by-1 and 2-by-2 
+    
+        [L D,P,D0] = modchol_ldlt(A,delta) 
+        
+    computes a modified Cholesky factorization 
+    
+        P*(A + E)*P' = L*D*L', where 
+    
+    P is a permutation matrix, L is unit lower triangular, and D is block
+    diagonal and positive definite with 1-by-1 and 2-by-2 
     diagonal blocks.  Thus A+E is symmetric positive definite, but E is
     not explicitly computed.  Also returned is a block diagonal D0 such
     that P*A*P' = L*D0*L'.  If A is sufficiently positive definite then 

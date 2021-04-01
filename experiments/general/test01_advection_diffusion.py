@@ -122,7 +122,7 @@ for resolution in errors.keys():
     
     row = [resolution[0],er[1]['Q1'][0], er[1e-3]['Q1'][0], er[1e-6]['Q1'][0], \
            er[1]['Q2'][0], er[1e-3]['Q2'][0], er[1e-6]['Q2'][0]]
-    print(row)
+    #print(row)
     print('{:<12} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e}'.format(*row))
 
 

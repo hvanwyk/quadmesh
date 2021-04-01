@@ -23,7 +23,7 @@ class TestEllipticField(unittest.TestCase):
         #
         mesh = QuadMesh(box=[0,20,0,20], resolution=(20,20), periodic={0,1})
         dim = mesh.dim()
-        element = QuadFE(dim, 'Q3')
+        element = QuadFE(dim, 'Q2')
         dofhandler = DofHandler(mesh, element)
         dofhandler.distribute_dofs()
         basis = Basis(dofhandler,'u')
@@ -75,8 +75,8 @@ class TestEllipticField(unittest.TestCase):
         
         plot = Plot(20)
         plot.contour(v)
-        
-        
+              
+          
     def test_powers(self):
         pass
 
