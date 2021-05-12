@@ -368,7 +368,7 @@ def rational(x, y, a, M=None, periodic=False, box=None):
     d = distance(x, y, M, periodic=periodic, box=box)
     return (1/(1+d**2))**a   
 
-
+'''
 class CovKernel(Kernel):
     """
     Integral kernel
@@ -431,7 +431,7 @@ class CovKernel(Kernel):
         # Store results
         k = Explicit(f=cov_fn, parameters=parameters, n_variables=2, dim=dim)
         Kernel.__init__(self, f=k)
-        
+'''        
      
 class SPDMatrix(object):
     """
@@ -1027,7 +1027,7 @@ class Covariance(SPDMatrix):
     """
     Discretized covariance operator
     
-    TODO: Class to (i) incorporate CovKernel, (ii) replace KLField
+    TODO: Class to (i) incorporate CovKernel
     """
     def __init__(self, dofhandler, discretization='interpolation', 
                  subforest_flag=None, name=None, parameters={}, cov_fn=None):
@@ -1154,7 +1154,7 @@ class Covariance(SPDMatrix):
                 cov_fn = gaussian
             elif name == 'exponential':
                 #
-                # k(x,y) = sigma*exo(-0.5|x-y|_M/l)
+                # k(x,y) = sigma*exp(-0.5|x-y|_M/l)
                 # 
                 cov_fn = exponential
             elif name == 'matern':
@@ -2857,7 +2857,7 @@ class Covariance(object):
 
 
     
-    
+'''    
 # =============================================================================
 # Gaussian Markov Random Field Class
 # =============================================================================
@@ -2981,7 +2981,7 @@ class GMRF(object):
             b = None
         self.__b = b
         
-    '''    
+    
     @classmethod
     def from_covariance_kernel(cls, cov_name, cov_par, mesh, \
                                mu=None, element=None):
@@ -3082,8 +3082,7 @@ class GMRF(object):
             
         return cls(mu=mu, covariance=Sigma, mesh=mesh, element=element, \
                    discretization=discretization)
-    '''
-    '''
+    
     @classmethod
     def from_matern_pde(cls, alpha, kappa, mesh, element=None, tau=None):
         """
@@ -3127,7 +3126,7 @@ class GMRF(object):
             
         return cls(mu=mu, covariance=Sigma, mesh=mesh, element=element, \
                    discretization=discretization)
-    '''
+    
     
     def precision(self):
         """
@@ -3173,7 +3172,7 @@ class GMRF(object):
         return self.__size
     
     
-    '''    
+       
     def L(self, b=None, mode='precision'):
         """
         Return lower triangular Cholesky factor L or compute L*b
@@ -3249,13 +3248,13 @@ class GMRF(object):
             return L.dot(b) 
         
         
-    '''
+    
     def b(self):
         """
         Return Q\mu
         """
         return self.__b
-    '''
+    
     def Q_solve(self, b):
         """
         Return the solution x of Qx = b by successively solving 
@@ -3268,9 +3267,9 @@ class GMRF(object):
         else:
             y = np.linalg.solve(self.__f_prec, b)
             return np.linalg.solve(self.__f_prec.transpose(),y)
-    '''
     
-    '''
+    
+    
     def L_solve(self, b, mode='precision'):
         """
         Return the solution x of Lx = b, where Q = LL' (or S=LL')
@@ -3348,7 +3347,6 @@ class GMRF(object):
         """
         mesh = self.mesh()
         
-    '''
     def chol_sample(self, n_samples=1, z=None, mode='covariance'):
         """
         Generate sample realizations from Gaussian random field.
@@ -3658,7 +3656,7 @@ class GMRF(object):
         pass
     
     
-        '''
+    
         if constraint_type == 'pointwise':
             i_b, x_b = constraint
             i_a = [i not in i_b for i in range(self.n())]

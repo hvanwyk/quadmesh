@@ -1835,9 +1835,9 @@ class Assembler(object):
         #t_gauss_rules = 0 
         t_shape_eval = 0
         t_form_eval = 0
-        t_get_node_address = 0
-        t_af_update = 0
-        t_af_consolidate = 0
+        #t_get_node_address = 0
+        #t_af_update = 0
+        #t_af_consolidate = 0
         #t_reference_map = 0 
         
        
