@@ -129,8 +129,4 @@ grid.makeGlobalGrid(dimensions, outputs, depth, type, rule)
 zzSG = grid.getPoints()
 zSG = np.sqrt(2)*zzSG
 
-zG = np.random.randn(500,2)
-fig = plt.figure(figsize=(3,3))
-plt.plot(zG[:,0],zG[:,1],'.k')
-plt.show()  
-fig.savefig('/home/hans-werner/Dropbox/work/projects/spatially_indexed_noise/papers/hybrid_sampling/presentation/mc_nodes.eps')
+  

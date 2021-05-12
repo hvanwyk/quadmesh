@@ -29,7 +29,7 @@ class GaussRule(object):
             
                 OR 
             
-            shape: str, 'interval', 'triangle', or 'quadrilateral'
+            shape: str, 'interval', 'triangle', or 'quadrilateral'.
              
         """
         #
