@@ -78,7 +78,7 @@ class Plot(object):
             # 1D Mesh
             #
             x0, x1 = mesh.bounding_box()
-            l = x1 - x0
+            #l = x1 - x0
             #axis.set_xlim([x0-0.1*l, x1+0.1*l])
             axis.set_xlim([x0,x1])
             axis.set_ylim([-0.1,0.1])
@@ -96,7 +96,16 @@ class Plot(object):
           
         return axis
     
-    
+    def tree(self, tree, axis=None, subforest_flag=None):
+        """
+        Plot a tree
+        """
+        # Determine the width of the tree
+        leaves = tree.get_leaves()
+        n_leaves = len(leaves)
+        
+        
+        
     def mesh(self, mesh, axis=None, dofhandler=None, show_axis=False, 
              regions=None, vertex_numbers=False, 
              edge_numbers=False, cell_numbers=False, dofs=False, doflabels=False,
@@ -556,9 +565,14 @@ class Plot(object):
                 #
                 # 1D Mesh
                 # 
+                
+                # Change default color to black
+                if color=='w':
+                    color='gray'
+                    
                 a, = cell.base().coordinates()
                 b, = cell.head().coordinates()
-                axis.plot([a,b], [0,0], '-|k')
+                axis.plot([a,b], [0,0], '-|',color=color)
             elif isinstance(cell, Cell):
                 #
                 # 2D Mesh 

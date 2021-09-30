@@ -1805,7 +1805,7 @@ class GaussianField(object):
                 # Sample unconditioned field 
                 Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
                                  decomposition=decomposition)            
-            
+                
                 # Compute residual
                 r = A.dot(Xs)-e
                 
@@ -1814,7 +1814,7 @@ class GaussianField(object):
                 
                 # Apply correction 
                 X = Xs - Vk.dot(KAT.dot(U))
-
+                
                 return X
             
             elif output=='field':

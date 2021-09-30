@@ -24,7 +24,8 @@ plot = Plot()
 #
 # Computational mesh
 # 
-mesh = QuadMesh(resolution=(8,8))
+mesh = QuadMesh(resolution=(4,4))
+
 
 # Mark boundary
 bnd_fn = lambda x,y: abs(x)<1e-6 or abs(1-x)<1e-6 or abs(y)<1e-6 or abs(1-y)<1e-6 
@@ -71,13 +72,16 @@ phiy_2 = Basis(dQ2,'vy')
 #
 # Define Random field
 # 
-cov = Covariance(dQ0, name='gaussian', parameters={'l':0.1})
+cov = Covariance(dQ0, name='gaussian', parameters={'l':0.01})
 cov.compute_eig_decomp()
 q = GaussianField(dQ0.n_dofs(), K=cov)
 
+
 # Sample Random field
 n_samples = 100
-eq = Nodal(basis=phi_0, data=0.1*np.exp(q.sample(n_samples)))
+eq = Nodal(basis=phi_0, data=np.exp(q.sample(n_samples)))
+
+plot.contour(eq, n_sample=25)
 
 #
 # Compute state 
@@ -100,6 +104,8 @@ J = assembler.get_vector(1)
 u_vec = assembler.solve()
 u = Nodal(basis=phi_1, data=u_vec)
 
+plot.contour(u)
+plt.title('Sample Path')
 
 # Solve the adjoint system
 adjoint = [Form(eq, test=phix_2, trial=phix_2), 
@@ -110,13 +116,17 @@ assembler = Assembler(adjoint)
 assembler.add_dirichlet('bnd')
 assembler.assemble()
 
+#%%
 z_data = np.zeros((dQ2.n_dofs(), n_samples))
 for i in range(n_samples):
     z_data[:,i] = assembler.solve(i_matrix=i)
 
 z = Nodal(basis=phi_2, data=z_data)
+
+#%%
 plot.contour(z, n_sample=25)
 
+#%%
 grid = TasmanianSG.TasmanianSparseGrid()
 dimensions = 2
 depth = 5

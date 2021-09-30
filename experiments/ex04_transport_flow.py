@@ -235,7 +235,7 @@ def test_ft():
     #kernel = Kernel(f=[c_fn,px,py], F=F)
     kernel = Kernel(c_fn)
     
-    print(kernel.n_subsample())
+    #print(kernel.n_subsample())
     form = Form(kernel, flag='right', dmu='ds')
     assembler = Assembler(form, mesh=mesh)
     assembler.assemble()

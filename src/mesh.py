@@ -446,7 +446,7 @@ class Tree(object):
 
     def mark(self, flag=None, recursive=False, reverse=False):
         """
-        Mark Cell
+        Mark Tree and its progeny/ancestors
         
         Inputs:
         
@@ -1265,6 +1265,10 @@ class Forest(object):
     def find_node(self, address):
         """
         Locate a tree node by its address
+        
+        Inputs: 
+            
+            address: list of branches along which to find node in tree
         """
         # Reverse address
         address = address[::-1]
