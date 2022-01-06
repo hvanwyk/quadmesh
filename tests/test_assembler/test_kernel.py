@@ -243,7 +243,8 @@ class TestIKernel(unittest.TestCase):
         # Check accuracy
         self.assertTrue(np.allclose(kernel.eval((x,y)), x*y+2))
         
-    
+if __name__ == '__main__':
+    unittest.main()    
     
     
     

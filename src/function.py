@@ -376,13 +376,12 @@ class Map(object):
             
     def interpolant(self, dofhandler, subforest_flag=None):
         """
-        Return the interpolant of the function on a (new) mesh/element pair 
+        Return the interpolant of the function on a (new) dofhandler 
         
         Inputs:
             
-            mesh: Mesh, Physical mesh on which to interpolate
-            
-            element: QuadFE, element that determines the interpolant
+            dofhandler: DofHandler, determines the mesh and elements on which 
+                to interpolate. 
             
             subforest_flag [None]: str/int, optional mesh marker
             
@@ -2362,6 +2361,16 @@ class Nodal(Map):
                     f_vec[in_cell,:] = np.dot(phi, f_loc)
                 """
 
+    def project(self, basis):
+        """
+        Project the current Nodal function onto a given basis set
+        
+        Inputs: 
+            
+            basis: 
+        """
+        assembler = Assembler()
+        
         
     def differentiate(self, derivative):
         """

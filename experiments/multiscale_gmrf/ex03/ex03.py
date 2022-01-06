@@ -19,6 +19,10 @@ import scipy.linalg as la
 import matplotlib.pyplot as plt
 
 
+"""
+Investigate local error estimates on the resolution of a random field
+"""
+
 plot = Plot()
 
 #
@@ -34,7 +38,7 @@ mesh.mark_region('bnd', bnd_fn, entity_type='half_edge', on_boundary=True)
 # Mark averaging region
 dmn_fn = lambda x,y: x>=0.75 and x<=1 and y>=0.75 and y<=1
 mesh.mark_region('dmn', dmn_fn, entity_type='cell', strict_containment=True, on_boundary=False) 
-cells = mesh.get_region(flag='dmn', entity_type='cell', on_boundary=False, subforest_flag=None)
+#cells = mesh.get_region(flag='dmn', entity_type='cell', on_boundary=False, subforest_flag=None)
 plot.mesh(mesh, regions=[('bnd','edge'),('dmn','cell')])
 
 #

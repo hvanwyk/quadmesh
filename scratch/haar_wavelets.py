@@ -4,7 +4,6 @@ from fem import QuadFE, DofHandler
 from function import Explicit
 import numpy as np
 
-
 plot = Plot()
 mesh = Mesh1D()
 Q0 = QuadFE(1,'DQ0')
@@ -17,7 +16,7 @@ for l in range(n_levels):
 
 
 f = Explicit(lambda x: np.abs(x-0.5), dim=1)
-fQ = f.interpolant(dh0, subforest_flag=7)
+fQ = f.interpolant(dh0, subforest_flag=3)
 
 
 plot.line(fQ, mesh) 

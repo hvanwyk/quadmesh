@@ -444,3 +444,6 @@ class TestIIForm(unittest.TestCase):
             fa = np.dot(vi.T, form_loc.dot(uj))
             fe = vals[ktype] 
             self.assertAlmostEqual(fa, fe)
+
+if __name__ == '__main__':
+    unittest.main()

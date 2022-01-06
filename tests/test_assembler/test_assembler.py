@@ -881,3 +881,7 @@ class TestAssembler(unittest.TestCase):
             xa += C.dot(xa)
             
             self.assertTrue(np.allclose(ue.data()[:,0], xa))
+            
+            
+if __name__ == '__main__':
+    unittest.main()

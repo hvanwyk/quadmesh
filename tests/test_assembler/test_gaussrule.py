@@ -134,3 +134,6 @@ class TestGaussRule(unittest.TestCase):
                                msg='Failed to integrate x^2y.')
         self.assertAlmostEqual(np.sum(w)*jac, np.sqrt(2), places=10,\
                                msg='Failed to integrate 1.')
+        
+if __name__ == '__main__':
+    unittest.main()

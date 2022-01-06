@@ -225,7 +225,8 @@ class Plot(object):
         if dofs:
             assert dofhandler is not None, 'Plotting Dofs requires dofhandler.'
             
-            axis = self.dofs(axis, dofhandler, doflabels=doflabels)
+            axis = self.dofs(axis, dofhandler, doflabels=doflabels, 
+                             subforest_flag=subforest_flag)
     
         
         if not show_axis:

@@ -3072,6 +3072,9 @@ class Cell(Tree):
         Inputs:
         
             half_edges: HalfEdge, list of half-edges that determine the cell
+            
+            n_children: int, number of sub-cells within cell
+            
  
         """    
         Tree.__init__(self, n_children=n_children, parent=parent, \
@@ -3642,7 +3645,6 @@ class QuadCell(Cell, Tree):
                 hess_r2p: double, n-list of (2,2,2) reference-to-phyiscal 
                     hessians. 
                     
-        TODO: Modify the inverse map using Hua1990                
         """
         #
         # Convert input to array
@@ -3685,42 +3687,53 @@ class QuadCell(Cell, Tree):
         
             # Points in physical domain
             x, y = x_in[:,0], x_in[:,1]
-            
-            # Initialize points in reference domain
-            s, t = 0.5*np.ones(n), 0.5*np.ones(n) 
-            n_iterations = 5
-            for dummy in range(n_iterations):
+            if self.is_rectangle():
                 #
-                # Compute residual
+                # Cell is a rectangle - the inverse mapping is explicit
                 # 
-                rx = p_sw_x*(1-s)*(1-t) + p_se_x*s*(1-t) \
-                     + p_ne_x*s*t + p_nw_x*(1-s)*t - x
-                         
-                ry = p_sw_y*(1-s)*(1-t) + p_se_y*s*(1-t) \
-                     + p_ne_y*s*t + p_nw_y*(1-s)*t - y
-                 
-                #
-                # Compute jacobian
-                #              
-                drx_ds = -p_sw_x*(1-t) + p_se_x*(1-t) + p_ne_x*t - p_nw_x*t  # J11 
-                dry_ds = -p_sw_y*(1-t) + p_se_y*(1-t) + p_ne_y*t - p_nw_y*t  # J21
-                drx_dt = -p_sw_x*(1-s) - p_se_x*s + p_ne_x*s + p_nw_x*(1-s)  # J12
-                dry_dt = -p_sw_y*(1-s) - p_se_y*s + p_ne_y*s + p_nw_y*(1-s)  # J22 
+                s = (x-p_sw_x)/(p_se_x-p_sw_x)
+                t = (y-p_sw_y)/(p_nw_y-p_sw_y)
                 
+                x_trg = np.array([s,t]).T
+            else:
                 #
-                # Newton Update: 
+                # Cell is quadrilateral - the inverse mapping must be estimated
                 # 
-                Det = drx_ds*dry_dt - drx_dt*dry_ds
-                s -= ( dry_dt*rx - drx_dt*ry)/Det
-                t -= (-dry_ds*rx + drx_ds*ry)/Det
-                
-                #
-                # Project onto [0,1]^2
-                # 
-                s = np.minimum(np.maximum(s,0),1)
-                t = np.minimum(np.maximum(t,0),1)
-                
-            x_trg = np.array([s,t]).T
+                # Initialize points in reference domain
+                s, t = 0.5*np.ones(n), 0.5*np.ones(n) 
+                n_iterations = 5
+                for dummy in range(n_iterations):
+                    #
+                    # Compute residual
+                    # 
+                    rx = p_sw_x*(1-s)*(1-t) + p_se_x*s*(1-t) \
+                         + p_ne_x*s*t + p_nw_x*(1-s)*t - x
+                             
+                    ry = p_sw_y*(1-s)*(1-t) + p_se_y*s*(1-t) \
+                         + p_ne_y*s*t + p_nw_y*(1-s)*t - y
+                     
+                    #
+                    # Compute jacobian
+                    #              
+                    drx_ds = -p_sw_x*(1-t) + p_se_x*(1-t) + p_ne_x*t - p_nw_x*t  # J11 
+                    dry_ds = -p_sw_y*(1-t) + p_se_y*(1-t) + p_ne_y*t - p_nw_y*t  # J21
+                    drx_dt = -p_sw_x*(1-s) - p_se_x*s + p_ne_x*s + p_nw_x*(1-s)  # J12
+                    dry_dt = -p_sw_y*(1-s) - p_se_y*s + p_ne_y*s + p_nw_y*(1-s)  # J22 
+                    
+                    #
+                    # Newton Update: 
+                    # 
+                    Det = drx_ds*dry_dt - drx_dt*dry_ds
+                    s -= ( dry_dt*rx - drx_dt*ry)/Det
+                    t -= (-dry_ds*rx + drx_ds*ry)/Det
+                    
+                    #
+                    # Project onto [0,1]^2
+                    # 
+                    s = np.minimum(np.maximum(s,0),1)
+                    t = np.minimum(np.maximum(t,0),1)
+                    
+                x_trg = np.array([s,t]).T
 
         #
         # Compute the Jacobians and Hessians (if asked for)

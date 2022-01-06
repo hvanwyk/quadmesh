@@ -562,7 +562,7 @@ class Kernel(object):
         
             x: (n_points, dim) array of points at which to evaluate the kernel
             
-            phi: basis-indexed list of shape functions 
+            phi: basis-indexed dictionary of shape functions 
             
             region: Geometric region (Cell, Interval, HalfEdge, Vertex)
                 Included for modified kernels   
@@ -760,6 +760,19 @@ class Form(object):
             #
             basis.append(self.trial)
         
+        #
+        # Add basis functions from the kernel
+        # 
+        basis.extend(self.kernel.basis())
+        
+        #
+        # Return basis list 
+        #
+        return basis
+        """
+        This is from when it was important for the basis functions to be 
+        defined on the same mesh. 
+        
         # 
         # Add basis functions from kernel
         # 
@@ -779,10 +792,8 @@ class Form(object):
                     # Check that basis defined over same mesh
                     #
                     basis.append(phi)
-                    
-        # Return basis list 
-        return basis
-    
+        """
+                 
     
     def dim(self):
         """
@@ -1716,7 +1727,7 @@ class Assembler(object):
         # Store info    
         self.problems = problems
         
-        
+        """
         # 
         # Get mesh from problems (check consistency)
         #
@@ -1730,11 +1741,13 @@ class Assembler(object):
                             
                         if mesh is None:
                             mesh = basis.dofhandler().mesh
-                            
+                        
+                        # TODO: Get rid of this 
                         if subforest_flag is None:
                             subforest_flag = basis.subforest_flag()
                         
                         assert basis.same_mesh(ref_basis)
+        """
         
         assert mesh is not None, 'No mesh specified.'
         
@@ -1939,7 +1952,7 @@ class Assembler(object):
                             cj_sinfo = self.shape_info(cj)
                             
                             # 
-                            # Compute shape function on on cell
+                            # Compute shape function on cell
                             # 
                             xj_g, wj_g, phij, dofsj = self.shape_eval(cj_sinfo, cj)
                                                        
@@ -2804,12 +2817,13 @@ class Assembler(object):
             dofs[region] = {}
             for basis in shape_info[region]:
                 # 
-                # Get region dofs for each 
+                # Get region dofs for each basis
                 #
-                dh = basis.dofhandler()
+                #dh = basis.dofhandler()
                 #rdofs = dh.get_cell_dofs(cell,entity=region,
                 #                         subforest_flag=basis.subforest_flag())
-                rdofs = dh.get_cell_dofs(cell, subforest_flag=basis.subforest_flag())
+                rdofs = basis.dofs(cell)
+                #rdofs = dh.get_cell_dofs(cell, subforest_flag=basis.subforest_flag())
                 dofs[region][basis] = rdofs
             
             # 
@@ -2893,7 +2907,7 @@ class Assembler(object):
                     b,h = convert_to_array(ref_he.get_vertices())
                     x_ref = np.array([b[i]+r*(h[i]-b[i]) for i in range(2)]).T
                                         
-                    # Map 2D reference point to phyisical cell
+                    # Map 2D reference point to physical cell
                     xg[region], mg = cell.reference_map(x_ref, jac_r2p=False,
                                                         jac_p2r=True,
                                                         hess_p2r=True)

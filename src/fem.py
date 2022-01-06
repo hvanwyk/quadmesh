@@ -281,61 +281,6 @@ class QuadFE(Element):
         #if dim == 2:
         #    self.pattern = pattern
     
-    '''
-    def local_dof_matrix(self):
-        # TODO: Delete
-        if hasattr(self, '__local_dof_matrix'):
-            #
-            # Return matrix if already computed
-            #
-            return self.__local_dof_matrix
-        else:
-            #
-            # Construct matrix
-            # 
-            poly_degree = self.polynomial_degree()
-            n = poly_degree + 1
-            local_dof_matrix = np.zeros((n,n))
-            count = 0
-            #
-            # Vertices upside down Z
-            #
-            dpv = self.n_dofs('vertex')
-            if dpv > 0:
-                local_dof_matrix[[0,0,-1,-1],[0,-1,0,-1]] = np.arange(0,4*dpv)
-                count += 4*dpv
-            
-            #
-            # Edges
-            # 
-            dpe = self.n_dofs('edge')
-            
-            # East
-            local_dof_matrix[1:-1,0] = np.arange(count,count+dpe) 
-            count += dpe 
-            
-            # West
-            local_dof_matrix[1:-1,-1] = np.arange(count,count+dpe) 
-            count += dpe  
-            
-            # South
-            local_dof_matrix[0,1:-1] = np.arange(count,count+dpe) 
-            count += dpe 
-            
-            # North
-            local_dof_matrix[-1,1:-1] = np.arange(count,count+dpe) 
-            count += dpe 
-            
-            #
-            # Interior
-            # 
-            dpi = int(np.sqrt(self.n_dofs('cell')))
-            i_dofs = np.arange(count,count+dpi*dpi).reshape((dpi,dpi))
-            local_dof_matrix[1:-1,1:-1] = i_dofs
-            
-            self.__local_dof_matrix = local_dof_matrix
-            return local_dof_matrix
-    '''
             
     def basis_index(self):
         return self.__basis_index
@@ -1191,7 +1136,12 @@ class DofHandler(object):
         Global enumeration of degrees of freedom        
         
         If the mesh is hierarchical, the dofs are assigned to all cells in the 
-        mesh forest, i.e. at different coarseness levels.       
+        mesh forest, i.e. at different coarseness levels.
+        
+        Input: 
+            
+            subforest_flag: str/int, identifies the submesh on which to 
+                distribute dofs
         """
         dim = self.element.dim()
         if dim==1:
