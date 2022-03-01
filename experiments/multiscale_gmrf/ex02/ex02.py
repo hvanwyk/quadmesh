@@ -121,7 +121,7 @@ def sample_qoi(q, dofhandler, return_state=False):
                [Form(expq_fn, test=phi_x, dmu='dv', flag='right')]]
     
     # Define assembler
-    assembler = Assembler(problem)
+    assembler = Assembler(problem, dofhandler.mesh)
     
     # Incorporate Dirichlet conditions 
     assembler.add_dirichlet('left',0)
@@ -330,7 +330,7 @@ def dJdq_sen(q, u, dq):
                        Form(ker_sen, test=phi_x)]
 
     # Assembler
-    assembler = Assembler(sensitivity_eqn, n_gauss=(6,36))
+    assembler = Assembler(sensitivity_eqn, u_dh.mesh, n_gauss=(6,36))
     
     # Apply Dirichlet Boundary conditions
     assembler.add_dirichlet('left',0)
