@@ -304,13 +304,9 @@ class TestIIForm(unittest.TestCase):
             # Cells
             cj = mesh.cells.get_child(2)
             ci = mesh.cells.get_child(0)
-    
-    
-            # Shape function info on cells
-            cj_sinfo = assembler.shape_info(cj)
-            
+                
             # Gauss nodes and weights on cell 
-            xj_g, wj_g, phij, dofsj = assembler.shape_eval(cj_sinfo, cj)
+            xj_g, wj_g, phij, dofsj = assembler.shape_eval(cj)
                         
             #
             # Evaluate form
@@ -405,8 +401,8 @@ class TestIIForm(unittest.TestCase):
             cj_sinfo = assembler.shape_info(cj)
             
             # Gauss nodes and weights on cell 
-            xi_g, wi_g, phii, dofsi = assembler.shape_eval(ci_sinfo,ci)
-            xj_g, wj_g, phij, dofsj = assembler.shape_eval(cj_sinfo,cj)
+            xi_g, wi_g, phii, dofsi = assembler.shape_eval(ci)
+            xj_g, wj_g, phij, dofsj = assembler.shape_eval(cj)
                         
             #
             # Evaluate form

@@ -1,4 +1,4 @@
-from mesh import HalfEdge, Vertex, Cell
+from mesh import HalfEdge, Vertex, Cell, convert_to_array
 import numpy as np
 import unittest
 
@@ -456,6 +456,33 @@ class TestHalfEdge(unittest.TestCase):
         line_4 = [(1,2), (3,3)]
         self.assertFalse(h_edge.intersects_line_segment(line_4),\
                         'HalfEdge should intersect line_4.')
+        
+     
+    def test_subcell_position(self):
+        # Define HalfEdge 
+        v1, v2 = Vertex((1,1)), Vertex((2,3))
+        he_ref = HalfEdge(v1,v2)
+        
+        # Define Bad HalfEdge
+        he_bad = HalfEdge(Vertex((1.5,1.3)), Vertex((2,3)))
+        
+        # Assert Error 
+        self.assertRaises(Exception, he_ref.subcell_position, he_bad)
+     
+        # Define Good HalfEdge
+        V = convert_to_array([v1,v2])
+        
+        # Specify points along Half-Edge 
+        t_min, t_max = 0.3, 0.5
+        W_base = Vertex(tuple(V[0] + t_min*(V[1]-V[0])))
+        W_head = Vertex(tuple(V[0] + t_max*(V[1]-V[0])))
+        
+        he_good = HalfEdge(W_base, W_head)
+        pos, width = he_ref.subcell_position(he_good)
+        
+        # Check whether computed value matches reference
+        self.assertAlmostEqual(pos, t_min)
+        self.assertAlmostEqual(width, t_max-t_min)
         
         
     def test_reference_map(self):

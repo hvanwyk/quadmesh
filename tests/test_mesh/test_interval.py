@@ -156,6 +156,28 @@ class TestInterval(unittest.TestCase):
     def test_locate_point(self):
         pass 
         
+    
+    def test_subcell_position(self):
+        """
+        Test method for determining relative position and width of sub-interval
+        """ 
+        #
+        # Define Interval
+        # 
+        I = Interval(Vertex(3), Vertex(5))
+        
+        # Check for exception for Interval not contained in reference
+        I_bad = Interval(Vertex(1), Vertex(4))
+        self.assertRaises(Exception, I.subcell_position, I_bad)
+        
+        # Check whether the relative position and width are correct for a known
+        # sub-cell.     
+        I_good = Interval(Vertex(4), Vertex(4.5))
+        ref_pos, ref_width = 0.5, 0.25
+        pos, width = I.subcell_position(I_good)
+        self.assertEqual(ref_pos, pos)
+        self.assertEqual(ref_width, width)
+        
             
     def test_reference_map(self):
         # New interval

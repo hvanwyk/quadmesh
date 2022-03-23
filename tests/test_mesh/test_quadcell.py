@@ -133,8 +133,69 @@ class TestQuadCell(unittest.TestCase):
 
         
         points = np.random.rand(5,2)
+    
+    
+    def test_subcell_position(self):
+        """
+        Locate sub-cell within a skew quadcell
+        """ 
         
+        # 
+        # Define ROOT Cell
+        # 
+           
+        # Define vertices
+        v1 = Vertex((1,1))
+        v2 = Vertex((2,3))
+        v3 = Vertex((1.5,5))
+        v4 = Vertex((0,2))
+        vertices = [v1,v2,v3,v4]
         
+        # Define HalfEdges
+        h12 = HalfEdge(v1,v2)
+        h23 = HalfEdge(v2,v3)
+        h34 = HalfEdge(v3,v4)
+        h41 = HalfEdge(v4,v1)
+        halfedges = [h12,h23,h34,h41]
+
+        # Define QuadCell
+        cell = QuadCell(halfedges)
+        
+        # Check that cell is not a rectangle
+        self.assertFalse(cell.is_rectangle())
+        
+        #
+        # Refine ROOT cell twice and pick a grandchild
+        # 
+        cell.split()
+        child = cell.get_child(2)
+        child.split()
+        grandchild = child.get_child(1)
+        
+        #
+        # Determine relative position of the grandchild within cell
+        # 
+        pos, width = cell.subcell_position(grandchild)
+        
+        #
+        # Map the associated region the reference cell to physical cell
+        #
+        x_ref = np.array([pos, 
+                          pos + np.array([width,0]), 
+                          pos + np.array([width, width]),
+                          pos + np.array([0, width])])
+        
+        x_vertices = cell.reference_map(x_ref)
+        
+        #
+        # Check that points match up
+        # 
+        for v, vh in zip(grandchild.get_vertices(), x_vertices):
+            self.assertTrue(np.allclose(np.array(v.coordinates()), vh))
+            
+            
+
+         
     def test_bin_points(self):
         #
         # Cell vertices
