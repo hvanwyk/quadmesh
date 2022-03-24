@@ -429,10 +429,45 @@ class GaussRule():
         TODO: Test this method. 
         
         """
+        
+        if basis is None:
+            #
+            # No basis specified
+            # 
+            if nodes is None:
+                #
+                # Default: Quadrature nodes
+                # 
+                nodes, weights = self.nodes(), self.weights()
+                xg, mg = region.reference_map(nodes, jac_r2p=True)
+                
+            else:
+                #
+                #
+                # 
+        #
+        # Group the basis according to scales
+        # 
+        grouped_basis = {}
+        for b in basis:
+            # Determine mesh-flag associated with basis function
+            basis_meshflag = b.subforest_flag()
+            
+            # Add basis to list under meshflag 
+            if basis_meshflag not in grouped_basis:
+                grouped_basis[basis_meshflag] = [b]
+            else:
+                grouped_basis[basis_meshflag].append(b)
+                
+        for meshflag, basis in enumerate(grouped_basis):
+            
         #
         # Parse Basis
         #
         if basis is not None:
+            scales = {}
+            
+            
             # Initialize dictionary of shapes 
             shapes = dict.fromkeys(basis,0)
             
