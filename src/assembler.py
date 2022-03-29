@@ -417,8 +417,8 @@ class GaussRule():
             Quadrature weights associated with the physical region.
             
         shapes : double,
-            List of arrays corresponding to the shape functions evaluated at 
-            the given nodes. 
+            Basis-indexed dictionary of arrays corresponding to the shape 
+            functions evaluated at the given nodes. 
         
         
         Notes
@@ -429,7 +429,6 @@ class GaussRule():
         TODO: Test this method. 
         
         """
-        
         if basis is None:
             #
             # No basis specified
@@ -440,11 +439,39 @@ class GaussRule():
                 # 
                 nodes, weights = self.nodes(), self.weights()
                 xg, mg = region.reference_map(nodes, jac_r2p=True)
+                #
+                # Update the weights using the Jacobian
+                # 
+                jac = mg['jac_r2p']
+                if isinstance(region, Interval):
+                    # Interval
+                    dxdr = np.array(jac)
+                elif isinstance(region, HalfEdge):
+                    # HalfEdge
+                    dxdr = np.array(np.linalg.norm(jac[0]))
+                elif isinstance(region, QuadCell):
+                    # QuadCell
+                    dxdr = np.array([np.linalg.det(j) for j in jac])
+                else:
+                    raise Exception('Only regions of type "Interval",' + \
+                                    '"HalfEdge", or "QuadCell" supported.')
                 
+                # Modify the reference weights
+                wg = weights*dxdr
+                
+                # Return the nodes and weights
+                return xg, wg 
             else:
                 #
-                #
+                # Nodes specified: No quadrature weights
                 # 
+                xg = region.reference_map(nodes)
+                
+                return xg
+            
+        # --------------------------------
+        # Below here, basis is not None!! 
+        # --------------------------------    
         #
         # Group the basis according to scales
         # 
@@ -460,6 +487,16 @@ class GaussRule():
                 grouped_basis[basis_meshflag].append(b)
                 
         for meshflag, basis in enumerate(grouped_basis):
+            #
+            # Determine position of region's cell relative to basis cell 
+            # 
+            if isinstance(region, HalfEdge):
+                cell = region.cell()
+            else:
+                cell = region
+            
+            # Determine whether to scale the reference nodes/weights
+            coarse_cell = cell.nearest_ancestor(meshflag)
             
         #
         # Parse Basis
