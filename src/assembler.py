@@ -303,7 +303,7 @@ class GaussRule():
         return self.__cell_type
         
         
-    def scale_rule(self, position, scale):
+    def scale_rule(self, position, scale, nodes=None):
         """
         Description
         -----------
@@ -325,6 +325,10 @@ class GaussRule():
         scale : double >0,
             Shrinkage factor of the sub-region size (length) relative to that 
             of the region.  
+            
+        nodes: double, 
+            Nodes on the reference cell. If none are specified, the stored 
+            quadrature nodes are used.  
         
         
         Returns
@@ -346,47 +350,60 @@ class GaussRule():
             
         TODO: Test   
         """
-        # Get the reference nodes and weights
-        x_ref = self.nodes()
-        w_ref = self.weights()
-        
-        shape = self.shape()
-        if shape == 'interval':
-            #
-            # On the unit interval
-            #
+        if nodes is None:
+            # Quadrature Rule
+            quadrature = True
             
-            # Scale and shift reference nodes 
-            x_scaled = position + scale*x_ref
-            
-            # Scale reference weights by Jacobian
-            w_scaled = scale*w_ref
-            
-        elif shape == 'quadrilateral':
-            #
-            # On the unit square
-            # 
-            assert isinstance(position,np.ndarray), \
-                'Input "position" must be a numpy array.'
-                
-            assert position.shape == (1,2), \
-                'Position must have dimensions (1,2).'
-                
-            assert np.dim(scale)==0, \
-                'Input "scalar" should have dimension 0.'
-            
-            # Scale and shift reference nodes
-            x_scaled = position + scale*x_ref
-            
-            # Scale the weights 
-            w_scaled = scale**2*w_ref 
-            
+            # Get reference quadrature nodes and weights
+            nodes, weights = self.nodes(), self.weights()
         else:
-            raise Exception('Only shapes of type "interval" or '+\
-                            '"quadrilateral" supported.')
+            # Evaluation
+            quadrature = False
+            
         
-        return x_scaled, w_scaled
-    
+        # Scale and shift nodes as specified    
+        x_scaled = position + scale*nodes
+        
+        if not quadrature:
+            #
+            # Return only the scaled and shifted nodes
+            #
+            return x_scaled
+        else:
+            #
+            # Adjust the quadrature weights
+            #  
+            shape = self.shape()
+            if shape == 'interval':
+                #
+                # On the unit interval
+                #
+                
+                # Scale reference weights by Jacobian
+                w_scaled = scale*weights
+                
+            elif shape == 'quadrilateral':
+                #
+                # On the unit square
+                # 
+                assert isinstance(position,np.ndarray), \
+                    'Input "position" must be a numpy array.'
+                    
+                assert position.shape == (1,2), \
+                    'Position must have dimensions (1,2).'
+                    
+                assert np.dim(scale)==0, \
+                    'Input "scalar" should have dimension 0.'
+                
+                # Scale the weights 
+                w_scaled = scale**2*weights 
+                
+            else:
+                raise Exception('Only shapes of type "interval" or '+\
+                                '"quadrilateral" supported.')
+            
+            return x_scaled, w_scaled
+        
     
     def map_rule(self, region, nodes=None, basis=None):
         """
@@ -429,16 +446,28 @@ class GaussRule():
         TODO: Test this method. 
         
         """
+        if nodes is None:
+            # Quadrature rule (default) 
+            quadrature = True
+            
+            # Reference nodes
+            nodes, weights = self.nodes(), self.weights()
+        else:
+            # Evaluation at given nodes
+            quadrature = False
+            
         if basis is None:
             #
-            # No basis specified
+            # No basis specified -> No need for shape functions
             # 
-            if nodes is None:
+            if quadrature:
                 #
-                # Default: Quadrature nodes
+                # Quadrature nodes (modify the weights)
                 # 
-                nodes, weights = self.nodes(), self.weights()
+                
+                # Map to physical region 
                 xg, mg = region.reference_map(nodes, jac_r2p=True)
+                
                 #
                 # Update the weights using the Jacobian
                 # 
@@ -467,11 +496,14 @@ class GaussRule():
                 # 
                 xg = region.reference_map(nodes)
                 
+                # Return only the mapped nodes
                 return xg
             
-        # --------------------------------
+        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # Below here, basis is not None!! 
-        # --------------------------------    
+        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        
+        
         #
         # Group the basis according to scales
         # 
@@ -485,7 +517,9 @@ class GaussRule():
                 grouped_basis[basis_meshflag] = [b]
             else:
                 grouped_basis[basis_meshflag].append(b)
-                
+        
+        # Group nodes and weights according to basis
+        grouped_nodes_weights = {}
         for meshflag, basis in enumerate(grouped_basis):
             #
             # Determine position of region's cell relative to basis cell 
@@ -495,9 +529,26 @@ class GaussRule():
             else:
                 cell = region
             
-            # Determine whether to scale the reference nodes/weights
+            # Get cell on which basis is defined
             coarse_cell = cell.nearest_ancestor(meshflag)
             
+            #
+            # Determine scaling
+            # 
+            if cell != coarse_cell:
+                # Cell is strictly contained in coarse_cell
+                position, scale = coarse_cell.subcell_position(cell)
+                
+                # Scaled nodes and weights
+                if quadrature:
+                    # Quadrature nodes
+                    s_nodes, s_weights = self.scale_rule(position, scale)
+                else:
+                    # Evaluation nodes
+                    s_nodes = self.scale_rule(position, scale, nodes)
+            else:
+                if quadrature: 
+                    s_nodes, s_weights = nodes, weights
         #
         # Parse Basis
         #

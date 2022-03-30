@@ -108,10 +108,31 @@ class TestGaussRule(unittest.TestCase):
     def test_inverse_map(self):
         pass
     
-    def test_jabobian(self):
+    def test_jacobian(self):
         pass
     
-
+    def test_map_rule(self):
+        """
+        Check that the map_rule method works 
+        """
+        #
+        # Evaluation 
+        # 
+        pass
+        
+        #
+        # Integration
+        # 
+        pass 
+    
+        # Integral on a line
+        
+        # Integral over a HalfEdge 
+        
+        # Integral on a QuadCell
+        
+    
+        
     def test_line_integral(self):
         # Define quadrature rule
         rule = GaussRule(2, shape='interval')
