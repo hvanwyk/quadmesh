@@ -1591,6 +1591,46 @@ class GaussianField(object):
         """
         return self.__support 
         
+    def truncate(self, level):
+        """
+        Description
+        -----------
+        Returns the truncated Karhunen Loeve expansion of the Gaussian field
+        based on the existing covariance operator. 
+        
+        Parameters
+        ----------
+        level : int, 
+            The truncation level for the Karhunen-Loeve expansion. 
+            
+        
+        Returns
+        -------
+        tht : GaussianField, 
+            Truncated Gaussian field defined in terms of the mean and truncated
+            covariance of the given field.
+        
+        """
+        # Check that the level is not too large
+        assert level <= self.size(), \
+            'The truncation level should be less than the fields dimension.'
+            
+        # Extract the mean
+        mean = self.mean()
+        
+        # Truncate the eigen-decomposition
+        d, V = self.covariance().get_eig_decomp()
+        dk = d[:level]
+        Vk = V[:,:level]
+        
+        # Define truncated Covariance matrix
+        K = SPDMatrix(Vk.dot(np.diag(dk)).dot(Vk.T))
+        K.set_eig_decomp(dk, Vk)
+        
+        # Return Gaussian field with truncated covariance
+        return GaussianField(self.size(), mean=mean, K=K)
+        
+    
     
     def sample(self, n_samples=1, z=None, m_col=0,
                mode='covariance', decomposition='eig'):

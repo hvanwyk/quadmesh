@@ -303,7 +303,7 @@ class GaussRule():
         return self.__cell_type
         
         
-    def scale_rule(self, position, scale, nodes=None):
+    def scale_rule(self, position, scale, nodes=None, weights=None):
         """
         Description
         -----------
@@ -329,6 +329,9 @@ class GaussRule():
         nodes: double, 
             Nodes on the reference cell. If none are specified, the stored 
             quadrature nodes are used.  
+            
+        weights: double, 
+            Quadrature weights on the reference cell. 
         
         
         Returns
@@ -441,7 +444,7 @@ class GaussRule():
         Notes
         -----
         TODO: This method replaces "mapped_rule", which can be deleted once this 
-            is done.
+            is done and tested.
             
         TODO: Test this method. 
         
@@ -502,6 +505,30 @@ class GaussRule():
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # Below here, basis is not None!! 
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # Initialize dictionary of shapes 
+        shapes = dict.fromkeys(basis,0)
+        
+        #
+        # Evaluating basis functions on HalfEdges -> map onto reference cell
+        # 
+        if isinstance(region, HalfEdge):
+            #
+            # Half-Edge
+            # 
+            
+            # Get physical cell from HalfEdge
+            cell = region.cell()
+               
+            # Get reference cell from single basis function
+            ref_cell = basis[0].dofhandler().element.reference_cell()
+    
+            # Determine equivalent half-edge on reference element
+            i_he = cell.get_half_edges().index(region)
+            ref_he = ref_cell.get_half_edge(i_he)
+            b,h = convert_to_array(ref_he.get_vertices())
+            
+            # Map 1D nodes onto reference HalfEdge
+            nodes = np.array([b[i]+nodes*(h[i]-b[i]) for i in range(2)]).T
         
         
         #
@@ -518,7 +545,12 @@ class GaussRule():
             else:
                 grouped_basis[basis_meshflag].append(b)
         
-        # Group nodes and weights according to basis
+        
+        #
+        # Scale nodes and weights if necessary!
+        # 
+        
+        # Group nodes and weights according to meshflag
         grouped_nodes_weights = {}
         for meshflag, basis in enumerate(grouped_basis):
             #
@@ -539,96 +571,97 @@ class GaussRule():
                 # Cell is strictly contained in coarse_cell
                 position, scale = coarse_cell.subcell_position(cell)
                 
+                #
                 # Scaled nodes and weights
+                #
                 if quadrature:
                     # Quadrature nodes
-                    s_nodes, s_weights = self.scale_rule(position, scale)
+                    grouped_nodes_weights[meshflag] = \
+                        self.scale_rule(position, scale, nodes, weights)
                 else:
                     # Evaluation nodes
-                    s_nodes = self.scale_rule(position, scale, nodes)
+                    grouped_nodes_weights[meshflag] = \
+                        self.scale_rule(position, scale, nodes)
             else:
+                #
+                # Unscaled nodes and weights
+                # 
                 if quadrature: 
-                    s_nodes, s_weights = nodes, weights
-        #
-        # Parse Basis
-        #
-        if basis is not None:
-            scales = {}
+                    # Quadrature nodes
+                    grouped_nodes_weights[meshflag] = (nodes, weights)
+                else:
+                    # Evaluation nodes
+                    grouped_nodes_weights[meshflag] = nodes
             
             
-            # Initialize dictionary of shapes 
-            shapes = dict.fromkeys(basis,0)
+            #
+            # Parse Basis for required derivatives
+            #
             
             # Check whether we need jacobians and/or Hessians  
             jac_p2r = any([b.derivative()[0]>=1 for b in basis])
             hess_p2r = any([b.derivative()[0]==2 for b in basis])
-        else:
-            # Don't need jacobians or Hessians for the inverse mapping
-            jac_p2r, hess_p2r = False, False
             
-        #
-        # Parse Nodes
-        # 
-        if nodes is None:
-            # Nodes not specified, quadrature rule
-            nodes, weights = self.nodes(), self.weights()
-        else:
-            # Convert nodes to (n,dim) array
-            nodes = convert_to_array(nodes,dim=self.dim())
-        
-        #
-        # Differentiate by Region
-        # 
-        if isinstance(region, Interval):
-            # Interval
-            assert nodes.shape[1]==1, 'Interval requires a 1D rule.'
-                        
-        elif isinstance(region, HalfEdge):
             #
-            # Half-Edge
-            # 
-            assert nodes.shape[1]==1, 'Interval requires a 1D rule.'
-            
-            if basis is not None:
+            # Map points to physical region
+            #
+            if quadrature:
                 #
-                # Need shape evaluations on half-edge: map to reference cell
+                # Quadrature rule
+                #
+                x_ref, w_ref = grouped_nodes_weights[meshflag]
+                xg, mg = region.reference_map(x_ref, jac_r2p=True, 
+                                              jac_p2r=jac_p2r, 
+                                              hess_p2r=hess_p2r)
+                #
+                # Update the weights using the Jacobian
                 # 
+                jac = mg['jac_r2p']
+                if isinstance(region, Interval):
+                    # Interval
+                    dxdr = np.array(jac)
+                elif isinstance(region, HalfEdge):
+                    # HalfEdge
+                    dxdr = np.array(np.linalg.norm(jac[0]))
+                elif isinstance(region, QuadCell):
+                    # QuadCell
+                    dxdr = np.array([np.linalg.det(j) for j in jac])
+                else:
+                    raise Exception('Only regions of type "Interval",' + \
+                                    '"HalfEdge", or "QuadCell" supported.')
                 
-                # Get physical cell from HalfEdge
-                cell = region.cell()
-                   
-                # Get reference cell from single basis function
-                ref_cell = basis[0].dofhandler().element.reference_cell()
+                # Modify the reference weights
+                wg = w_ref*dxdr
+                
+            else:
+                #
+                # Evaluation
+                #
+                x_ref = grouped_nodes_weights[meshflag]
+                xg, mg = region.reference_map(x_ref, 
+                                              jac_p2r=jac_p2r, 
+                                              hess_p2r=hess_p2r)
+                
+            for b in basis:
+                #
+                # Evaluate the basis functions at the (scaled) reference points
+                #
+                element = b.dofhandler().element
+                D = b.derivative()
+                jac_p2r = mg['jac_p2r'] if D[0] in [1,2] else None
+                hess_p2r = mg['hess_p2r'] if D[0]==2 else None
 
-                # Determine equivalent half-edge on reference element
-                i_he = cell.get_half_edges().index(region)
-                ref_he = ref_cell.get_half_edge(i_he)
-                b,h = convert_to_array(ref_he.get_vertices())
-                
-                # Map 1D nodes onto reference HalfEdge
-                nodes = np.array([b[i]+nodes*(h[i]-b[i]) for i in range(2)]).T
-            
-        elif isinstance(region, QuadCell):
-            assert nodes.shape[1]==2, 'QuadCell requires a 2D rule.'
-        
-        #
-        # 
-        # 
-        xg, wg, mg = region.reference_map(nodes)
-        if basis is not None:
-            for base in basis:
-                #
-                # Determine whether the basis is defined on a coarser mesh 
-                #
-                pass 
+                shapes[b] = \
+                    element.shape(x_ref=x_ref, derivatives=D,
+                                  jac_p2r=jac_p2r, hess_p2r=hess_p2r)
+        if quadrature:
+            # Quadrature 
+            return xg, wg, shapes
         else:
-            #
-            # Not evaluating any basis functions
-            # 
-            pass
+            # Evaluation
+            return xg, shapes
         
-        return xg, wg, shapes
-    
+        
     
     def mapped_rule(self, region, basis=[], jac_p2r=False, hess_p2r=False):
         """
@@ -2997,7 +3030,10 @@ class Assembler(object):
             c: double, scalar representing constant form
         """
         aform = self.__af[i_problem][0]
-        return aform.aggregate_data()['array'][i_sample]
+        if i_sample is None:
+            return aform.aggregate_data()['array']
+        else:
+            return aform.aggregate_data()['array'][i_sample]
 
 
     def get_dofs(self, dof_type, i_problem=0):
@@ -3979,7 +4015,10 @@ class AssembledForm(object):
         #
         n_smpl = self.n_samples()
         n_smpl_form = form.kernel.n_subsample()  # TODO: Change to n_samples()
-
+        
+        print('own samples', n_smpl)
+        print('form samples', n_smpl_form)
+        
         if n_smpl_form > 1:
             if n_smpl==1:
                 #
@@ -4303,7 +4342,7 @@ class AssembledForm(object):
             c = np.sum(vals, axis=0)
 
             # Store result
-            self.__aggregate_data['array'] = list(c)
+            self.__aggregate_data['array'] = c
 
         elif dim == 1:
             #
