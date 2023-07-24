@@ -2369,7 +2369,7 @@ class Nodal(Map):
             
             basis: 
         """
-        assembler = Assembler()
+        pass
         
         
     def differentiate(self, derivative):

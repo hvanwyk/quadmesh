@@ -70,18 +70,25 @@ def test_ft():
     # permeability field
     phi = Constant(1)  # porosity
     D   = Constant(0.0252)  # dispersivity
+    #D = Constant(2)
     K   = Constant(1)  # permeability
     
     # =============================================================================
     # Mesh and Elements
     # =============================================================================
     # Mesh
-    mesh = QuadMesh(resolution=(10,10))
+    x_min, x_max = 0,1
+    y_min, y_max = 0, 5
+    mesh = QuadMesh(box=[x_min,x_max,y_min,y_max], resolution=(20,100))
     
     # Mark left and right regions
     mesh.mark_region('left',lambda x,y: np.abs(x)<1e-9, entity_type='half_edge')
     mesh.mark_region('right',lambda x,y: np.abs(x-1)<1e-9, entity_type='half_edge')
+    mesh.mark_region('top', lambda x,y: np.abs(y-y_max)<1e-9, entity_type='half_edge')
+    mesh.mark_region('bottom',lambda x,y: np.abs(y-y_min)<1e-9, entity_type='half_edge')
     
+    #plot.mesh(mesh)
+    #plt.show()
     
     # Elements
     p_element = QuadFE(2,'Q1')  # element for pressure
@@ -117,8 +124,8 @@ def test_ft():
     # Assemble 
     vb.tic('assembly')
     assembler = Assembler(flow_problem,mesh)
-    assembler.add_dirichlet('left',1)
-    assembler.add_dirichlet('right',0)
+    assembler.add_dirichlet('top',10)
+    assembler.add_dirichlet('bottom',0)
     assembler.assemble()
     vb.toc()
     
@@ -141,21 +148,21 @@ def test_ft():
     # Pressure function
     pfn = Nodal(data=pa, basis=p_u)
     
- 
     px = pfn.differentiate((1,0))
     py = pfn.differentiate((1,1))
     
-    #plot.contour(px)
-    #plt.show()
+    plot.contour(pfn)
+    plt.show()
         
     # =============================================================================
     # Transport Equations
     # =============================================================================
     # Specify initial condition
     c0 = Constant(1)
-    dt = 1e-1
-    T  = 6
-    N  = int(np.ceil(T/dt))
+    dt = 1e-3  # time step 
+    T  = 4  # terminal time 
+    N  = int(np.ceil(T/dt))  # number of timesteps
+    
     
     c = Basis(c_dofhandler, 'c')
     cx = Basis(c_dofhandler, 'cx')
@@ -174,8 +181,8 @@ def test_ft():
     
     problems = [m,s]
     assembler = Assembler(problems,mesh)
-    assembler.add_dirichlet('left',0, i_problem=0)
-    assembler.add_dirichlet('left',0, i_problem=1)
+    assembler.add_dirichlet('top',0, i_problem=0)
+    assembler.add_dirichlet('top',0, i_problem=1)
     assembler.assemble()
     
     x0 = assembler.assembled_bnd()
@@ -190,20 +197,41 @@ def test_ft():
     M = assembler.get_matrix(i_problem=0)
     S = assembler.get_matrix(i_problem=1)
     
+    
+    # List of source points
+    dofs = c_dofhandler.get_region_dofs()
+    x = c_dofhandler.get_dof_vertices(dofs)  
+      
+    src_loc = [(0.5,4), (0.1,3.5)]  # source locations
+    src_int = np.array([1, 1])  # source intensities 
+    n_srcs = len(src_loc)
+    src_dofs = []
+    for i_src in range(n_srcs):
+        # Compute the distance between 
+        xx,yy = src_loc[i_src]
+        i = np.argmin((x[:,0]-xx)**2 + (x[:,1]-yy)**2)
+        src_dofs.append(i)
+    
+    ff = np.zeros((c.n_dofs(),1))
+    ff[src_dofs,0] = src_int
+    
     # Initialize c0 and cp
-    c0 = np.ones((c.n_dofs(),1))
-    cp = np.zeros((c.n_dofs(),1))
-    c_fn = Nodal(data=c0, basis=c) 
+    c0 = np.zeros((c.n_dofs(),1))
+    c0[src_dofs,0] = src_int
+    c_fn = Nodal(data=c0, basis=c)
     
     #
     # Compute solution 
     #  
     print('time stepping')
+    cp = np.zeros((c.n_dofs(),1))
+    print(c.n_dofs(),'degrees of freedom')
     for i in range(N):
         
+        print(i)
         # Build system
         A = M + tht*dt*S
-        b = M.dot(c0[int_dofs])-(1-tht)*dt*S.dot(c0[int_dofs])
+        b = M.dot(c0[int_dofs])-(1-tht)*dt*S.dot(c0[int_dofs]) + dt*ff[int_dofs] 
                 
         # Solve linear system
         cp[int_dofs,0] = spla.spsolve(A,b)
@@ -217,7 +245,10 @@ def test_ft():
         # Update c0
         c0 = cp.copy()
         
-        plot.contour(c_fn, n_sample=i)
+        if dt*i > 1:
+            ff = np.zeros((c.n_dofs(),1))
+            
+    plot.contour(c_fn, n_sample=i)
     
     #
     # Quantity of interest
@@ -236,7 +267,7 @@ def test_ft():
     kernel = Kernel(c_fn)
     
     #print(kernel.n_subsample())
-    form = Form(kernel, flag='right', dmu='ds')
+    form = Form(kernel, flag='bottom', dmu='ds')
     assembler = Assembler(form, mesh=mesh)
     assembler.assemble()
     QQ = assembler.assembled_forms()[0].aggregate_data()['array']

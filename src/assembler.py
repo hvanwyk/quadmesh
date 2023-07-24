@@ -4225,7 +4225,7 @@ class AssembledForm(object):
         """
         Postprocess assembled form to make it amenable to linear algebra
         operations. This includes renumbering equations that involve only a
-        subset of the degreees of freedom.
+        subset of the degrees of freedom.
 
         Input:
 
