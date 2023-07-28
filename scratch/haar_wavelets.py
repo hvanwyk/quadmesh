@@ -52,5 +52,5 @@ wfn = lambda x: np.exp(-((x[:,0]-0.5)**2 + (x[:,1]-0.5)**2)/0.01)
 w = Nodal(f=wfn, basis=phi)
 plot.contour(w)
 
-wq = Nodal(data=w.data()*q.sample(),basis=phi)
+wq = Nodal(data=q.sample(),basis=phi)
 plot.contour(wq)
