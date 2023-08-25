@@ -4,6 +4,7 @@ from mesh import Mesh1D
 from mesh import Mesh2D
 from mesh import QuadMesh
 from mesh import DCEL
+from mesh import Forest
 
 from fem import QuadFE
 from fem import DofHandler
@@ -820,7 +821,33 @@ class TestNodal(unittest.TestCase):
                 self.assertTrue(np.allclose(fx[:,0],fe))
                 self.assertTrue(np.allclose(fx[:,1],fe))
                 
+    
+    def test_project(self):
+        """
+        Test projection operator
+        """
+        mesh = QuadMesh()
+        mesh.record(0)
+        
+        # Refine mesh a couple of times
+        for i in range(4):   
+            mesh.cells.refine(new_label=i+1)
+        
+        element = QuadFE(2,'DQ0')
+        
+        dofhandler = DofHandler(mesh, element)
+        dofhandler.distribute_dofs()
+        phi = Basis(dofhandler)
+        
+        plot = Plot()
+        plot.mesh(mesh, subforest_flag=4)
                 
+        f = Nodal(lambda x: np.cos(2*np.pi*x[:,0])*np.cos(2*np.pi*x[:,1]), basis=phi)
+        plot.contour(f)    
+        
+        dof_forest = Forest()
+        
+         
     
 class TestConstant(unittest.TestCase):
     """

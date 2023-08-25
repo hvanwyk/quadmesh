@@ -2303,7 +2303,20 @@ class Nodal(Map):
             
             basis: 
         """
-        assembler = Assembler()
+        if basis.element_type() != 'DQ0':
+            raise Exception('Projection currently only implemented for piecewise constant basis')
+        pass    
+    
+    
+    def lift(self):
+        """
+        Lift the current Nodal function onto a finer basis set
+        
+        Inputs: 
+        
+            basis: Basis, 
+        """
+        pass
         
         
     def differentiate(self, derivative):

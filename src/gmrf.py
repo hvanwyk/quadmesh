@@ -1229,8 +1229,8 @@ class Covariance(SPDMatrix):
             c = IPForm(kernel=k, test=u, trial=u)
             assembler = Assembler([[m],[c]], mesh, subforest_flag=sf)
             assembler.assemble()
-            C = assembler.af[1]['bilinear'].get_matrix().toarray()
-            M = assembler.af[0]['bilinear'].get_matrix().toarray()
+            C = assembler.get_matrix(1).toarray()
+            M = assembler.get_matrix(0).toarray()
             
             # Generalized eigen-decomposition
             lmd, V = linalg.eigh(C,M)
@@ -2244,6 +2244,16 @@ class GaussianField(object):
         return np.random.normal(size=(n,n_samples)) 
       
 
+class HaarField(GaussianField):
+    """
+    Multiresolution Gaussian random field parametrized by Haar wavelets over a nested mesh
+    """
+    def __init__(self):
+        """
+        """
+        pass
+    
+    
 '''    
 class KLField(GaussianField):
     """

@@ -154,15 +154,16 @@ class Markable(object):
     """
     def __init__(self):
         """
-        Constructor
+        Constructor 
         """
-        self.__flag = None
+        self.__flags = set()
 
 
     def mark(self, flag):
         """
+        Add a flag
         """
-        pass
+        self.__flags.add(flag)
 
 
     def unmark(self, flag):
@@ -176,8 +177,15 @@ class Markable(object):
         """
         Determine whether
         """
-        pass
+        return flag in self.__flags
 
+
+    def clear(self):
+        """
+        Clear all flags
+        """ 
+        self.__flags = set()
+        
 
 class Tree(object):
     """
