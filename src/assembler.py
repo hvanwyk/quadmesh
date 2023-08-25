@@ -768,7 +768,7 @@ class Kernel(object):
     """
     Kernel (combination of Functions) to be used in Forms
     """
-    def __init__(self, f, derivatives=None, F=None, subsample=None):
+    def __init__(self, f, derivatives=None, F=None):
         """
         Constructor
 
@@ -846,7 +846,7 @@ class Kernel(object):
 
 
         # Store subsample
-        self.set_subsample(subsample)
+        self.set_sample_size()
 
 
     def basis(self):
@@ -860,51 +860,45 @@ class Kernel(object):
         return basis
 
 
-    def set_subsample(self, subsample):
+    def set_sample_size(self):
         """
-        Set kernel's subsample
-
-        Input:
-
-            subsample: int, numpy array specifying subsample indices
-
-
-        Note: For stochastic functions, the default subsample is the entire
-            range. For deterministic functions, the subsample can only be None.
+        Set kernel's sample size
+        
+        Notes
+        =====
+        The kernel's sample size is determined as the sample size of the 
+        constituent functions, provided they all have same sample size or a 
+        sample size of 1. 
         """
-        #
-        # Parse subsample
-        #
-        if subsample is None:
-            #
-            # Check whether there is a stochastic function in the list
-            #
-            for f in self.__f:
-                if f.n_samples()>1:
-                    f.set_subsample(subsample)
-                    subsample = f.subsample()
-                    break
-        #
-        # Set same subsample for all functions
-        #
-        for f in self.__f:
-            f.set_subsample(subsample)
-            if subsample is not None:
-                assert np.allclose(f.subsample(),subsample), \
-                    'Incompatible subsample.'
+        n_samples = 1
+        for f in self.f():
+            fn_samples = f.n_samples()
+            if fn_samples>1:
+                #
+                # f has multiple realizations
+                # 
+                if n_samples==1:
+                    #
+                    # Update Kernel sample size
+                    # 
+                    n_samples = fn_samples
+                else:
+                    #
+                    # Check that sample sizes match
+                    # 
+                    assert n_samples==fn_samples, 'Kernel sample size ' + \
+                    'incompatible with that of constituent functions' 
+        
+        # Store sample size
+        self.__n_samples = n_samples
 
-        self.__subsample = subsample
 
-
-    def n_subsample(self):
+    def n_samples(self):
         """
-        Returns the subsample of functions used
+        Returns the number of Kernel realizations
         """
-        if self.__subsample is not None:
-            return len(self.__subsample)
-        else:
-            return 1
-
+        return self.__n_samples
+    
 
     def f(self):
         """
@@ -958,6 +952,7 @@ class Kernel(object):
         # Evaluate constituent functions
         #
         f_vals = []
+        n_samples = self.n_samples()
         for f, dfdx in zip(self.__f, self.__dfdx):
             if isinstance(f, Nodal):
                 phi_f = phi if phi is None else phi[f.basis()]
@@ -969,6 +964,19 @@ class Kernel(object):
                                 dofs=dof_f)
             else:
                 fv = f.eval(x=x)
+            
+            #
+            # Copy function values if n_samples > 1 and function is deterministic
+            # 
+            if n_samples > 1 and fv.shape[1]==1:
+                #
+                # Copy the function values
+                # 
+                fv = np.tile(fv, (1,n_samples))
+            
+            #
+            # Update list of function values
+            # 
             f_vals.append(fv)
 
         #
@@ -1243,7 +1251,7 @@ class Form(object):
         regions = self.regions(cell)
 
         # Number of samples
-        n_samples = self.kernel.n_subsample()
+        n_samples = self.kernel.n_samples()
 
         f_loc = None
         for region in regions:
@@ -3013,7 +3021,7 @@ class Assembler(object):
             return np.array([data[i] for i in i_sample])
 
 
-    def get_scalar(self, i_problem=0, i_sample=0):
+    def get_scalar(self, i_problem=0, i_sample=None):
         """
         Return the scalar representation of the constant form of the specified
         sample of the specified problem
@@ -3023,7 +3031,7 @@ class Assembler(object):
 
             i_problem: int [0], problem index
 
-            i_sample: int [0], sample index
+            i_sample: int [0], sample index, 
 
         Output:
 
@@ -4014,11 +4022,9 @@ class AssembledForm(object):
         # Update/compare sample size
         #
         n_smpl = self.n_samples()
-        n_smpl_form = form.kernel.n_subsample()  # TODO: Change to n_samples()
+        n_smpl_form = form.kernel.n_samples()
         
-        print('own samples', n_smpl)
-        print('form samples', n_smpl_form)
-        
+ 
         if n_smpl_form > 1:
             if n_smpl==1:
                 #
@@ -4060,7 +4066,31 @@ class AssembledForm(object):
             dofs[1] = list(C.ravel())
 
             n_entries = len(dofs[0])
+            
+            #if vals.shape[1]==1:
+            #    print(vals)
+            
+            if n_samples > 1:
+                if vals.shape[-1]==1:
+                    #
+                    # Single sample: Copy it 
+                    # 
+                    vals = np.tile(vals, (1,n_samples))
+                
             vals = vals.reshape((n_entries,n_samples), order='F')
+            
+            """
+            if n_samples > 1:
+                if len(vals.shape) == 1:
+                    #
+                    # Deterministic form -> copy it
+                    # 
+                    vals = np.tile(vals[:,np.newaxis], (1,n_samples))
+                else:
+                    #
+                    # Sampled form
+                    # 
+            """       
 
 
         # Update dofs

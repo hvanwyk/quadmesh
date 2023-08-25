@@ -14,8 +14,7 @@ class Map(object):
     """
     def __init__(self, basis=None, mesh=None, element=None, dofhandler=None, \
                  subforest_flag=None, subregion_flag=None, \
-                 dim=None, n_variables=1, symmetric=False, \
-                 subsample=None):
+                 dim=None, n_variables=1, symmetric=False):
         """
         Constructor:
         
@@ -53,7 +52,6 @@ class Map(object):
         self.__basis = basis
         
         # Subsample
-        self.__subsample = subsample
         self.__subregion_flag = subregion_flag
         
         #
@@ -166,70 +164,7 @@ class Map(object):
         Return the number of samples 
         """
         pass
-    
-    
-    def set_subsample(self, i=None):
-        """
-        Set subset of samples to be evaluated
-        
-        Input:
-        
-            i: int, numpy array of sample indices
             
-        Notes: 
-        
-            We allow subsamples to be determined for deterministic functions.
-            In this case, copies of the deterministic function values will be
-            returned for each subsample.
-            
-        TODO: DELETE!
-        """
-        if i is not None:
-            #
-            # Non-trivial subsample
-            # 
-            assert type(i) is np.ndarray, \
-            'subsample index set should be an array'
-            
-            assert len(i.shape)==1, \
-            'Subsample index is a 1-dimensional integer array.'
-            
-            assert all([isinstance(ii, numbers.Integral) for ii in i]), \
-            'Subsample should be an integer array.'
-        
-        self.__subsample = i
-    
-    
-    def subsample(self):
-        """
-        Returns the index set representing the subsample or else a list of
-        integers from 0 to n_samples-1.
-        
-        TODO: DELETE!
-        """
-        if self.__subsample is None and self.n_samples() is not None:
-            #
-            # Stochastic function with no subsample specified
-            # 
-            return np.arange(self.n_samples())
-        else:
-            #
-            # Return subsample.
-            # 
-            return self.__subsample
-    
-    
-    def n_subsample(self):
-        """
-        Returns size of the subsample
-        
-        TODO: DELETE
-        """
-        if self.__subsample is None:
-            return self.n_samples()
-        else:
-            return len(self.__subsample)
-        
     
     def dim(self):
         """
@@ -336,6 +271,7 @@ class Map(object):
         
             fx: double, (n_points, n_samples) function output
         """
+        return fx
         #
         # Parse fx (n_points, n_samples)   
         # 
@@ -1413,7 +1349,7 @@ class Explicit(Map):
     """
     def __init__(self, f, parameters={}, mesh=None, element=None, \
                  dofhandler=None, subforest_flag=None, subregion_flag=None, \
-                 dim=None, n_variables=1, subsample=None, symmetric=False):
+                 dim=None, n_variables=1, symmetric=False):
         """
         Constructor
         
@@ -1431,8 +1367,7 @@ class Explicit(Map):
         """
         Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, \
                      subforest_flag=subforest_flag, subregion_flag=subregion_flag, \
-                     dim=dim, n_variables=n_variables, subsample=subsample,\
-                     symmetric=symmetric)
+                     dim=dim, n_variables=n_variables, symmetric=symmetric)
         
         # Define rules
         self.set_rules(f, parameters)
@@ -1650,9 +1585,9 @@ class Nodal(Map):
     Nodal functions
     """    
     def __init__(self, f=None, parameters={}, data=None, basis=None, \
-                 mesh=None, element=None, dofhandler=None, subforest_flag=None, \
-                 subregion_flag=None, dim=None, n_variables=1, \
-                 subsample=None, symmetric=False):
+                 mesh=None, element=None, dofhandler=None, \
+                 subforest_flag=None, subregion_flag=None, \
+                 dim=None, n_variables=1, symmetric=False):
         """
         Constructor
         
@@ -1672,8 +1607,7 @@ class Nodal(Map):
         """
         Map.__init__(self, mesh=mesh, element=element, dofhandler=dofhandler, basis=basis,\
                      subforest_flag=subforest_flag, subregion_flag=subregion_flag, \
-                     dim=dim, n_variables=n_variables, subsample=subsample,\
-                     symmetric=symmetric)
+                     dim=dim, n_variables=n_variables, symmetric=symmetric)
         # 
         # Checks
         # 
@@ -1969,7 +1903,7 @@ class Nodal(Map):
             # Add sub-sample information   
             #                
             if n_samples>1:
-                i_f.append(self.subsample())
+                i_f.append(np.arange(n_samples))
             #
             # Get local array (n1,...,nk,n_samples)  
             #  
@@ -2428,7 +2362,7 @@ class Constant(Map):
     """
     Constant functions
     """
-    def __init__(self, data=None, n_variables=1, subsample=None):
+    def __init__(self, data=None, n_variables=1):
         """
         Constructor
         
@@ -2446,8 +2380,7 @@ class Constant(Map):
             
             For other inputs, see Map constructor
         """
-        Map.__init__(self, dim=None, n_variables=n_variables, subsample=subsample,
-                     symmetric=True)
+        Map.__init__(self, dim=None, n_variables=n_variables, symmetric=True)
         self.set_data(data)
         
         
@@ -2512,6 +2445,6 @@ class Constant(Map):
             #
             # Stochastic function 
             # 
-            fx = np.outer(np.ones(n_points), self.data()[self.subsample()])
+            fx = np.outer(np.ones(n_points), self.data())
                 
         return self.parse_fx(fx)

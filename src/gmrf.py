@@ -31,6 +31,7 @@ from scipy import linalg
 from scipy.special import kv, gamma
 import scipy.sparse as sp
 from scipy.sparse import linalg as spla
+import matplotlib.pyplot as plt
 
 
 # Cholesky decomposition
@@ -1206,6 +1207,8 @@ class Covariance(SPDMatrix):
         # Kernel
         k = self.kernel()
         
+        print(self.discretization())
+        
         #
         # Assemble and decompose covariance operator
         # 
@@ -1256,7 +1259,7 @@ class Covariance(SPDMatrix):
             
             # Compute generalized eigendecomposition
             lmd, V = linalg.eigh(C,M)
-            
+         
         else:
             raise Exception('Only "interpolation", "galerkin", '+\
                             ' or "collocation" supported for input "method"')
@@ -1628,7 +1631,10 @@ class GaussianField(object):
         K.set_eig_decomp(dk, Vk)
         
         # Return Gaussian field with truncated covariance
-        return GaussianField(self.size(), mean=mean, K=K)
+        tht = GaussianField(self.size(), mean=mean, K=K)
+        tht.set_support(Vk)
+        
+        return tht
         
     
     

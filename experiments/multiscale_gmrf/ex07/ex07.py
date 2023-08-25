@@ -32,6 +32,7 @@ from gmrf import GaussianField, SPDMatrix, Covariance
 from plot import Plot
 from assembler import Assembler, Form, Kernel
 import numpy as np
+import matplotlib.pyplot as plt
 
 # Computational mesh 
 mesh = QuadMesh(resolution=(50,50))
@@ -63,24 +64,29 @@ phi_y = Basis(dQ1, derivative='vy')
 # 
 
 # Covariance Matrix
-K = Covariance(dQ1, name='exponential', parameters={'sgm':1, 'l': 0.1})
+K = Covariance(dQ1, discretization='interpolation', name='exponential', 
+               parameters={'sgm':2, 'l': 0.05})
+
+d, V = K.get_eig_decomp()
+plt.semilogy(d/np.sum(d),'.')
+plt.show()
 
 # Gaussian random field θ
 tht = GaussianField(dQ1.n_dofs(),K=K)
 
 # Sample from field
 tht_fn = Nodal(data=tht.sample(n_samples=3), basis=phi)
-plot = Plot()
+plot = Plot(time=20)
 plot.contour(tht_fn)
 
 #
 # Advection 
 # 
-v = [0.1,-0.1]
+v = [2,-5]
 
 plot.mesh(mesh,regions=[('in','edge'),('out','edge'),('reg','cell')])
 
-k = Kernel(tht_fn, F=lambda tht: np.exp(tht))
+k = Kernel(tht_fn, F=lambda tht: 1 + np.exp(tht))
 adv_diff = [Form(k, trial=phi_x, test=phi_x), 
             Form(k, trial=phi_y, test=phi_y),
             Form(0, test=phi),
@@ -89,8 +95,9 @@ adv_diff = [Form(k, trial=phi_x, test=phi_x),
 
 average = [Form(1, test=phi, flag='reg'), Form(1, flag='reg')]
 assembler = Assembler([adv_diff, average], mesh)
+
 assembler.add_dirichlet('out', dir_fn=0)
-assembler.add_dirichlet('in', dir_fn=10)
+assembler.add_dirichlet('in', dir_fn=1)
 
 
 assembler.assemble()

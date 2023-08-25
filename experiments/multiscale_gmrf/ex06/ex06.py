@@ -79,8 +79,9 @@ def hermite_rule(dimension, depth, type='level'):
     w = grid.getQuadratureWeights()
     w /= np.sqrt(np.pi)**k     # normalize weights
     
-    
+    # Return nodes and weights
     return z, w 
+
 
 def reference_qoi(f, tht, basis, region, n=1000000, verbose=True):
     """
@@ -160,6 +161,7 @@ def reference_qoi(f, tht, basis, region, n=1000000, verbose=True):
         assembler = Assembler(problems, basis.mesh())
         assembler.assemble()
         
+        
         #
         # Compute statistic
         # 
@@ -167,6 +169,7 @@ def reference_qoi(f, tht, basis, region, n=1000000, verbose=True):
         # Get samples
         if k == 0:
             dx = assembler.get_scalar(i_problem=1)  
+        
         
         if verbose:
             print(' - Updating samples \n')
@@ -182,12 +185,125 @@ def reference_qoi(f, tht, basis, region, n=1000000, verbose=True):
     return Q_ref, err
 
 
+def verification(tht, basis, region, n=1000000):
+    """
+    Special case 
+        
+         Q(y) =  ∫_R θ(x,y)^2 dx
+         
+     for which the exact Q is known to be 
+     
+         E[Q] = Σ 𝜆(i) (ϕ_i,ϕ_i)_R
+         
+     Parameters
+     ----------
+     tht : GMRF, 
+         Gaussian random field
+         
+     basis : Basis, 
+         Basis function with respect to which to integrate
+         
+     region : flag, 
+         Region flag (as marked on the mesh).
+         
+    """
+    D, V = tht.covariance().get_eig_decomp()
+    mesh = basis.mesh()
+    problems = [Form(trial=basis,test=basis, flag=region), Form(flag=region)]
+    assembler = Assembler(problems, mesh)
+    assembler.assemble()
+    M = assembler.get_matrix()
+    dx = assembler.get_scalar()
+    q_ref = np.sum(V.T.dot(M.dot(V)).diagonal()*D)/dx
 
-def sg_convergence(f,):
-    """
-    """
+    
+    f = lambda tht: tht**2
+    qoi, err = reference_qoi(f, tht, basis, region, verbose=False)
+    
+    # Return the difference
+    return np.abs(qoi-q_ref)
+
+def covariate_sampling(f):
     pass
 
+
+def sg_convergence(tht,f,basis,region,verbose=False,batch_size=int(1e5)):
+    """
+    Investigate the convergence of Sparse Grid estimates
+    """
+    D, V = tht.covariance().get_eig_decomp()
+    
+    Q_sg = {}
+    n = {}
+    for k in [1,5,10,20]:
+        Q_sg[k] = []
+        n[k] = []
+        for level in range(6):
+            z, w = hermite_rule(k, level)
+            n_sg = len(w)
+            n[k].append(n_sg)
+            
+            if verbose:
+                print('k=',k,'  level=',level, '  n=',n_sg)
+            
+            # Generate truncated field at the sparse grid points
+            thtk_sg = V[:,:k].dot(np.diag(np.sqrt(D[:k])).dot(z.T))
+            
+            n_batches = n_sg//batch_size + (0 if (n_sg%batch_size)==0 else 1)
+            Q = 0
+            for i_batch in range(n_batches):
+                
+                # Determine sample sizes for each batch
+                if i_batch < n_batches-1:
+                    n_sample = batch_size
+                else:
+                    # Last sample may be smaller than batch_size
+                    n_sample = n_sg - i_batch*batch_size
+                    
+                # Batch range 
+                batch_range = np.arange(i_batch*batch_size,\
+                                        i_batch*batch_size+n_sample)
+                
+                # Define kernel
+                thtk_fn = Nodal(data=thtk_sg[:,batch_range], basis=basis)
+                
+                kf = Kernel(thtk_fn, F=f)
+        
+                # Define forms
+                if i_batch == 0:
+                    problems = [ [Form(kernel=kf, flag=region)], 
+                                  [Form(flag=region)]]
+                else:
+                    problems = [ [Form(kernel=kf, flag=region)] ]
+                
+            
+                if verbose:
+                    print(' - Assembling.')
+                    
+                # Compute the integral
+                assembler = Assembler(problems, basis.mesh())
+                assembler.assemble()
+                
+                
+                #
+                # Compute statistic
+                # 
+                if i_batch==0:
+                    dx = assembler.get_scalar(i_problem=1)              
+                    
+                # Compute the sample 
+                J_smpl = assembler.get_scalar(i_problem=0, i_sample=None)
+                
+                # Update the statistic
+                Q += np.sum(J_smpl*w[batch_range]/dx)
+            
+            # Store in the appropriate place
+            Q_sg[k].append(Q)
+        
+    return Q_sg, n
+
+
+            
 
 def plot_heuristics(f, tht, basis, region, condition):
     """
@@ -317,19 +433,35 @@ phi_1 = Basis(dQ1)
 K = Covariance(dQ1,name='gaussian', parameters={'sgm':1, 'l':0.1})
 D, V = K.get_eig_decomp()
 
+
 # Random Field
 n_dofs = dQ1.n_dofs()
 eta = GaussianField(n_dofs,K=K)
 
 #f = lambda x: np.exp(-x**2)
-#f = lambda x: x**2
+f = lambda x: x**2
 #f = lambda x: np.arctan(10*x)
-f = lambda x: np.exp(-np.abs(x))
+#f = lambda x: np.exp(-np.abs(x))
+
+Q_sg, n_sg = sg_convergence(eta,f,phi_1,'integration',verbose=True)
+
+fig, ax = plt.subplots()
+for k in Q_sg.keys():
+    ax.plot(n_sg[k],Q_sg[k])
+plt.show()
+    
+#verification(eta, phi_1, 'integration')
+#sg_convergence(eta, phi_1)
+
+assembler = Assembler(Form(trial=phi_1, test=phi_1), mesh)
+assembler.assemble()
+M = assembler.get_matrix()
+#plt.spy(M>1e-10)
+#plt.show()
 
 plot_heuristics(f, eta, phi_1, 'integration', 'condition')
 
-#Q_ref, err = reference_qoi(f, eta, phi_1, 'region')
-#print(Q_ref, err)
+#Q_ref, err = reference_qoi(f, eta, phi_1, 'integration')
 
 #
 # Construct Sparse Grid
