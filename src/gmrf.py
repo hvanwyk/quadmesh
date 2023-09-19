@@ -59,7 +59,7 @@ def modchol_ldlt(A,delta=None):
     E = 0 and D = D0.  
     The algorithm sets the smallest eigenvalue of D to the tolerance
     delta, which defaults to sqrt(eps)*norm(A,'fro').
-    The LDL' factorization is compute using a symmetric form of rook 
+    The LDL' factorization is computed using a symmetric form of rook 
     pivoting proposed by Ashcraft, Grimes and Lewis.
     
     Reference:
