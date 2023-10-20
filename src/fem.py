@@ -2177,6 +2177,7 @@ class DofHandler(object):
             # Iterate over all entities within region
             #
             new_dofs = self.get_cell_dofs(cell, entity, interior=interior)
+                                          
             dofs = dofs.union(new_dofs)
         return list(dofs)
 

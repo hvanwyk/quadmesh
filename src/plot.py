@@ -182,6 +182,7 @@ class Plot(object):
             # 
             assert type(regions) is list, 'Regions should be passed as list'
             colors = self.__color_cycle[:len(regions)]
+            
             for region, color in zip(regions,colors):
                 flag, entity_type = region
                                 
