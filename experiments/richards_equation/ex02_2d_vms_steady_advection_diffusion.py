@@ -111,7 +111,7 @@ assembler.assemble()
 
 M = assembler.get_matrix()
 b = assembler.get_vector()
-print(b)
+
 solver = LinearSystem(v01,M,b)
 solver.solve_system()
 q1 = solver.get_solution()
