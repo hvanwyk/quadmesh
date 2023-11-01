@@ -104,15 +104,17 @@ plt.show()
 # Sample from the diffusion coefficient
 q2 = Nodal(basis=v02, data=Z.sample())
 
+# TODO: Assembly of shape functions defined over different submeshes. 
+
 # Compute the average 
-problem = [Form(trial=v01,test=v01), Form(kernel=q2, test=v01)]
-assembler = Assembler(problem, mesh=mesh, subforest_flag=1)
+problem = [Form(trial=v00,test=v00), Form(kernel=q2, test=v00)]
+assembler = Assembler(problem, mesh=mesh, subforest_flag=2)
 assembler.assemble()
 
 M = assembler.get_matrix()
 b = assembler.get_vector()
 
-solver = LinearSystem(v01,M,b)
+solver = LinearSystem(v00,M,b)
 solver.solve_system()
 q1 = solver.get_solution()
 

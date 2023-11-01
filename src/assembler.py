@@ -2275,8 +2275,9 @@ class Assembler(object):
                 # mesh.
                 #
                 basis_flag = basis.subforest_flag()
-                own_flag = self.subforest_flag()
-                assert mesh.cells.is_contained_in(own_flag, basis_flag), \
+                assembler_flag = self.subforest_flag()
+                
+                assert mesh.cells.is_contained_in(assembler_flag, basis_flag), \
                     'The assembler mesh should be a refinement of the '+\
                     'basis mesh.'
     

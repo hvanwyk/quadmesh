@@ -623,7 +623,7 @@ class Tree(object):
             if self.has_parent():
                 return self._parent
         else:
-            if self.has_parent(flag):
+            if self.has_parent():
                 parent = self._parent
                 if parent.is_marked(flag):
                     return parent
