@@ -14,7 +14,8 @@ from gmrf import Covariance, GaussianField
 from diagnostics import Verbose
 from scipy.sparse.linalg import spsolve
 from solver import LinearSystem
- 
+from scipy.sparse import linalg as spla
+
 # Initialize plot
 plot = Plot(quickview=False)
 comment = Verbose()
@@ -67,29 +68,29 @@ plt.show()
 # Define DofHandlers and Basis 
 #
 
-# Piecewise Constant
+# Piecewise Constant Element
 Q0 = QuadFE(2,'DQ0')  # element
 dh0 = DofHandler(mesh,Q0)  # degrees of freedom handler
 dh0.distribute_dofs()
-v00 = Basis(dh0, subforest_flag=0)  # Q0 basis on coarsest level
-v01 = Basis(dh0, subforest_flag=1)  # Q0 basis on intermediate level
-v02 = Basis(dh0, subforest_flag=2)  # Q0 basis on finest level
+v0 = [Basis(dh0, subforest_flag=i) for i in range(2)]
 
 # Piecewise Linear 
-Q1 = QuadFE(2,'DQ1')  # linear element
+Q1 = QuadFE(2,'Q1')  # linear element
 dh1 = DofHandler(mesh,Q1)  # linear DOF handler
 dh1.distribute_dofs()
-v10 = Basis(dh1, subforest_flag=0)  # Q1 basis on coarsest level 
-v11 = Basis(dh1, subforest_flag=1)  # Q1 basis on intermediate level 
-v12 = Basis(dh1, subforest_flag=2)  # Q1 basis on finest level
+
+v1   = [Basis(dh1,'v',i) for i in range(3)]   
+v1_x = [Basis(dh1,'vx',i) for i in range(3)]
+v1_y = [Basis(dh1,'vy',i) for i in range(3)]
 
 # 
 # Parameters
 # 
-a = Constant(1)  # advection parameter
+a1 = Constant(1)  # advection parameters
+a2 = Constant(-0.1) 
 
 # Diffusion coefficient
-cov = Covariance(dh0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':1})
+cov = Covariance(dh0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':0.5})
 Z = GaussianField(dh0.n_dofs(), K=cov)
 
 """
@@ -102,24 +103,93 @@ plt.show()
 """
 
 # Sample from the diffusion coefficient
-q2 = Nodal(basis=v02, data=Z.sample())
+q2 = Nodal(basis=v0[2], data=Z.sample())
 
 # TODO: Assembly of shape functions defined over different submeshes. 
 
+for i in range(2):
+    problem = [[Form(trial=v0[i],test=v0[i]), Form(kernel=q2, test=v0[i])]]
+    assembler = Assembler(problems,mesh=mesh,subforest_flag=2)
+    assembler.assemble()
+    assembler.solve()
 # Compute the average 
-problem = [Form(trial=v00,test=v00), Form(kernel=q2, test=v00)]
-assembler = Assembler(problem, mesh=mesh, subforest_flag=2)
+problems = [[Form(trial=v00,test=v00), Form(kernel=q2, test=v00)],
+            [Form(trial=v01,test=v01), Form(kernel=q2, test=v01)]]
+
+assembler = Assembler(problems, mesh=mesh, subforest_flag=2)
 assembler.assemble()
 
-M = assembler.get_matrix()
-b = assembler.get_vector()
+# Get approximation on coarsest level
+M0 = assembler.get_matrix(i_problem=0)
+b0 = assembler.get_vector(i_problem=0)
 
-solver = LinearSystem(v00,M,b)
+solver = LinearSystem(v00,M0,b0)
+solver.solve_system()
+q0 = solver.get_solution()
+
+# Approximation on intermediate level
+M1 = assembler.get_matrix(i_problem=1)
+b1 = assembler.get_vector(i_problem=1)
+solver = LinearSystem(v01,M1,b1)
 solver.solve_system()
 q1 = solver.get_solution()
 
 
-fig, ax = plt.subplots(2,1)
-for i,q in enumerate([q1,q2]):
+fig, ax = plt.subplots(3,1)
+for i,q in enumerate([q0,q1,q2]):
     ax[i] = plot.contour(q,axis=ax[i])
 plt.show()
+
+#
+# Solve the Linear System on Each Mesh
+# 
+xi0 = Kernel(q0,F=lambda q: 1 + np.exp(q))
+xi1 = Kernel(q1,F=lambda q: 1 + np.exp(q))
+xi2 = Kernel(q2,F=lambda q: 1 + np.exp(q)) 
+
+"""
+Form(kernel=a1, test=v12, trial=v12_x),
+         Form(kernel=a2, test=v12, trial=v12_y),
+"""
+prob0 = [Form(kernel=xi2,test=v12_x, trial=v12_x), 
+         Form(kernel=xi2,test=v12_y,trial=v12_y),
+         Form(kernel=a1, test=v12, trial=v12_x),
+         Form(kernel=a2, test=v12, trial=v12_y),
+         Form(kernel=0, test=v12)]
+
+assembler = Assembler(prob0, mesh=mesh, subforest_flag=2)
+assembler.add_dirichlet('inflow', 1)
+assembler.add_dirichlet('outflow',0)
+print(assembler.get_dirichlet())
+#assembler.add_dirichlet(None)
+assembler.assemble()
+K = np.array(assembler.get_matrix())
+#print(K)
+u0 = assembler.solve()
+u0 = Nodal(basis=v12, data=u0)
+
+fig, ax = plt.subplots(1,1)
+ax = plot.contour(u0,axis=ax)
+plt.show()
+
+"""
+K = assembler.get_matrix().tocsr()
+b = assembler.get_vector()
+x0 = assembler.assembled_bnd()
+u0 = np.zeros((v10.n_dofs(),1))
+int_dofs = assembler.get_dofs('interior')
+
+u0[int_dofs,0] = spsolve(K,b-x0)
+
+# Resolve Dirichlet conditions
+dir_dofs, dir_vals = assembler.get_dirichlet(asdict=False)
+u0[dir_dofs] = dir_vals
+
+
+
+solver = LinearSystem(v10,K,b)
+solver.solve_system()
+
+u0 = solver.get_solution()
+"""
+#

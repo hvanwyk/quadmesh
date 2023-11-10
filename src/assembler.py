@@ -3596,6 +3596,7 @@ class Assembler(object):
                                           interior=False,
                                           on_boundary=on_bnd, \
                                           subforest_flag=sf)
+            print('The Dirichlet Dofs are', dir_dofs)
         # Number of dirichlet dofs
         n_dirichlet = len(dir_dofs)
 
