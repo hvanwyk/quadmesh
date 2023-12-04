@@ -32,7 +32,7 @@ infn = lambda x,y: (x==-2) and (-1<=y) and (y<=0)  # inflow boundary
 outfn = lambda x,y: (x==2) and (0<=y) and (y<=1)  # outflow boundary
 
 # Define the mesh
-mesh = QuadMesh(box=domain, resolution=(20,10))
+mesh = QuadMesh(box=domain, resolution=(10,5))
 
 # Various refinement levels
 for i in range(3):
@@ -53,16 +53,17 @@ for i in range(3):
 #
 # Plot meshes 
 #  
-""" 
-fig, ax = plt.subplots(3,1)  
+ 
+fig, ax = plt.subplots(3,3)  
 for i in range(3):
-    ax[i] = plot.mesh(mesh,axis=ax[i], 
+
+    ax[i,0] = plot.mesh(mesh,axis=ax[i,0], 
                       regions=[('inflow','edge'),('outflow','edge')],
                       subforest_flag=i)
-    ax[i].set_xlabel('x')
-    ax[i].set_ylabel('y')
-plt.show()
-"""
+    ax[i,0].set_xlabel('x')
+    ax[i,0].set_ylabel('y')
+#plt.show()
+
 
 #
 # Define DofHandlers and Basis 
@@ -72,7 +73,7 @@ plt.show()
 Q0 = QuadFE(2,'DQ0')  # element
 dh0 = DofHandler(mesh,Q0)  # degrees of freedom handler
 dh0.distribute_dofs()
-v0 = [Basis(dh0, subforest_flag=i) for i in range(2)]
+v0 = [Basis(dh0, subforest_flag=i) for i in range(3)]
 
 # Piecewise Linear 
 Q1 = QuadFE(2,'Q1')  # linear element
@@ -87,7 +88,7 @@ v1_y = [Basis(dh1,'vy',i) for i in range(3)]
 # Parameters
 # 
 a1 = Constant(1)  # advection parameters
-a2 = Constant(-0.1) 
+a2 = Constant(-0.5) 
 
 # Diffusion coefficient
 cov = Covariance(dh0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':0.5})
@@ -107,45 +108,71 @@ q2 = Nodal(basis=v0[2], data=Z.sample())
 
 # TODO: Assembly of shape functions defined over different submeshes. 
 
+#
+# Compute the spatial average
+# 
+
+q = []
 for i in range(2):
+    #
+    # Define Problem (v[i], v[i]) = (q, v[i]) 
+    # 
     problem = [[Form(trial=v0[i],test=v0[i]), Form(kernel=q2, test=v0[i])]]
-    assembler = Assembler(problems,mesh=mesh,subforest_flag=2)
+    assembler = Assembler(problem,mesh=mesh,subforest_flag=2)
     assembler.assemble()
-    assembler.solve()
-# Compute the average 
-problems = [[Form(trial=v00,test=v00), Form(kernel=q2, test=v00)],
-            [Form(trial=v01,test=v01), Form(kernel=q2, test=v01)]]
+    
+    M = assembler.get_matrix()
+    b = assembler.get_vector()
+    
+    solver = LinearSystem(v0[i], M, b)
+    solver.solve_system()
+    qi = solver.get_solution()
+    q.append(qi)
+q.append(q2)
 
-assembler = Assembler(problems, mesh=mesh, subforest_flag=2)
-assembler.assemble()
-
-# Get approximation on coarsest level
-M0 = assembler.get_matrix(i_problem=0)
-b0 = assembler.get_vector(i_problem=0)
-
-solver = LinearSystem(v00,M0,b0)
-solver.solve_system()
-q0 = solver.get_solution()
-
-# Approximation on intermediate level
-M1 = assembler.get_matrix(i_problem=1)
-b1 = assembler.get_vector(i_problem=1)
-solver = LinearSystem(v01,M1,b1)
-solver.solve_system()
-q1 = solver.get_solution()
+#fig, ax = plt.subplots(3,1)
+for i,qi in enumerate(q):
+    ax[i,1] = plot.contour(qi,axis=ax[i,1],colorbar=False)
+    ax[i,1].set_axis_off()
+#plt.show()
 
 
-fig, ax = plt.subplots(3,1)
-for i,q in enumerate([q0,q1,q2]):
-    ax[i] = plot.contour(q,axis=ax[i])
-plt.show()
 
 #
 # Solve the Linear System on Each Mesh
 # 
-xi0 = Kernel(q0,F=lambda q: 1 + np.exp(q))
-xi1 = Kernel(q1,F=lambda q: 1 + np.exp(q))
-xi2 = Kernel(q2,F=lambda q: 1 + np.exp(q)) 
+xi = [Kernel(qi,F=lambda q: 0.01 + np.exp(q)) for qi in q]
+u = []
+for i in range(3):
+    
+    # Weak form
+    problem = [Form(kernel=xi[i],test=v1_x[i], trial=v1_x[i]), 
+               Form(kernel=xi[i],test=v1_y[i], trial=v1_y[i]),
+               Form(kernel=a1, test=v1[i], trial=v1_x[i]),
+               Form(kernel=a2, test=v1[i], trial=v1_y[i]),
+               Form(kernel=0, test=v1[i])]
+    # Initialize 
+    assembler = Assembler(problem, mesh=mesh, subforest_flag=2)
+    
+    # Add Dirichlet conditions 
+    assembler.add_dirichlet('inflow', 1)
+    assembler.add_dirichlet('outflow', 0)
+    
+    # Assemble system
+    assembler.assemble()
+    
+    # Solve system
+    ui = assembler.solve()
+    u.append(Nodal(basis=v1[i], data=ui))
+    
+
+#fig, ax = plt.subplots(3,1)
+for i,ui in enumerate(u):
+    print(ui.basis().n_dofs())
+    ax[i,2] = plot.contour(ui,axis=ax[i,2],colorbar=False)
+    ax[i,2].set_axis_off()
+plt.tight_layout()
+plt.show()   
 
 """
 Form(kernel=a1, test=v12, trial=v12_x),
