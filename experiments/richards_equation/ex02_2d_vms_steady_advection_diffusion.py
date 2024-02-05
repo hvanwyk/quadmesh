@@ -53,7 +53,6 @@ for i in range(3):
 #
 # Plot meshes 
 #  
- 
 fig, ax = plt.subplots(3,3)  
 for i in range(3):
 
@@ -90,28 +89,19 @@ v1_y = [Basis(dh1,'vy',i) for i in range(3)]
 a1 = Constant(1)  # advection parameters
 a2 = Constant(-0.5) 
 
-# Diffusion coefficient
-cov = Covariance(dh0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':0.5})
+#
+# Random diffusion coefficient
+#
+cov = Covariance(dh0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':0.1})
 Z = GaussianField(dh0.n_dofs(), K=cov)
-
-"""
-# Plot realizations of the diffusion coefficient
-fig, ax = plt.subplots(3,1)
-for i in range(3):
-    qs = Nodal(basis=v02, data=np.exp(Z.sample()))
-    ax[i] = plot.contour(qs,axis=ax[i])
-plt.show()
-"""
 
 # Sample from the diffusion coefficient
 q2 = Nodal(basis=v0[2], data=Z.sample())
-
-# TODO: Assembly of shape functions defined over different submeshes. 
+ 
 
 #
 # Compute the spatial average
 # 
-
 q = []
 for i in range(2):
     #
@@ -130,7 +120,7 @@ for i in range(2):
     q.append(qi)
 q.append(q2)
 
-#fig, ax = plt.subplots(3,1)
+# Plot realizations of the diffusion coefficient
 for i,qi in enumerate(q):
     ax[i,1] = plot.contour(qi,axis=ax[i,1],colorbar=False)
     ax[i,1].set_axis_off()
@@ -174,30 +164,7 @@ for i,ui in enumerate(u):
 plt.tight_layout()
 plt.show()   
 
-"""
-Form(kernel=a1, test=v12, trial=v12_x),
-         Form(kernel=a2, test=v12, trial=v12_y),
-"""
-prob0 = [Form(kernel=xi2,test=v12_x, trial=v12_x), 
-         Form(kernel=xi2,test=v12_y,trial=v12_y),
-         Form(kernel=a1, test=v12, trial=v12_x),
-         Form(kernel=a2, test=v12, trial=v12_y),
-         Form(kernel=0, test=v12)]
 
-assembler = Assembler(prob0, mesh=mesh, subforest_flag=2)
-assembler.add_dirichlet('inflow', 1)
-assembler.add_dirichlet('outflow',0)
-print(assembler.get_dirichlet())
-#assembler.add_dirichlet(None)
-assembler.assemble()
-K = np.array(assembler.get_matrix())
-#print(K)
-u0 = assembler.solve()
-u0 = Nodal(basis=v12, data=u0)
-
-fig, ax = plt.subplots(1,1)
-ax = plot.contour(u0,axis=ax)
-plt.show()
 
 """
 K = assembler.get_matrix().tocsr()
@@ -219,4 +186,3 @@ solver.solve_system()
 
 u0 = solver.get_solution()
 """
-#
