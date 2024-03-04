@@ -20,6 +20,61 @@ from scipy.sparse import linalg as spla
 plot = Plot(quickview=False)
 comment = Verbose()
 
+def solve_pde(mesh,v,vx,vy,a,xi):
+    """
+    Solve the underlying PDE
+    
+        -div[ xi(x,w) grad(u) ] + a*grad(u) = 0,  x in domain
+        u(x) = 1, for x on inflow boundary
+        u(x) = 0, for x on outflow boundary 
+        
+    Inputs:
+    
+        mesh: Quadmesh, on which problem is defined
+                
+        v, vx, vy: Basis, piecewise polynomial basis functions  
+        
+        a: double, (2,) vector of advection coefficients a = (ax,ay) 
+        
+        xi: Function, diffusivity coefficient.
+        
+        
+    Output:
+    
+        u: finite element solution of the problem
+        
+    """
+     # Weak form
+    problem = [Form(kernel=xi,test=vx, trial=vx), 
+               Form(kernel=xi,test=vy, trial=vy),
+               Form(kernel=a1, test=v, trial=vx),
+               Form(kernel=a2, test=v, trial=vy),
+               Form(kernel=0, test=v)]
+    
+    # Initialize 
+    assembler = Assembler(problem, mesh=mesh, subforest_flag=2)
+    
+    # Add Dirichlet conditions 
+    assembler.add_dirichlet('inflow', 1)
+    assembler.add_dirichlet('outflow', 0)
+    
+    # Assemble system
+    assembler.assemble()
+    
+    # Solve system
+    u_vec = assembler.solve()
+    
+    # Return finite element approximation
+    return Nodal(basis=v, data=u_vec)
+
+
+def local_average_operator():
+    pass
+
+
+def average_flow_operator():
+    pass
+
 #
 # Mesh 
 # 
@@ -136,11 +191,11 @@ u = []
 for i in range(3):
     
     # Weak form
-    problem = [Form(kernel=xi[i],test=v1_x[i], trial=v1_x[i]), 
-               Form(kernel=xi[i],test=v1_y[i], trial=v1_y[i]),
-               Form(kernel=a1, test=v1[i], trial=v1_x[i]),
-               Form(kernel=a2, test=v1[i], trial=v1_y[i]),
-               Form(kernel=0, test=v1[i])]
+    problem = [Form(kernel=xi[i],test=v1_x[2], trial=v1_x[2]), 
+               Form(kernel=xi[i],test=v1_y[2], trial=v1_y[2]),
+               Form(kernel=a1, test=v1[2], trial=v1_x[2]),
+               Form(kernel=a2, test=v1[2], trial=v1_y[2]),
+               Form(kernel=0, test=v1[2])]
     # Initialize 
     assembler = Assembler(problem, mesh=mesh, subforest_flag=2)
     
@@ -153,16 +208,29 @@ for i in range(3):
     
     # Solve system
     ui = assembler.solve()
-    u.append(Nodal(basis=v1[i], data=ui))
+    u.append(Nodal(basis=v1[2], data=ui))
     
 
 #fig, ax = plt.subplots(3,1)
 for i,ui in enumerate(u):
     print(ui.basis().n_dofs())
-    ax[i,2] = plot.contour(ui,axis=ax[i,2],colorbar=False)
+    ax[i,2] = plot.contour(ui,axis=ax[i,2],colorbar=True)
     ax[i,2].set_axis_off()
 plt.tight_layout()
 plt.show()   
+
+
+# Conditional distribution of the fine scale, given the coarse scale. 
+q0 = q[0]  # coarsest parameter 
+
+# Coefficient matrix
+problems = [[Form(trial=v0[0],test=v0[0])], [Form(trial=v0[0],test=v0[2])]]
+assembler = Assembler(problems, mesh=mesh, subforest_flag=2)
+assembler.assemble()
+M00 = assembler.get_matrix(i_problem=0)
+M20 = assembler.get_matrix(i_problem=1)
+
+
 
 
 
