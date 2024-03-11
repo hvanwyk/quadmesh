@@ -1770,7 +1770,7 @@ class GaussianField(object):
                 
                 mu_{x|Ax=e} = mu - K*A^T*(A*K*A^T)^{-1}(A*mu-e)
                 
-                K_{x|Ax=e} = K - 
+                K_{x|Ax=e} = K - K*A^T*(A*K*A^T)^{-1}*A*K
             
             - Otherwise, the conditional mean and precision are given by
             

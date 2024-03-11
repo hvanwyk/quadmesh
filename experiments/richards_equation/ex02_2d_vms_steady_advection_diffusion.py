@@ -3,6 +3,8 @@ Variational Multiscale Method for Advection-Diffusion Equation
 
 
 """
+import sys
+sys.path.append('/home/hans-werner/git/quadmesh/src/')
 from mesh import QuadMesh
 from fem import QuadFE, Basis, DofHandler
 from function import Explicit, Nodal, Constant
@@ -15,6 +17,7 @@ from diagnostics import Verbose
 from scipy.sparse.linalg import spsolve
 from solver import LinearSystem
 from scipy.sparse import linalg as spla
+from scipy import sparse
 
 # Initialize plot
 plot = Plot(quickview=False)
@@ -68,13 +71,71 @@ def solve_pde(mesh,v,vx,vy,a,xi):
     return Nodal(basis=v, data=u_vec)
 
 
-def local_average_operator():
-    pass
+def local_average_operator(mesh, v0, v1, flag0=0, flag1=1):
+    """
+    Compute the local average operator from the fine to the coarse mesh.
+
+    Inputs:
+
+        mesh: QuadMesh, fine mesh with subforests labeled 0 (coarse) and 1 (fine).
+
+        v0: Basis, piecewise constant basis on the coarse mesh.
+
+        v1: Basis, piecewise linear basis on the fine mesh.
+
+        flag0: int, subforest flag for the coarse mesh.
+
+        flag1: int, subforest flag for the fine mesh.
+
+    Outputs:
+
+        M: scipy.sparse.csr_matrix, (n0, n1) local averaging operator
+    """
+        
+    # Initialize local averaging operator
+    M = np.zeros((v0.n_dofs(),v1.n_dofs()))
+    
+    problems = [[Form(trial=v1,test=v0)], [Form(trial=v0,test=v0)]]
+    assembler = Assembler(problems, mesh=mesh, subforest_flag=flag1)
+    assembler.assemble()
+    M10 = assembler.get_matrix(i_problem=0).tocsr()
+    M00 = assembler.get_matrix(i_problem=1)
+    M = sparse.diags(1/M00.diagonal()).dot(M10)
+
+    print('M:', 'type', type(M), 'size',M.shape, 'values', M.todense())
+    
+
+
+    return M
 
 
 def average_flow_operator():
     pass
 
+
+def conditional_diffusivity(q0, q, M, l_fine, n_samples=1):
+    """
+    Compute the conditional distribution of the fine scale, given the coarse scale.
+
+    Inputs:
+
+        q0: Nodal, (n0,1) coarse scale diffusion coefficient realization
+
+        q: GaussianField, (n1,1) fine scale diffusion coefficient 
+
+        M: scipy.sparse.csr_matrix, (n0, n1) local averaging operator
+
+        l_fine: flag, indicating the level of the fine mesh
+
+        n_samples: int, number of samples to draw from the conditional distribution
+
+
+    Outputs:
+
+        q_given_q0: Nodal, (n1, n_samples) conditional fine scale diffusion coefficient realizations
+    """
+    
+    pass
 #
 # Mesh 
 # 
@@ -137,6 +198,7 @@ dh1.distribute_dofs()
 v1   = [Basis(dh1,'v',i) for i in range(3)]   
 v1_x = [Basis(dh1,'vx',i) for i in range(3)]
 v1_y = [Basis(dh1,'vy',i) for i in range(3)]
+
 
 # 
 # Parameters
@@ -217,23 +279,45 @@ for i,ui in enumerate(u):
     ax[i,2] = plot.contour(ui,axis=ax[i,2],colorbar=True)
     ax[i,2].set_axis_off()
 plt.tight_layout()
-plt.show()   
+#plt.show()   
 
 
+#
 # Conditional distribution of the fine scale, given the coarse scale. 
-q0 = q[0]  # coarsest parameter 
+# 
+fig, ax = plt.subplots(3,3)
 
-# Coefficient matrix
-problems = [[Form(trial=v0[0],test=v0[0])], [Form(trial=v0[0],test=v0[2])]]
-assembler = Assembler(problems, mesh=mesh, subforest_flag=2)
-assembler.assemble()
-M00 = assembler.get_matrix(i_problem=0)
-M20 = assembler.get_matrix(i_problem=1)
+# Coarse scale diffusion coefficient
+Z0 = q[0].data()
+ax[0,0] = plot.contour(q[0],axis=ax[0,0],colorbar=True)
+
+# 
+# Conditional samples given q0
+# 
+print('Condintioning q1 on q0')
+M10 = local_average_operator(mesh, v0[0], v0[1], flag0=0, flag1=1)
+Z1  = GaussianField(dh1.n_dofs(), K=cov)
+
+
+Z10 = Z.condition(M10, Z0, n_samples=1)
+
+print('conditioning q2 on q0')
+M20 = local_average_operator(mesh, v0[0], v0[2], flag0=0, flag1=2)
+Z20 = Z.condition(M20, Z0, n_samples=1)
+
+print('conditioning q2 on q1')
+M21 = local_average_operator(mesh, v0[1], v0[2], flag0=1, flag1=2)
+Z21 = Z.condition(M21, Z10, n_samples=1)
 
 
 
 
+ax[0,1] = plot.contour(Nodal(basis=v0[1], data=Z10),axis=ax[0,1],colorbar=True)
+ax[0,2] = plot.contour(Nodal(basis=v0[2], data=Z20),axis=ax[0,2],colorbar=True)
+ax[1,1] = plot.contour(Nodal(basis=v0[1], data=Z10),axis=ax[1,1],colorbar=True)
+ax[1,2] = plot.contour(Nodal(basis=v0[2], data=Z21),axis=ax[1,2],colorbar=True)
 
+plt.show()
 """
 K = assembler.get_matrix().tocsr()
 b = assembler.get_vector()
