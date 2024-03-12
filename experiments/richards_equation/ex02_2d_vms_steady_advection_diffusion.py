@@ -279,7 +279,7 @@ for i,ui in enumerate(u):
     ax[i,2] = plot.contour(ui,axis=ax[i,2],colorbar=True)
     ax[i,2].set_axis_off()
 plt.tight_layout()
-#plt.show()   
+plt.show()   
 
 
 #
