@@ -436,7 +436,7 @@ class CovKernel(Kernel):
      
 class SPDMatrix(object):
     """
-    Semi-positive definite operator
+    Semi-positive definite matrix
     """
     def __init__(self, K):
         """
@@ -444,7 +444,7 @@ class SPDMatrix(object):
              
         Inputs: 
         
-            K: double, (n,n) symmetric positive semidefinite kernel matrix
+            K: double, (n,n) symmetric positive semidefinite matrix
             
         """
         # Initialize Cholesky decomposition
@@ -473,6 +473,9 @@ class SPDMatrix(object):
     def size(self):
         """
         Return the number of rows (=columns) of K
+        
+        Returns:
+            The number of rows (=columns) of K.
         """
         return self.__K.shape[0]
     
@@ -480,6 +483,9 @@ class SPDMatrix(object):
     def rank(self):
         """
         Return the rank of the matrix
+        
+        Returns:
+            The rank of the matrix.
         """
         if self.issparse():
             return 
@@ -490,6 +496,9 @@ class SPDMatrix(object):
     def issparse(self):
         """
         Return True if the matrix is sparse
+        
+        Returns:
+            True if the matrix is sparse, False otherwise.
         """
         return sp.issparse(self.__K)
 
@@ -497,6 +506,9 @@ class SPDMatrix(object):
     def get_matrix(self):
         """
         Returns the underlying matrix
+        
+        Returns:
+            The underlying matrix.
         """
         return self.__K
     
@@ -525,7 +537,6 @@ class SPDMatrix(object):
             L: cholesky factor (P*L = lower triangular) 
             D: diagonal matrix
             D0: diagonal matrix so that C = L*D0*L'
-        
         """
         modified_cholesky = False
         if self.issparse():
@@ -577,6 +588,9 @@ class SPDMatrix(object):
         """
         Returns the type of Cholesky decomposition 
         (sparse_cholesky/full_cholesky)
+        
+        Returns:
+            The type of Cholesky decomposition.
         """
         return self.__chol_type
 
@@ -584,6 +598,9 @@ class SPDMatrix(object):
     def has_chol_decomp(self):
         """
         Returns True is the Cholesky decomposition has been computed.
+        
+        Returns:
+            True if the Cholesky decomposition has been computed, False otherwise.
         """
         if self.__L is None:
             return False
@@ -594,6 +611,9 @@ class SPDMatrix(object):
     def get_chol_decomp(self):
         """
         Returns the Cholesky decomposition of the matrix M^{-1}K
+        
+        Returns:
+            The Cholesky decomposition of the matrix M^{-1}K.
         """
         if self.__L is None:
             #
@@ -615,6 +635,9 @@ class SPDMatrix(object):
     def chol_reconstruct(self):
         """
         Reconstructs the (modified) matrix K
+        
+        Returns:
+            The reconstructed (modified) matrix K.
         """
         
         if self.issparse():
@@ -648,10 +671,11 @@ class SPDMatrix(object):
         Solve the system C*x = b  by successively solving 
         Ly = b for y and hence L^T x = y for x.
         
+        Parameters:
+            b (double, (n,m) array): The right-hand side of the system.
         
-        Input:
-        
-            b: double, (n,m) array
+        Returns:
+            The solution x of the system C*x = b.
         """
         if self.chol_type() == 'sparse':
             #
@@ -676,15 +700,12 @@ class SPDMatrix(object):
         """
         Returns R*b, where A = R*R'
         
-            Inputs: 
-            
-                b: double, compatible vector/matrix
-                
-                    
-            Output:
-            
-                y: double, array R*b
-                
+        Parameters:
+            b (double, compatible vector/matrix): The vector/matrix to be multiplied.
+            transpose (bool, optional): If True, returns R'*b. If False, returns R*b. Defaults to False.
+        
+        Returns:
+            The result of multiplying R with b.
         """
         assert self.__L is not None, \
             'Cholesky factor not computed.'\
@@ -740,6 +761,13 @@ class SPDMatrix(object):
         Note: The 'L' in CHOLMOD's solve_L 
             is the one appearing in the factorization LDL' = PQP'. 
             We first rewrite it as Q = WW', where W = P'*L*sqrt(D)*P
+        
+        Parameters:
+            b (double, compatible vector/matrix): The right-hand side of the system.
+            transpose (bool, optional): If True, solves R'x = b. If False, solves Rx = b. Defaults to False.
+        
+        Returns:
+            The solution x of the system Rx = b.
         """
         if self.chol_type() == 'sparse':
             #
@@ -780,6 +808,9 @@ class SPDMatrix(object):
     def compute_eig_decomp(self, delta=None):
         """
         Compute the singular value decomposition USV' of M^{-1}K
+        
+        Parameters:
+            delta (float, optional): A small positive constant to add to the diagonal of K before computing the eigendecomposition. Defaults to None.
         """ 
         K = self.__K
         if self.issparse():
@@ -1770,7 +1801,7 @@ class GaussianField(object):
                 
                 mu_{x|Ax=e} = mu - K*A^T*(A*K*A^T)^{-1}(A*mu-e)
                 
-                K_{x|Ax=e} = K - 
+                K_{x|Ax=e} = K - K*A^T*(A*K*A^T)^{-1}*A*K
             
             - Otherwise, the conditional mean and precision are given by
             
