@@ -1060,6 +1060,7 @@ class Covariance(SPDMatrix):
     Discretized covariance operator
     
     TODO: Class to (i) incorporate CovKernel
+    TODO: Initialize Covariance matrix based on an SPDMatrix
     """
     def __init__(self, dofhandler, discretization='interpolation', 
                  subforest_flag=None, name=None, parameters={}, cov_fn=None):

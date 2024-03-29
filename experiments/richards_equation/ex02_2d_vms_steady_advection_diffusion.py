@@ -292,8 +292,14 @@ Z0 = q[0].data()
 ax[0,0] = plot.contour(q[0],axis=ax[0,0],colorbar=True)
 
 # 
-# Conditional samples given q0
+# Sequential Conditional Samples from q0
 # 
+
+# Step 1: Sample from q0
+print('Sampling from q0')
+Z0 = Z.sample()
+
+# Step 2: Condition q1 on q0
 print('Condintioning q1 on q0')
 M10 = local_average_operator(mesh, v0[0], v0[1], flag0=0, flag1=1)
 Z1  = GaussianField(dh1.n_dofs(), K=cov)
