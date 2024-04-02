@@ -18,6 +18,7 @@ from scipy.sparse.linalg import spsolve
 from solver import LinearSystem
 from scipy.sparse import linalg as spla
 from scipy import sparse
+import Tasmanian as tas
 
 # Initialize plot
 plot = Plot(quickview=False)
