@@ -1054,6 +1054,170 @@ class SPDMatrix(object):
         V = self.__V
         return V[:,self.__ix_nullspace]
     
+class CholeskyDecomposition(SPDMatrix):
+    """
+    Description:
+
+    Cholesky Decomposition of a symmetric positive definite matrix of the form
+
+        C = LL'
+
+    Decompositions differ based on properties of C: 
+
+    1. C is sparse and non-degenerate: use cholmod, whose decomposition is of
+        the form 
+        
+            PCP' = LDL', 
+            
+        where 
+        
+            P is a permutation matrix, 
+            L is lower triangular, sparse, and 
+            D is diagonal.
+
+    2. C is full and non-degenerate: use full cholesky decomposition, given by
+
+            C = LL', 
+
+        where L is lower triangular.
+
+    3. C is degenerate (convert to full): use modified Cholesky, whose 
+        decomposition is of the form
+
+            P*(C + E)*P' = L*D*L',
+
+        where
+
+            P is a permutation matrix,
+            L is the cholesky factor (P*L is lower triangular)
+            E is a perturbation matrix so that C+E is positive definite
+            D is diagonal
+            D0 diagonal matrix so that C = L*D0*L'
+
+    Attributes:
+
+        __C: Symmetric positive definite matrix
+        __L: Cholesky factor
+        __D: Diagonal matrix
+        __P: Permutation matrix
+        __D0: Diagonal matrix so that C = L*D0*L'
+
+    Methods:
+        
+        - decompose: Compute the Cholesky decomposition of the matrix
+        - reconstruct: Reconstruct the matrix from its Cholesky decomposition
+        - dot: Compute the matrix vector product C*b
+        - solve: Solve the system Cx = b for x
+        - sqrt: Compute Sqrt(C)*b
+        - sqrt_solve: Solve Sqrt(C)*x = b for x 
+    """
+    def __init__(self,C=None) -> None:
+        self.__L = None
+        self.__C = C
+
+    def issparse(self):
+        """
+        Return True if the matrix is sparse
+        """
+        return sp.issparse(self.__C)
+
+    def isdegenerate(self):
+        """
+        Return True if the matrix is degenerate
+        """
+        pass
+
+    def size(self):
+        """
+        Return the number of rows (=columns) of K
+        """
+        return self.__C.shape[0]
+   
+    def decompose(self,C):
+        """
+        Compute the Cholesky decomposition of the matrix S
+        """
+        pass
+
+    def reconstruct(self):
+        """
+        Reconstruct the matrix from its Cholesky decomposition
+        """
+        pass
+    
+    def dot(self,b):
+        """
+        Compute the matrix vector product S*b
+        """
+        pass
+
+    def solve(self,b):
+        """
+        Solve the system Sx = b for x
+        """
+        pass
+
+    def sqrt(self,b):
+        """
+        Compute Sqrt(S)*b
+        """
+        pass
+
+    def sqrt_solve(self,b):
+        """
+        Solve Sqrt(S)*x = b for x
+        """
+        pass
+
+class EigenDecomposition(SPDMatrix):
+    """
+    Eigenvalue decomposition of a symmetric positive definite matrix
+    """
+    def __init__(self) -> None:
+        pass
+
+    def size(self):
+        """
+        Return the number of rows (=columns) of K
+        """
+        return self.__K.shape[0]
+   
+    def decompose(self,S):
+        """
+        Compute the eigendecomposition of the matrix S
+        """
+        pass
+
+    def reconstruct(self):
+        """
+        Reconstruct the matrix from its eigendecomposition
+        """
+        pass
+    
+    def dot(self,b):
+        """
+        Compute the matrix vector product S*b
+        """
+        pass
+
+    def solve(self,b):
+        """
+        Solve the system Sx = b for x
+        """
+        pass
+
+    def sqrt(self,b):
+        """
+        Compute Sqrt(S)*b
+        """
+        pass
+
+    def sqrt_solve(self,b):
+        """
+        Solve Sqrt(S)*x = b for x
+        """
+        pass
+
 
 class Covariance(SPDMatrix):
     """
