@@ -1,0 +1,15 @@
+CholeskyDecomposition Methods (migration)
+im | test 
+[x]| [ ] init 
+[x]| [ ] issparse
+[x]| [ ] isdegenerate
+[x]| [ ] size
+[x]| [ ] get_factors
+[x]| [ ] decompose
+[x]| [ ] modchol_ldlt
+[x]| [ ] reconstruct
+[x]| [ ] dot
+[x]| [ ] solve
+[x]| [ ] sqrt_dot
+[x]| [ ] sqrt_solve
+[ ]| [ ] update? 
