@@ -286,43 +286,78 @@ plt.show()
 #
 # Conditional distribution of the fine scale, given the coarse scale. 
 # 
-fig, ax = plt.subplots(3,3)
+
+# Unconditional distributions at each level
+
+# Level 2:
+K2 = Z.covariance()  # fine scale covariance matrix
+
+# Level 1:
+# Local averaging operator
+M21 = local_average_operator(mesh, v0[1], v0[2], flag0=1, flag1=2).toarray()
+
+# Level 1 scale covariance matrix
+K1 = M21.dot(K2.dot(M21.transpose())) 
+print('K1:', 'type', type(K1), 'size',K1.shape)
+
+
+# Level 1 scale diffusion coefficient
+Z1 = GaussianField(dh0.n_dofs(subforest_flag=1), K=K1)
+
+# Level 0:
+# Local averaging operator
+M10 = local_average_operator(mesh, v0[0], v0[1], flag0=0, flag1=1).toarray()
+K0 = M10.dot(K1.dot(M10.transpose()))
+
+# Level 0 scale diffusion coefficient
+Z0 = GaussianField(dh0.n_dofs(subforest_flag=0), K=K0)
+
+fig, ax = plt.subplots(1,3)
+ax[0] = plot.contour(Nodal(basis=v0[0], data=Z0.sample()),axis=ax[0],colorbar=True)
+ax[1] = plot.contour(Nodal(basis=v0[1], data=Z1.sample()),axis=ax[1],colorbar=True)
+ax[2] = plot.contour(Nodal(basis=v0[2], data=Z.sample()),axis=ax[2],colorbar=True)
+for i in range(3):
+    ax[i].set_axis_off()
+
+plt.show()
+
 
 # Coarse scale diffusion coefficient
-Z0 = q[0].data()
-ax[0,0] = plot.contour(q[0],axis=ax[0,0],colorbar=True)
+#Z0 = q[0].data()
+#ax[0,0] = plot.contour(q[0],axis=ax[0,0],colorbar=True)
+
 
 # 
 # Sequential Conditional Samples from q0
 # 
 
+
 # Step 1: Sample from q0
 print('Sampling from q0')
-Z0 = Z.sample()
+z0 = Z0.sample()
+q0 = Nodal(basis=v0[0], data=z0)
 
 # Step 2: Condition q1 on q0
-print('Condintioning q1 on q0')
-M10 = local_average_operator(mesh, v0[0], v0[1], flag0=0, flag1=1)
-Z1  = GaussianField(dh1.n_dofs(), K=cov)
-
-
-Z10 = Z.condition(M10, Z0, n_samples=1)
-
-print('conditioning q2 on q0')
-M20 = local_average_operator(mesh, v0[0], v0[2], flag0=0, flag1=2)
-Z20 = Z.condition(M20, Z0, n_samples=1)
+print('Conditioning q1 on q0')
+z10 = Z1.condition(M10, z0, n_samples=1)
+#q1 = Nodal(basis=v0[1], data=z10)
 
 print('conditioning q2 on q1')
-M21 = local_average_operator(mesh, v0[1], v0[2], flag0=1, flag1=2)
-Z21 = Z.condition(M21, Z10, n_samples=1)
+M20 = local_average_operator(mesh, v0[0], v0[2], flag0=0, flag1=2)
+z21 = Z.condition(M21, z10, n_samples=1)
+#q2 = Nodal(basis=v0[2], data=z21)
 
+fig, ax = plt.subplots(2,3)
 
+# Plot the Gausssian field samples 
+ax[0,0] = plot.contour(Nodal(basis=v0[0], data=z0),axis=ax[0,0],colorbar=True)
+ax[0,1] = plot.contour(Nodal(basis=v0[1], data=z10),axis=ax[0,1],colorbar=True)
+ax[0,2] = plot.contour(Nodal(basis=v0[2], data=z21),axis=ax[0,2],colorbar=True)
 
-
-ax[0,1] = plot.contour(Nodal(basis=v0[1], data=Z10),axis=ax[0,1],colorbar=True)
-ax[0,2] = plot.contour(Nodal(basis=v0[2], data=Z20),axis=ax[0,2],colorbar=True)
-ax[1,1] = plot.contour(Nodal(basis=v0[1], data=Z10),axis=ax[1,1],colorbar=True)
-ax[1,2] = plot.contour(Nodal(basis=v0[2], data=Z21),axis=ax[1,2],colorbar=True)
+# Plot the diffusion coefficient samples
+ax[1,0] = plot.contour(Nodal(basis=v0[0], data=0.01 + np.exp(z0)),axis=ax[1,0],colorbar=True)
+ax[1,1] = plot.contour(Nodal(basis=v0[1], data=0.01 + np.exp(z10)),axis=ax[1,1],colorbar=True)
+ax[1,2] = plot.contour(Nodal(basis=v0[2], data=0.01 + np.exp(z21)),axis=ax[1,2],colorbar=True)
 
 plt.show()
 """
