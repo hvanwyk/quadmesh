@@ -2483,7 +2483,8 @@ class GaussianField(object):
                 
             #
             # Compute K*A.T and A*K*A.T
-            #   
+            #  
+            print('Computing KAT and AKAT') 
             if mode=='covariance':    
                 KAT  = K.dot(Ak.T)
                 AKAT = Ak.dot(KAT)
@@ -2498,16 +2499,20 @@ class GaussianField(object):
                 # 
                 
                 # Sample unconditioned field 
+                print('Sampling from unconditioned field')
                 Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
                                  decomposition=decomposition)            
                 
                 # Compute residual
+                print('Computing residual')
                 r = A.dot(Xs)-e
                 
                 # Conditional covariance 
+                print('Computing conditional covariance')
                 U = linalg.solve(AKAT,r)
                 
                 # Apply correction 
+                print('Applying correction')
                 X = Xs - Vk.dot(KAT.dot(U))
                 
                 return X
