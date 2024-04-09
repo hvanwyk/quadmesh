@@ -1149,13 +1149,13 @@ class CholeskyDecomposition(SPDMatrix):
 
     def size(self):
         """
-        Return the number of rows (=columns) of K
+        Return the number of rows (=columns) of C
         """
         return self.__L.shape[0]
    
     def decompose(self,C,verbose=False):
         """
-        Compute the Cholesky decomposition of the matrix S
+        Compute the Cholesky decomposition of the matrix C
         """
         if self.issparse():
             if verbose: print('Sparse matrix - using CHOLMOD')
@@ -1308,7 +1308,7 @@ class CholeskyDecomposition(SPDMatrix):
             
         return L, DMC, P, D
 
-    def set_factor(self,L):
+    def set_factors(self,L):
         """
         Store the Cholesky factorization
         """
@@ -1323,7 +1323,7 @@ class CholeskyDecomposition(SPDMatrix):
             #
             # Sparse
             # 
-            f = self.get_chol_decomp()
+            f = self.get_factors()
 
             # Build permutation matrix
             P = f.P()
@@ -1343,7 +1343,7 @@ class CholeskyDecomposition(SPDMatrix):
             L, D = self.__L, self.__D
             return L.dot(D.dot(L.T))
         
-    def get_factors(self):
+    def get_factors(self,verbose=False):
         """
         Returns the Cholesky factorization of the matrix
         """                
@@ -1351,11 +1351,13 @@ class CholeskyDecomposition(SPDMatrix):
             #
             # Return None if Cholesky decomposition not computed
             # 
+            if verbose: print('Cholesky decomposition not computed.')
             return None 
-        elif self.chol_type()=='sparse':
+        elif self.issparse():
             #
             # Return sparse cholesky decomposition
             #            
+            if verbose: print('Sparse Cholesky decomposition')
             return self.__L
         elif self.chol_type()=='full':
             #
@@ -1365,7 +1367,7 @@ class CholeskyDecomposition(SPDMatrix):
     
     def dot(self,b):
         """
-        Compute the matrix vector product S*b
+        Compute the matrix vector product C*b
         
         Input:
         
