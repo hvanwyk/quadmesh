@@ -1054,7 +1054,7 @@ class SPDMatrix(object):
         V = self.__V
         return V[:,self.__ix_nullspace]
     
-class CholeskyDecomposition(SPDMatrix):
+class CholeskyDecomposition(object):
     """
     Description:
 
@@ -1111,7 +1111,7 @@ class CholeskyDecomposition(SPDMatrix):
         - sqrt: Compute Sqrt(C)*b
         - sqrt_solve: Solve Sqrt(C)*x = b for x 
     """
-    def __init__(self,C,verbose=False) -> None:
+    def __init__(self,C,verbose=True):
         
         # Determine whether the matrix is sparse
         self.set_sparsity(sp.issparse(C))
@@ -1169,8 +1169,11 @@ class CholeskyDecomposition(SPDMatrix):
                 L = cholesky(C.tocsc(), mode='supernodal')
 
                 # Store Cholesky decomposition
-                self.set_factor(L)
+                self.set_factors(L)
                 
+                # Record non-degeneracy
+                self.set_degeneracy(False)
+
             except CholmodNotPositiveDefiniteError:
                 if verbose: 
                     print('Matrix not positive definite - using modified Cholesky')
@@ -1189,7 +1192,10 @@ class CholeskyDecomposition(SPDMatrix):
                 L = np.linalg.cholesky(C)
 
                 # Store Cholesky decomposition
-                self.set_factor(L)
+                self.set_factors(L)
+
+                # Record non-degeneracy
+                self.set_degeneracy(False)
 
             except np.linalg.LinAlgError:
                 if verbose: 
@@ -1217,7 +1223,7 @@ class CholeskyDecomposition(SPDMatrix):
             # 
             # Store Cholesky decomposition
             #
-            self.set_factor((L, D, P, D0))  
+            self.set_factors((L, D, P, D0))  
             
 
     def modchol_ldlt(S,delta=None):
