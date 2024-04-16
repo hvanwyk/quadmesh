@@ -68,7 +68,7 @@ class TestCholeskyDecomposition(unittest.TestCase):
 
     def test_modified_cholesky(self):
         # Test Cholesky decomposition for a non-positive definite matrix
-        
+        A = test_matrix(degenerate=True)
         cholesky = CholeskyDecomposition(A)
         with self.assertRaises(ValueError):
             cholesky.decompose(A)

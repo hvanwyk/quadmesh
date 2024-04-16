@@ -1064,7 +1064,7 @@ class CholeskyDecomposition(object):
 
     Decompositions differ based on properties of C: 
 
-    1. C is sparse and non-degenerate: use cholmod, whose decomposition is of
+    1. C is non-degenerate: use cholmod, whose decomposition is of
         the form 
         
             PCP' = LDL', 
@@ -1075,13 +1075,7 @@ class CholeskyDecomposition(object):
             L is lower triangular, sparse, and 
             D is diagonal.
 
-    2. C is full and non-degenerate: use full cholesky decomposition, given by
-
-            C = LL', 
-
-        where L is lower triangular.
-
-    3. C is degenerate (convert to full): use modified Cholesky, whose 
+    2. C is degenerate (convert to full if sparse): use modified Cholesky, whose 
         decomposition is of the form
 
             P*(C + E)*P' = L*D*L',
