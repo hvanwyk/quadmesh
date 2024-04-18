@@ -1,12 +1,12 @@
 import sys
-"""
+
 # Get the folder path
 folder_path = '/home/hans-werner/git/quadmesh/src'
 
 # Add the folder path to the system path if it's not already there
 if folder_path not in sys.path:
     sys.path.append(folder_path)
-"""
+
 from gmrf import CholeskyDecomposition
 from scipy import sparse
 import numpy as np
