@@ -1147,7 +1147,7 @@ class CholeskyDecomposition(object):
         """
         return self.__L.shape[0]
    
-    def decompose(self,C,verbose=False):
+    def decompose(self,C,verbose=True):
         """
         Compute the Cholesky decomposition of the matrix C
         """

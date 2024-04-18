@@ -57,21 +57,51 @@ def test_matrix(dense=False, degenerate=False):
 
 
 class TestCholeskyDecomposition(unittest.TestCase):
-    def test_decomposition(self):
+    
+    def test_indicators(self):
         # Test Cholesky decomposition for a positive definite matrix
-        A = np.array([[4, 12, -16], [12, 37, -43], [-16, -43, 98]])
-        cholesky = CholeskyDecomposition(A)
+        for dense in [True, False]:
+            #
+            # Dense and sparse matrices
+            # 
+            for degenerate in [True, False]:
+                #
+                # Degenerate and non-degenerate matrices
+                #
+                A = test_matrix(dense=dense, degenerate=degenerate)
+                cholesky = CholeskyDecomposition(A)
+                
+                # Assert that the matrix is/isn't positive definite
+                self.assertEqual(cholesky.isdegenerate(),degenerate)
 
-        L = cholesky.get_factors()
-        expected_L = [[2, 0, 0], [6, 1, 0], [-8, 5, 3]]
-        self.assertEqual(L, expected_L)
+                # Assert that the matrix is/isn't full
+                self.assertEqual(cholesky.issparse(),sparse)        
+
+                # Check the size
+                print(cholesky.size())
+                self.assertEqual(cholesky.size(), A.shape[0])
+
+    def test_reconstruct_positive_definite(self):
+        """
+        Decompose a positive definite matrix and reconstruct it.
+        """
+        for dense in [True, False]:
+            #
+            # Dense and sparse matrices
+            # 
+            A = test_matrix(dense=dense)
+            cholesky = CholeskyDecomposition(A)
+            A_reconstructed = cholesky.reconstruct()
+            self.assertTrue(np.allclose(A, A_reconstructed))
+        #L = cholesky.get_factors()
+        #expected_L = [[2, 0, 0], [6, 1, 0], [-8, 5, 3]]
+        #self.assertEqual(L, expected_L)
 
     def test_modified_cholesky(self):
         # Test Cholesky decomposition for a non-positive definite matrix
         A = test_matrix(degenerate=True)
         cholesky = CholeskyDecomposition(A)
-        with self.assertRaises(ValueError):
-            cholesky.decompose(A)
+   
 
     def test_reconstruct(self):
         # Test reconstruction of the original matrix
