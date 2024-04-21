@@ -3,12 +3,56 @@ Module for factorizations of positive definite matrices.
 """
 # Built-in modules
 import numpy as np
+from scipy import linalg
+import scipy.sparse as sp
+from scipy.sparse import linalg as spla
+
 
 # CHOLMOD: Cholesky decomposition
 from sksparse.cholmod import cholesky
 from sksparse.cholmod import cholesky_AAt 
 from sksparse.cholmod import Factor
 from sksparse.cholmod import  CholmodNotPositiveDefiniteError
+
+
+class SPDMatrix(object):
+    def __init__(self):
+        """
+        Initialize the SPD matrix
+        """
+        pass
+
+    def size(self):
+        pass
+
+    def rank(self):
+        pass
+
+    def issparse(self):
+        pass
+
+    def isdegenerate(self):
+        pass
+
+    def decompose(self):
+        pass
+
+    def reconstruct(self):
+        pass
+    
+    def dot(self):
+        pass
+
+    def solve(self):
+        pass
+
+    def sqrt(self):
+        pass
+
+    def sqrt_solve(self):
+        pass
+
+
 
 class CholeskyDecomposition(object):
     """
@@ -66,12 +110,10 @@ class CholeskyDecomposition(object):
         # Determine whether the matrix is sparse
         self.set_sparsity(sp.issparse(C))
         self.set_degeneracy(False)
-
-        print('Is degenerate?', self.isdegenerate())
+        
         # Compute the factorization
         self.decompose(C, verbose=verbose)          
-        print('Is degenerate?', self.isdegenerate())
-
+      
     def set_sparsity(self, is_sparse):
         """
         Set the sparsity of the matrix
@@ -489,11 +531,11 @@ class CholeskyDecomposition(object):
 
     
 
-class EigenDecomposition(SPDMatrix):
+class EigenDecomposition(object):
     """
     Eigenvalue decomposition of a symmetric positive definite matrix
     """
-    def __init__(self) -> None:
+    def __init__(self):
         pass
 
     def size(self):
