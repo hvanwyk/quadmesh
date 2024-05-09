@@ -7,7 +7,7 @@ folder_path = '/home/hans-werner/git/quadmesh/quadmesh/src'
 if folder_path not in sys.path:
     sys.path.append(folder_path)
 
-from factorizations import CholeskyDecomposition
+from spd import CholeskyDecomposition
 from scipy import sparse
 import numpy as np
 
