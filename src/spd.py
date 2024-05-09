@@ -1,5 +1,5 @@
 """
-Module for factorizations of positive definite matrices.
+Module for positive definite matrices and their factorizations.
 """
 # Built-in modules
 import numpy as np
@@ -54,7 +54,7 @@ class SPDMatrix(object):
 
 
 
-class CholeskyDecomposition(object):
+class CholeskyDecomposition(SPDMatrix):
     """
     Description:
 
@@ -64,7 +64,7 @@ class CholeskyDecomposition(object):
 
     Decompositions differ based on properties of C: 
 
-    1. C is non-degenerate: use cholmod, whose decomposition is of
+    1. C is sparse and non-degenerate: use cholmod, whose decomposition is of
         the form 
         
             PCP' = LDL', 
@@ -75,7 +75,15 @@ class CholeskyDecomposition(object):
             L is lower triangular, sparse, and 
             D is diagonal.
 
-    2. C is degenerate (convert to full if sparse): use modified Cholesky, whose 
+    2. C is full and non-degnerate: use standard Cholesky, whose decomposition is
+        of the form
+
+            C = LL',
+
+        where L is lower triangular.
+    
+            
+    3. C is degenerate (convert to full if sparse): use modified Cholesky, whose 
         decomposition is of the form
 
             P*(C + E)*P' = L*D*L',
@@ -336,12 +344,12 @@ class CholeskyDecomposition(object):
             
             # Check reconstruction LL' = PAP'
             return L.dot(L.T) 
-        else:
+        elif not self.isdegenerate():
             #
-            # Full matrix
+            # Full, non-degenerate matrix
             # 
-            L, D = self.__L, self.__D
-            return L.dot(D.dot(L.T))
+            L = self.get_factors()
+            return L.dot(L.T)
         
     def get_factors(self,verbose=False):
         """
@@ -353,17 +361,24 @@ class CholeskyDecomposition(object):
             # 
             if verbose: print('Cholesky decomposition not computed.')
             return None 
-        elif self.issparse():
-            #
-            # Return sparse cholesky decomposition
-            #            
-            if verbose: print('Sparse Cholesky decomposition')
-            return self.__L
-        elif self.chol_type()=='full':
+        elif self.isdegenerate():
             #
             # Return the modified Cholesky decomposition
             # 
+            if verbose: 
+                print('Modified Cholesky decomposition')
+                print('Returning L, D, P, D0, where')
+                print('C = P*(C+E)*P\' = L*D*L\'')
+
             return self.__L, self.__D, self.__P, self.__D0 
+        
+        else:
+            #
+            # Return sparse cholesky decomposition
+            #            
+            if verbose: print('Cholesky factor')
+            return self.__L
+        
     
     def dot(self,b):
         """
@@ -376,7 +391,7 @@ class CholeskyDecomposition(object):
             
         Output:
         
-            Kb: double, (n,m) matrix-vector product
+            C*b: double, (n,m) product
         """
         assert b.shape[0]==self.size(), 'Input "b" has incompatible shape.'+\
         'Size K: {0}, Size b: {1}'.format(self.size(), b.shape)
@@ -401,16 +416,24 @@ class CholeskyDecomposition(object):
         Returns:
             The solution x of the system C*x = b.
         """
-        if self.chol_type() == 'sparse':
+        if self.issparse():
             #
             # Use CHOLMOD
             #
             return self.__L(b)
+        elif not self.isdegenerate():
+            #
+            # Use standard Cholesky
+            # 
+            L = self.get_factors()
+            y = linalg.solve_triangular(L,b,lower=True)
+            x = linalg.solve_triangular(L.T,y,lower=False)
+            return x
         else:
             #
             # Use Modified Cholesky
             # 
-            L, D, P, dummy = self.get_chol_decomp()
+            L, D, P, dummy = self.get_factors()
             PL = P.dot(L)
             y = linalg.solve_triangular(PL,P.dot(b),lower=True, unit_diagonal=True)
             Dinv = sp.diags(1./np.diagonal(D))
@@ -420,14 +443,14 @@ class CholeskyDecomposition(object):
 
     def sqrt_dot(self,b,transpose=False):
         """
-        Returns R*b, where A = R*R'
+        Returns L*b, where A = L*L'
         
         Parameters:
             b (double, compatible vector/matrix): The vector/matrix to be multiplied.
-            transpose (bool, optional): If True, returns R'*b. If False, returns R*b. Defaults to False.
+            transpose (bool, optional): If True, returns L'*b. If False, returns L*b. Defaults to False.
         
         Returns:
-            The result of multiplying R with b.
+            The result of multiplying L with b.
         """
         assert self.__L is not None, \
             'Cholesky factor not computed.'\
