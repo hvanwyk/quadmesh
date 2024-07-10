@@ -16,20 +16,55 @@ from sksparse.cholmod import  CholmodNotPositiveDefiniteError
 
 
 class SPDMatrix(object):
-    def __init__(self):
+    def __init__(self,C):
         """
         Initialize the SPD matrix
         """
-        pass
+        # Checks
+        assert C.shape[0]==C.shape[1], 'Input "C" must be square.'
+
+        # Set the sparsity of the matrix
+        self.set_sparsity(sp.issparse(C))
+        
+        #assert linalg.issymmetric(C,atol=1e-12), 'Input "C" must be symmetric'
+        
+        # Store the matrix
+        self.set_matrix(C)
+
+
+    def set_matrix(self,C):
+        """
+        Store the SPD matrix
+        """
+        self.__C = C
+
+    def get_matrix(self):
+        """
+        Return the SPD matrix
+        """
+        return self.__C
 
     def size(self):
-        pass
+        """
+        Return the number of rows (=columns) of C
+        """
+        return self.__C.shape[0]
 
     def rank(self):
         pass
 
+    def set_sparsity(self, is_sparse):
+        """
+        Set the sparsity of the matrix
+        """
+        assert isinstance(is_sparse, bool), 'Input "is_sparse" should be a boolean.'
+        self.__is_sparse = is_sparse
+
     def issparse(self):
-        pass
+        """
+        Return True if the matrix is sparse
+        """
+        return self.__is_sparse
 
     def isdegenerate(self):
         pass
@@ -67,13 +102,12 @@ class CholeskyDecomposition(SPDMatrix):
     1. C is sparse and non-degenerate: use cholmod, whose decomposition is of
         the form 
         
-            PCP' = LDL', 
+            PCP' = LL', 
             
         where 
         
             P is a permutation matrix, 
-            L is lower triangular, sparse, and 
-            D is diagonal.
+            L is lower triangular, and sparse
 
     2. C is full and non-degnerate: use standard Cholesky, whose decomposition is
         of the form
@@ -94,7 +128,7 @@ class CholeskyDecomposition(SPDMatrix):
             L is the cholesky factor (P*L is lower triangular)
             E is a perturbation matrix so that C+E is positive definite
             D is diagonal
-            D0 diagonal matrix so that C = L*D0*L'
+            D0 block diagonal matrix so that C = L*D0*L'
 
     Attributes:
 
@@ -115,25 +149,18 @@ class CholeskyDecomposition(SPDMatrix):
     """
     def __init__(self,C,verbose=True):
         
-        # Determine whether the matrix is sparse
-        self.set_sparsity(sp.issparse(C))
+        # Initialize the SPD matrix
+        SPDMatrix.__init__(self,C)
+        
+        # 
+        # Initialize the Cholesky decomposition
+        # 
+        # Default assumption: matrix is not degenerate
         self.set_degeneracy(False)
         
         # Compute the factorization
         self.decompose(C, verbose=verbose)          
-      
-    def set_sparsity(self, is_sparse):
-        """
-        Set the sparsity of the matrix
-        """
-        assert isinstance(is_sparse, bool), 'Input "is_sparse" should be a boolean.'
-        self.__is_sparse = is_sparse
-
-    def issparse(self):
-        """
-        Return True if the matrix is sparse
-        """
-        return self.__is_sparse 
+    
 
     def set_degeneracy(self, is_degenerate):
         """
@@ -149,12 +176,6 @@ class CholeskyDecomposition(SPDMatrix):
         """
         return self.__is_degenerate
 
-    def size(self):
-        """
-        Return the number of rows (=columns) of C
-        """
-        return self.__L.shape[0]
-   
     def decompose(self,C,verbose=True):
         """
         Compute the Cholesky decomposition of the matrix C
@@ -191,7 +212,7 @@ class CholeskyDecomposition(SPDMatrix):
                 #
                 # Try Cholesky (will fail if not PD)
                 # 
-                L = np.linalg.cholesky(C)
+                L = linalg.cholesky(C,lower=True, check_finite=False)
 
                 # Store Cholesky decomposition
                 self.set_factors(L)
@@ -219,7 +240,11 @@ class CholeskyDecomposition(SPDMatrix):
                 # 
                 C = C.toarray()
 
-            # Compute modified Cholesky            
+                # Update to non-sparse
+                self.set_sparsity(False)
+
+            # Compute modified Cholesky 
+            # P*(C + E)*P' = L*D*L' or P*C*P' = L*D0*L'         
             L, D, P, D0 = self.modchol_ldlt(C)
 
             # 
@@ -228,7 +253,7 @@ class CholeskyDecomposition(SPDMatrix):
             self.set_factors((L, D, P, D0))  
             
 
-    def modchol_ldlt(S,delta=None):
+    def modchol_ldlt(C,delta=None):
         """
         Modified Cholesky algorithm based on LDL' factorization.
         
@@ -256,7 +281,7 @@ class CholeskyDecomposition(SPDMatrix):
 
         Authors: Bobby Cheng and Nick Higham, 1996; revised 2015.
         """
-        assert np.allclose(S, S.T, atol=1e-12), \
+        assert np.allclose(C, C.T, atol=1e-12), \
         'Input "A" must be symmetric'    
 
         if delta is None:
@@ -266,9 +291,9 @@ class CholeskyDecomposition(SPDMatrix):
         else:
             assert delta>0, 'Input "delta" should be positive.'
 
-        n = max(S.shape)
+        n = max(C.shape)
 
-        L,D,p = linalg.ldl(S)  # @UndefinedVariable
+        L,D,p = linalg.ldl(C)  # @UndefinedVariable
         DMC = np.eye(n)
             
         # Modified Cholesky perturbations.
@@ -288,7 +313,7 @@ class CholeskyDecomposition(SPDMatrix):
                     DMC[k,k] = delta
                 else:
                     DMC[k,k] = D[k,k]
-            
+                
                 k += 1
         
             else:  
@@ -350,6 +375,12 @@ class CholeskyDecomposition(SPDMatrix):
             # 
             L = self.get_factors()
             return L.dot(L.T)
+        else:
+            #
+            # Full, degenerate matrix
+            # 
+            L, D, P, D0 = self.get_factors()
+            return P.dot(L.dot(D0.dot(L.T.dot(P.T))))
         
     def get_factors(self,verbose=False):
         """
@@ -368,15 +399,20 @@ class CholeskyDecomposition(SPDMatrix):
             if verbose: 
                 print('Modified Cholesky decomposition')
                 print('Returning L, D, P, D0, where')
-                print('C = P*(C+E)*P\' = L*D*L\'')
+                print('C = P*(C+E)*P\' = L*D*L\' and P*C*P\' = L*D0*L\'')
 
             return self.__L, self.__D, self.__P, self.__D0 
         
         else:
             #
-            # Return sparse cholesky decomposition
+            # Return cholesky decomposition
             #            
-            if verbose: print('Cholesky factor')
+            if verbose: 
+                print('Cholesky factor')
+                if self.issparse():
+                    print('CHOLMOD factor')
+                else:
+                    print('Standard Cholesky factor')
             return self.__L
         
     
@@ -408,27 +444,33 @@ class CholeskyDecomposition(SPDMatrix):
     def solve(self,b):
         """
         Solve the system C*x = b  by successively solving 
-        Ly = b for y and hence L^T x = y for x.
+        
+            Ly = b for y and hence L' x = y for x.
         
         Parameters:
-            b (double, (n,m) array): The right-hand side of the system.
+
+            b: double, (n,m) array representing the right-hand side of the 
+                system.
         
         Returns:
+
             The solution x of the system C*x = b.
         """
-        if self.issparse():
-            #
-            # Use CHOLMOD
-            #
-            return self.__L(b)
-        elif not self.isdegenerate():
-            #
-            # Use standard Cholesky
-            # 
-            L = self.get_factors()
-            y = linalg.solve_triangular(L,b,lower=True)
-            x = linalg.solve_triangular(L.T,y,lower=False)
-            return x
+        if not self.isdegenerate():
+            if self.issparse():
+                #
+                # Use CHOLMOD
+                #
+                L = self.get_factors()
+                return L.solve_A(b)
+            else:
+                #
+                # Use standard Cholesky
+                # 
+                L = self.get_factors()
+                y = linalg.solve_triangular(L,b,lower=True)
+                x = linalg.solve_triangular(L.T,y,lower=False)
+                return x
         else:
             #
             # Use Modified Cholesky
@@ -443,78 +485,144 @@ class CholeskyDecomposition(SPDMatrix):
 
     def sqrt_dot(self,b,transpose=False):
         """
-        Returns L*b, where A = L*L'
+        Returns L*b (or L'*b), where A = L*L'
         
         Parameters:
-            b (double, compatible vector/matrix): The vector/matrix to be multiplied.
-            transpose (bool, optional): If True, returns L'*b. If False, returns L*b. Defaults to False.
+
+            b: double, The compatible vector/matrix to be multiplied.
+
+            transpose: bool, (optional): If True, returns L'*b. 
+                If False, returns L*b. Defaults to False.
         
         Returns:
-            The result of multiplying L with b.
+
+            The result of multiplying L (or L') with b.
         """
         assert self.__L is not None, \
             'Cholesky factor not computed.'\
             
         n = self.size()
-        if self.chol_type()=='sparse':
+        if not self.isdegenerate():
             #
-            # Sparse matrix, use CHOLMOD
-            #
-
-            # Build permutation matrix
-            P = self.__L.P()
-            I = sp.diags([1],0, shape=(n,n), format='csc')
-            PP = I[P,:]
-                    
-            # Compute P'L
-            L = self.__L.L()
-            R = PP.T.dot(L)
-            
-            if transpose:
-                #
-                # R'*b
-                # 
-                return R.T.dot(b)
-            else:
-                #
-                # R*b
-                # 
-                return R.dot(b)
-        
-        elif self.chol_type()=='full':
-            #
-            # Cholesky Factor stored as full matrix
+            # Non-degenerate matrix
             # 
-            L,D = self.__L, self.__D
-            sqrtD = sp.diags(np.sqrt(np.diagonal(D)))
+            if self.issparse():
+                #
+                # Sparse non-degenerate matrix, use CHOLMOD (C = P'*L*L'*P)
+                #
+                f = self.get_factors()
+                L = f.L()
+                if transpose:
+                    #
+                    # W'*b, where W = P'*L => L'*P*b
+                    # 
+                    return L.T.dot(f.apply_P(b))
+                else:
+                    #
+                    # W*b, where W = P'*L
+                    # 
+                    return f.apply_Pt(L.dot(b))
+            else:
+                # 
+                # Full, non-degenerate matrix
+                #
+                L = self.__L
+                if transpose:
+                    #
+                    # L'*b
+                    # 
+                    return L.T.dot(b)
+                else:
+                    #
+                    # L*b
+                    # 
+                    return L.dot(b)   
+        else:
+            #
+            # Degenerate matrix: 0 < C+E = P'*L*D*L'*P = W*W'
+            # 
+            L, D, P, D0 = self.get_factors()
+            sqrtD = np.diag(np.sqrt(np.diag(D)))
             if transpose:
                 #
-                # R'b
+                # L'*b
                 # 
-                return sqrtD.dot(L.T.dot(b))
+                return sqrtD.dot(L.T.dot(P.dot(b)))
             else:
                 #
-                # Rb
+                # L*b
                 # 
-                return L.dot(sqrtD.dot(b))
+                return P.T.dot(L.dot(sqrtD.dot(b))) 
+        
 
     def sqrt_solve(self,b,transpose=False):
         """
-        Solve Sqrt(S)*x = b for x
-       
-        Return the solution x of Rx = b, where C = RR'
+        Solve Sqrt(C)*x = b for x, i.e. L*x = b or L'*x = b, where C = LL'
         
         Note: The 'L' in CHOLMOD's solve_L 
-            is the one appearing in the factorization LDL' = PQP'. 
-            We first rewrite it as Q = WW', where W = P'*L*sqrt(D)*P
+            is the one appearing in the factorization LDL' = PCP'. 
+            We first rewrite it as C = WW', where W = P'*L*sqrt(D)
         
         Parameters:
-            b (double, compatible vector/matrix): The right-hand side of the system.
-            transpose (bool, optional): If True, solves R'x = b. If False, solves Rx = b. Defaults to False.
+
+            b: double, compatible vector/matrix representing the right-hand side of the system.
+            
+            transpose: bool (optional), If True, solves L'x = b. 
+                If False, solves Lx = b. Defaults to False.
         
         Returns:
-            The solution x of the system Rx = b.
+            The solution x of the system Lx = b (or L'*x = b if transpose=True).
         """
+        if not self.isdegenerate():
+            #
+            # Non-degenerate matrix
+            # 
+            if self.issparse():
+                #
+                # Sparse, non-degenerate matrix (CHOLMOD)
+                # 
+                f = self.get_factors()
+                if transpose:
+                    #
+                    # Solve L' x = b
+                    # 
+                    return f.apply_Pt(f.solve_Lt(b))
+                else:
+                    #
+                    # Solve Rx = b
+                    # 
+                    return f.solve_L(f.apply_P(b))
+            else:
+                #
+                # Full, non-degenerate matrix
+                # 
+                L = self.__L
+                if transpose:
+                    #
+                    # Solve R' x = b
+                    # 
+                    return linalg.solve_triangular(L.T,b,lower=False)
+                else:
+                    #
+                    # Solve Rx = b
+                    # 
+                    return linalg.solve_triangular(L,b,lower=True)
+        else:
+            #
+            # Degenerate matrix
+            # 
+            L, D, P, D0 = self.get_factors()
+            sqrtD = np.diag(np.sqrt(np.diag(D)))
+            if transpose:
+                #
+                # Solve R' x = b
+                # 
+                return sqrtD.dot(linalg.solve_triangular(L.T,P.dot(b),lower=False))
+            else:
+                #
+                # Solve Rx = b
+                # 
+                return P.T.dot(linalg.solve_triangular(L,sqrtD.dot(b),lower=True))
         if self.chol_type() == 'sparse':
             #
             # Sparse Matrix
