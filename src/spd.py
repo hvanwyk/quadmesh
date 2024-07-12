@@ -16,12 +16,20 @@ from sksparse.cholmod import  CholmodNotPositiveDefiniteError
 
 
 class SPDMatrix(object):
-    def __init__(self,C):
+    def __init__(self, C):
         """
-        Initialize the SPD matrix
+        Initialize the SPD matrix.
+
+        Parameters:
+        - C: numpy.ndarray or scipy.sparse matrix
+            The input matrix to be stored as the SPD matrix.
+
+        Raises:
+        - AssertionError: If the input matrix is not square.
+
         """
         # Checks
-        assert C.shape[0]==C.shape[1], 'Input "C" must be square.'
+        assert C.shape[0] == C.shape[1], 'Input "C" must be square.'
 
         # Set the sparsity of the matrix
         self.set_sparsity(sp.issparse(C))
@@ -32,21 +40,36 @@ class SPDMatrix(object):
         self.set_matrix(C)
 
 
-    def set_matrix(self,C):
+    def set_matrix(self, C):
         """
-        Store the SPD matrix
+        Store the SPD matrix.
+
+        Parameters:
+        - C: numpy.ndarray or scipy.sparse matrix
+            The input matrix to be stored as the SPD matrix.
+
         """
         self.__C = C
 
     def get_matrix(self):
         """
-        Return the SPD matrix
+        Return the SPD matrix.
+
+        Returns:
+        - numpy.ndarray or scipy.sparse matrix
+            The stored SPD matrix.
+
         """
         return self.__C
 
     def size(self):
         """
-        Return the number of rows (=columns) of C
+        Return the number of rows (=columns) of C.
+
+        Returns:
+        - int
+            The number of rows (=columns) of the SPD matrix.
+
         """
         return self.__C.shape[0]
 
@@ -55,14 +78,27 @@ class SPDMatrix(object):
 
     def set_sparsity(self, is_sparse):
         """
-        Set the sparsity of the matrix
+        Set the sparsity of the matrix.
+
+        Parameters:
+        - is_sparse: bool
+            True if the matrix is sparse, False otherwise.
+
+        Raises:
+        - AssertionError: If the input is_sparse is not a boolean.
+
         """
         assert isinstance(is_sparse, bool), 'Input "is_sparse" should be a boolean.'
         self.__is_sparse = is_sparse
 
     def issparse(self):
         """
-        Return True if the matrix is sparse
+        Return True if the matrix is sparse, False otherwise.
+
+        Returns:
+        - bool
+            True if the matrix is sparse, False otherwise.
+
         """
         return self.__is_sparse
 
@@ -286,7 +322,7 @@ class CholeskyDecomposition(SPDMatrix):
 
         if delta is None:
             eps = np.finfo(float).eps
-            delta = np.sqrt(eps)*linalg.norm(S, 'fro')
+            delta = np.sqrt(eps)*linalg.norm(C, 'fro')
             #delta = 1e-5*linalg.norm(A, 'fro')
         else:
             assert delta>0, 'Input "delta" should be positive.'
