@@ -1,5 +1,5 @@
 """
-Module for positive definite matrices and their factorizations.
+Module for storing, factorizing, and solving systems with semi-positive definite matrices.
 """
 # Built-in modules
 import numpy as np
@@ -51,6 +51,7 @@ class SPDMatrix(object):
         """
         self.__C = C
 
+
     def get_matrix(self):
         """
         Return the SPD matrix.
@@ -61,6 +62,7 @@ class SPDMatrix(object):
 
         """
         return self.__C
+
 
     def size(self):
         """
@@ -73,8 +75,23 @@ class SPDMatrix(object):
         """
         return self.__C.shape[0]
 
+
+    def set_rank(self,rank):
+        """
+        Store the rank of the matrix
+        """
+        assert isinstance(rank, int), 'Input "rank" should be an integer.'
+        assert rank >= 0, 'Input "rank" should be non-negative.'
+        assert rank <= self.size(), 'Input "rank" should be less than or equal to the size of the matrix.'
+        self.__rank = rank
+
+
     def rank(self):
-        pass
+        """
+        Return the rank of the matrix
+        """
+        return self.__rank
+
 
     def set_sparsity(self, is_sparse):
         """
@@ -88,10 +105,13 @@ class SPDMatrix(object):
         - AssertionError: If the input is_sparse is not a boolean.
 
         """
-        assert isinstance(is_sparse, bool), 'Input "is_sparse" should be a boolean.'
+        assert isinstance(is_sparse, bool), \
+        'Input "is_sparse" should be a boolean.'
+
         self.__is_sparse = is_sparse
 
-    def issparse(self):
+
+    def is_sparse(self):
         """
         Return True if the matrix is sparse, False otherwise.
 
@@ -102,25 +122,58 @@ class SPDMatrix(object):
         """
         return self.__is_sparse
 
-    def isdegenerate(self):
-        pass
+
+    def is_degenerate(self):
+        """
+        Return True if the matrix is degenerate, i.e. not truly positive 
+        definite. This is the case if the matrix rank is less than its size.
+
+        Returns:
+        - bool
+            True if the matrix is degenerate, False otherwise.
+        """
+        return self.rank() < self.size()
+
 
     def decompose(self):
+        """
+        Factorize the matrix
+        """
         pass
+
 
     def reconstruct(self):
+        """
+        Reconstruct the matrix from its factorization
+        """
         pass
-    
+
+
     def dot(self):
+        """
+        Compute the matrix vector product C*b
+        """
         pass
+
 
     def solve(self):
+        """
+        Solve the system Cx = b for x
+        """
         pass
 
-    def sqrt(self):
+
+    def sqrt_dot(self):
+        """
+        Compute Sqrt(C)*b
+        """
         pass
+
 
     def sqrt_solve(self):
+        """
+        Solve Sqrt(C)*x = b for x
+        """
         pass
 
 
@@ -135,7 +188,7 @@ class CholeskyDecomposition(SPDMatrix):
 
     Decompositions differ based on properties of C: 
 
-    1. C is sparse and non-degenerate: use cholmod, whose decomposition is of
+    1. chol_sparse: C is sparse and non-degenerate: use cholmod, whose decomposition is of
         the form 
         
             PCP' = LL', 
@@ -145,7 +198,7 @@ class CholeskyDecomposition(SPDMatrix):
             P is a permutation matrix, 
             L is lower triangular, and sparse
 
-    2. C is full and non-degnerate: use standard Cholesky, whose decomposition is
+    2. chol_full: C is full and non-degnerate: use standard Cholesky, whose decomposition is
         of the form
 
             C = LL',
@@ -153,7 +206,7 @@ class CholeskyDecomposition(SPDMatrix):
         where L is lower triangular.
     
             
-    3. C is degenerate (convert to full if sparse): use modified Cholesky, whose 
+    3. chol_mod: C is degenerate (convert to full if sparse): use modified Cholesky, whose 
         decomposition is of the form
 
             P*(C + E)*P' = L*D*L',
@@ -183,7 +236,7 @@ class CholeskyDecomposition(SPDMatrix):
         - sqrt: Compute Sqrt(C)*b
         - sqrt_solve: Solve Sqrt(C)*x = b for x 
     """
-    def __init__(self,C,verbose=True):
+    def __init__(self,C,verbose=False):
         
         # Initialize the SPD matrix
         SPDMatrix.__init__(self,C)
@@ -202,21 +255,24 @@ class CholeskyDecomposition(SPDMatrix):
         """
         Set the degeneracy of the matrix
         """
-        assert isinstance(is_degenerate, bool), 'Input "is_degenerate" should be a boolean.'
+        assert isinstance(is_degenerate, bool), \
+            'Input "is_degenerate" should be a boolean.'
         self.__is_degenerate = is_degenerate
 
-    def isdegenerate(self):
+
+    def is_degenerate(self):
         """
         Return True if the matrix is degenerate, i.e. not truly positive 
         definite.
         """
         return self.__is_degenerate
 
+
     def decompose(self,C,verbose=True):
         """
         Compute the Cholesky decomposition of the matrix C
         """
-        if self.issparse():
+        if self.is_sparse():
             if verbose: print('Sparse matrix - using CHOLMOD')
             #
             # Sparse matrix - try efficient Cholesky factorization
@@ -266,16 +322,17 @@ class CholeskyDecomposition(SPDMatrix):
         #
         # Not Strictly Positive Definite
         #         
-        if self.isdegenerate():
+        if self.is_degenerate():
             #
             # Use modified Cholesky
             # 
-            if self.issparse():
+            if self.is_sparse():
                 #
                 # Sparse, degenerate matrix - convert to full first :(
                 # 
+                if verbose: print('Converting sparse matrix to full')
                 C = C.toarray()
-
+                
                 # Update to non-sparse
                 self.set_sparsity(False)
 
@@ -287,9 +344,9 @@ class CholeskyDecomposition(SPDMatrix):
             # Store Cholesky decomposition
             #
             self.set_factors((L, D, P, D0))  
-            
 
-    def modchol_ldlt(C,delta=None):
+
+    def modchol_ldlt(self,C,delta=None):
         """
         Modified Cholesky algorithm based on LDL' factorization.
         
@@ -317,8 +374,12 @@ class CholeskyDecomposition(SPDMatrix):
 
         Authors: Bobby Cheng and Nick Higham, 1996; revised 2015.
         """
+        
+        assert isinstance(C, np.ndarray), \
+            'Input "C" should be a numpy array.'
+        
         assert np.allclose(C, C.T, atol=1e-12), \
-        'Input "A" must be symmetric'    
+            'Input "C" must be symmetric'    
 
         if delta is None:
             eps = np.finfo(float).eps
@@ -377,17 +438,19 @@ class CholeskyDecomposition(SPDMatrix):
             
         return L, DMC, P, D
 
+
     def set_factors(self,L):
         """
         Store the Cholesky factorization
         """
         self.__L = L
-        
+
+    
     def reconstruct(self):
         """
         Reconstruct the matrix from its Cholesky decomposition
         """
-        if self.issparse():
+        if self.is_sparse():
             n = self.size()
             #
             # Sparse
@@ -405,7 +468,7 @@ class CholeskyDecomposition(SPDMatrix):
             
             # Check reconstruction LL' = PAP'
             return L.dot(L.T) 
-        elif not self.isdegenerate():
+        elif not self.is_degenerate():
             #
             # Full, non-degenerate matrix
             # 
@@ -428,7 +491,7 @@ class CholeskyDecomposition(SPDMatrix):
             # 
             if verbose: print('Cholesky decomposition not computed.')
             return None 
-        elif self.isdegenerate():
+        elif self.is_degenerate():
             #
             # Return the modified Cholesky decomposition
             # 
@@ -437,7 +500,7 @@ class CholeskyDecomposition(SPDMatrix):
                 print('Returning L, D, P, D0, where')
                 print('C = P*(C+E)*P\' = L*D*L\' and P*C*P\' = L*D0*L\'')
 
-            return self.__L, self.__D, self.__P, self.__D0 
+            return self.__L
         
         else:
             #
@@ -445,7 +508,7 @@ class CholeskyDecomposition(SPDMatrix):
             #            
             if verbose: 
                 print('Cholesky factor')
-                if self.issparse():
+                if self.is_sparse():
                     print('CHOLMOD factor')
                 else:
                     print('Standard Cholesky factor')
@@ -466,16 +529,17 @@ class CholeskyDecomposition(SPDMatrix):
             C*b: double, (n,m) product
         """
         assert b.shape[0]==self.size(), 'Input "b" has incompatible shape.'+\
-        'Size K: {0}, Size b: {1}'.format(self.size(), b.shape)
+        'Size C: {0}, Size b: {1}'.format(self.size(), b.shape)
         if sp.issparse(b):
             #
             # b is a sparse matrix
             #
-            K = self.get_matrix()
+            C = self.get_matrix()
             b = b.tocsc()
-            return b.T.dot(K).T
+            return b.T.dot(C).T
         else:
             return self.get_matrix().dot(b)
+
 
     def solve(self,b):
         """
@@ -492,8 +556,8 @@ class CholeskyDecomposition(SPDMatrix):
 
             The solution x of the system C*x = b.
         """
-        if not self.isdegenerate():
-            if self.issparse():
+        if not self.is_degenerate():
+            if self.is_sparse():
                 #
                 # Use CHOLMOD
                 #
@@ -538,11 +602,11 @@ class CholeskyDecomposition(SPDMatrix):
             'Cholesky factor not computed.'\
             
         n = self.size()
-        if not self.isdegenerate():
+        if not self.is_degenerate():
             #
             # Non-degenerate matrix
             # 
-            if self.issparse():
+            if self.is_sparse():
                 #
                 # Sparse non-degenerate matrix, use CHOLMOD (C = P'*L*L'*P)
                 #
@@ -581,12 +645,12 @@ class CholeskyDecomposition(SPDMatrix):
             sqrtD = np.diag(np.sqrt(np.diag(D)))
             if transpose:
                 #
-                # L'*b
+                # W'*b
                 # 
                 return sqrtD.dot(L.T.dot(P.dot(b)))
             else:
                 #
-                # L*b
+                # W*b
                 # 
                 return P.T.dot(L.dot(sqrtD.dot(b))) 
         
@@ -609,11 +673,11 @@ class CholeskyDecomposition(SPDMatrix):
         Returns:
             The solution x of the system Lx = b (or L'*x = b if transpose=True).
         """
-        if not self.isdegenerate():
+        if not self.is_degenerate():
             #
             # Non-degenerate matrix
             # 
-            if self.issparse():
+            if self.is_sparse():
                 #
                 # Sparse, non-degenerate matrix (CHOLMOD)
                 # 
@@ -621,12 +685,14 @@ class CholeskyDecomposition(SPDMatrix):
                 if transpose:
                     #
                     # Solve L' x = b
-                    # 
+                    #
+                    #return f.solve_Lt(b,use_LDLt_decomposition=False) 
                     return f.apply_Pt(f.solve_Lt(b))
                 else:
                     #
                     # Solve Rx = b
-                    # 
+                    #
+                    #return f.solve_L(b,use_LDLt_decomposition=False) 
                     return f.solve_L(f.apply_P(b))
             else:
                 #
@@ -659,6 +725,8 @@ class CholeskyDecomposition(SPDMatrix):
                 # Solve Rx = b
                 # 
                 return P.T.dot(linalg.solve_triangular(L,sqrtD.dot(b),lower=True))
+        
+        """
         if self.chol_type() == 'sparse':
             #
             # Sparse Matrix
@@ -693,9 +761,8 @@ class CholeskyDecomposition(SPDMatrix):
                                             unit_diagonal=unit_diagonal)
                 
                 return sqrtDinv.dot(y)
-
-
-
+        """
+        
     
 
 class EigenDecomposition(object):
@@ -721,7 +788,7 @@ class EigenDecomposition(object):
             delta (float, optional): A small positive constant to add to the diagonal of K before computing the eigendecomposition. Defaults to None.
         """ 
         K = self.__K
-        if self.issparse():
+        if self.is_sparse():
             K = K.toarray()
             
         # Compute eigendecomposition
