@@ -2,6 +2,7 @@
 Module for storing, factorizing, and solving systems with semi-positive definite matrices.
 """
 # Built-in modules
+from math import sqrt
 import numpy as np
 from scipy import linalg
 import scipy.sparse as sp
@@ -427,10 +428,12 @@ class CholeskyDecomposition(SPDMatrix):
                 temp = np.dot(U,np.dot(T,U.T))
                 DMC[k:k+2,k:k+2] = (temp + temp.T)/2  # Ensure symmetric.
                 k += 2
-
-        P = sp.diags([1],0,shape=(n,n), format='coo') 
-        P.row = P.row[p]
-        P = P.tocsr()
+        P = np.eye(n)
+        P = P[:,p]
+        
+        #P = sp.diags([1],0,shape=(n,n), format='coo') 
+        #P.row = P.row[p]
+        #P = P.tocsr()
         
         #ld = np.diagonal(P.dot(L))
         #if any(np.abs(ld)<1e-15):
@@ -446,7 +449,7 @@ class CholeskyDecomposition(SPDMatrix):
         self.__L = L
 
     
-    def reconstruct(self):
+    def reconstruct(self, degenerate=False):
         """
         Reconstruct the matrix from its Cholesky decomposition
         """
@@ -479,7 +482,16 @@ class CholeskyDecomposition(SPDMatrix):
             # Full, degenerate matrix
             # 
             L, D, P, D0 = self.get_factors()
-            return P.dot(L.dot(D0.dot(L.T.dot(P.T))))
+            if degenerate:
+                #
+                # Return C = L*D0*L'
+                # 
+                return P.T.dot(L.dot(D0.dot(L.T.dot(P))))
+            else:
+                #
+                # Return P*(C+E)*P' = L*D*L'
+                #   
+                return P.T.dot(L.dot(D.dot(L.T.dot(P))))
         
     def get_factors(self,verbose=False):
         """
@@ -687,13 +699,13 @@ class CholeskyDecomposition(SPDMatrix):
                     # Solve L' x = b
                     #
                     #return f.solve_Lt(b,use_LDLt_decomposition=False) 
-                    return f.apply_Pt(f.solve_Lt(b))
+                    return f.apply_Pt(f.solve_Lt(b,use_LDLt_decomposition=False))
                 else:
                     #
                     # Solve Rx = b
                     #
                     #return f.solve_L(b,use_LDLt_decomposition=False) 
-                    return f.solve_L(f.apply_P(b))
+                    return f.solve_L(f.apply_P(b),use_LDLt_decomposition=False)
             else:
                 #
                 # Full, non-degenerate matrix
@@ -712,19 +724,23 @@ class CholeskyDecomposition(SPDMatrix):
         else:
             #
             # Degenerate matrix
+            #
+            #  C+E = P'*L*sqrtD*sqrtD*L'*P = W*W'
             # 
             L, D, P, D0 = self.get_factors()
             sqrtD = np.diag(np.sqrt(np.diag(D)))
             if transpose:
                 #
-                # Solve R' x = b
+                # Solve W' x = b
                 # 
-                return sqrtD.dot(linalg.solve_triangular(L.T,P.dot(b),lower=False))
+                return P.T.dot(linalg.solve_triangular(sqrtD.dot(L.T),b,lower=False))
+                #return sqrtD.dot(linalg.solve_triangular(L.T,P.dot(b),lower=False))
             else:
                 #
-                # Solve Rx = b
+                # Solve Wx = b
                 # 
-                return P.T.dot(linalg.solve_triangular(L,sqrtD.dot(b),lower=True))
+                return linalg.solve_triangular(L.dot(sqrtD),P.dot(b)) 
+                #return P.T.dot(linalg.solve_triangular(L,sqrtD.dot(b),lower=True))
         
         """
         if self.chol_type() == 'sparse':

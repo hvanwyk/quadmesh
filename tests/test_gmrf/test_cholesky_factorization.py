@@ -9,7 +9,7 @@ if folder_path not in sys.path:
     sys.path.append(folder_path)
 
 from spd import CholeskyDecomposition
-from scipy import sparse
+from scipy import linalg, sparse
 import numpy as np
 
 import unittest
@@ -246,6 +246,14 @@ class TestCholeskyDecomposition(unittest.TestCase):
                 # Compute the Cholesky decomposition of A
                 cholesky = CholeskyDecomposition(A)
 
+                if degenerate:
+                    # For degenerate matrices, construct the rhs using the 
+                    # non-degenerate reconstruction.
+                    AA = cholesky.reconstruct(degenerate=False)
+                    bb = AA.dot(x_ref)  
+                    print('Condition number',np.linalg.cond(AA))
+                    xx = linalg.solve(AA, bb)
+                    print('xx-x_ref:',xx-x_ref)
                 #
                 # Test: Solve using Cholesky decomposition
                 #
@@ -253,24 +261,8 @@ class TestCholeskyDecomposition(unittest.TestCase):
                 x = cholesky.sqrt_solve(y, transpose=True)
                 print('degenerate:',degenerate,'sparse:',not(dense))
 
-                if not(degenerate) and not(dense):
-                    """
-                    CHOLMOD
-                    """
-                    print('A:',A.toarray())
-                    print('b:',b)
-                    L = cholesky.get_factors()
-                    LL = L.L().toarray()
-                    bb = L.apply_Pt(LL.dot(LL.T.dot(L.apply_P(x_ref))))
-                    print('Factor',LL)
-                    print('Permutation\n',L.P())
-
-                    yy = np.linalg.solve(LL,L.apply_Pt(b))
-                    yyy = L.solve_L(L.apply_P(b))
-                    print('yyy:',yyy)
-                    print('yy:',yy)
-                    print('y',y )
-                    #print('bb:',bb)
+                
+                print('degenerate:',degenerate,'sparse:',not(dense))
                 print('Computed solution', x)
                 print('Reference solution', x_ref)
                 #self.assertTrue(np.allclose(b, A.dot(x)))
