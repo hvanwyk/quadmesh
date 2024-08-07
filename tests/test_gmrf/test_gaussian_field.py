@@ -521,3 +521,8 @@ class TestGaussianField(unittest.TestCase):
         #print(A.dot(x_cnd))
         #plt.plot(x_cnd)
         #plt.show()
+
+
+
+if __name__ == '__main__':
+    unittest.main()

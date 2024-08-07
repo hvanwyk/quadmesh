@@ -45,7 +45,7 @@ if verbose: print('verbose')
 
 vb.tic('Plotting realization')
 q = GaussianField(dh0.n_dofs(), K=cov)
-#plot.contour(Nodal(data=q.sample(),basis=phi))
+plot.contour(Nodal(data=q.sample(),basis=phi))
 vb.toc()
 
 wfn = lambda x: np.exp(-((x[:,0]-0.5)**2 + (x[:,1]-0.5)**2)/0.01)
@@ -54,3 +54,4 @@ plot.contour(w)
 
 wq = Nodal(data=q.sample(),basis=phi)
 plot.contour(wq)
+plt.show()

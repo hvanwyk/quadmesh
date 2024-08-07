@@ -34,9 +34,6 @@ from scipy.sparse import linalg as spla
 import matplotlib.pyplot as plt
 
 
-
-
-
 def modchol_ldlt(A,delta=None):
     """
     Modified Cholesky algorithm based on LDL' factorization.
@@ -1120,7 +1117,7 @@ class Covariance(SPDMatrix):
             parameters: dict, parameter name/value pairs (see functions for
                 allowable parameters.
                 
-            dim: int, dimension of the underlying physical domain
+            dim: int, dimension of the underlying physical domain (1 or 2)
             
             cov_fn: Map, function used to define the covariance kernel
         """

@@ -448,6 +448,40 @@ class CholeskyDecomposition(SPDMatrix):
         """
         self.__L = L
 
+
+    def get_factors(self,verbose=False):
+        """
+        Returns the Cholesky factorization of the matrix
+        """                
+        if self.__L is None:
+            #
+            # Return None if Cholesky decomposition not computed
+            # 
+            if verbose: print('Cholesky decomposition not computed.')
+            return None 
+        elif self.is_degenerate():
+            #
+            # Return the modified Cholesky decomposition
+            # 
+            if verbose: 
+                print('Modified Cholesky decomposition')
+                print('Returning L, D, P, D0, where')
+                print('C = P*(C+E)*P\' = L*D*L\' and P*C*P\' = L*D0*L\'')
+
+            return self.__L
+        
+        else:
+            #
+            # Return cholesky decomposition
+            #            
+            if verbose: 
+                print('Cholesky factor')
+                if self.is_sparse():
+                    print('CHOLMOD factor')
+                else:
+                    print('Standard Cholesky factor')
+            return self.__L
+        
     
     def reconstruct(self, degenerate=False):
         """
@@ -493,39 +527,7 @@ class CholeskyDecomposition(SPDMatrix):
                 #   
                 return P.T.dot(L.dot(D.dot(L.T.dot(P))))
         
-    def get_factors(self,verbose=False):
-        """
-        Returns the Cholesky factorization of the matrix
-        """                
-        if self.__L is None:
-            #
-            # Return None if Cholesky decomposition not computed
-            # 
-            if verbose: print('Cholesky decomposition not computed.')
-            return None 
-        elif self.is_degenerate():
-            #
-            # Return the modified Cholesky decomposition
-            # 
-            if verbose: 
-                print('Modified Cholesky decomposition')
-                print('Returning L, D, P, D0, where')
-                print('C = P*(C+E)*P\' = L*D*L\' and P*C*P\' = L*D0*L\'')
-
-            return self.__L
-        
-        else:
-            #
-            # Return cholesky decomposition
-            #            
-            if verbose: 
-                print('Cholesky factor')
-                if self.is_sparse():
-                    print('CHOLMOD factor')
-                else:
-                    print('Standard Cholesky factor')
-            return self.__L
-        
+   
     
     def dot(self,b):
         """
@@ -783,10 +785,45 @@ class CholeskyDecomposition(SPDMatrix):
 
 class EigenDecomposition(object):
     """
-    Eigenvalue decomposition of a symmetric positive definite matrix
+    (Generalized) Eigenvalue decomposition of a symmetric positive definite 
+    matrix. Unlike the Cholesky decomposition, the eigendecomposition also 
+    stores the nullspace of the matrix (the eigenspace corresponding to zero
+    eigenvalues), which is useful for conditional sampling.
     """
-    def __init__(self):
-        pass
+    def __init__(self,C,M=None,delta=None):
+        """
+        Constructor, initialize the (generalized) eigendecomposition of 
+
+        Parameters:
+        - C: numpy.ndarray or scipy.sparse matrix
+            The input matrix to be stored as the SPD matrix.
+        """
+        # Initialize the SPD matrix
+        SPDMatrix.__init__(self,C)
+        
+        if M is not None:
+            #
+            # Store the mass matrix
+            #
+            self.set_mass_matrix(M)
+                    
+        # Compute the eigendecomposition
+        self.decompose(delta=delta)
+
+
+    def set_mass_matrix(self, M):
+        """
+        Store the mass matrix
+        """
+        self.__M = M
+
+
+    def get_mass_matrix(self):
+        """
+        Return the mass matrix
+        """
+        return self.__M
+
 
     def size(self):
         """
@@ -794,16 +831,18 @@ class EigenDecomposition(object):
         """
         return self.__K.shape[0]
    
-    def decompose(self,S):
+
+    def decompose(self,delta=None):
         """
-        Compute the eigendecomposition of the matrix S
+        Compute the eigendecomposition of the matrix C
         
         Compute the singular value decomposition USV' of M^{-1}K
         
         Parameters:
             delta (float, optional): A small positive constant to add to the diagonal of K before computing the eigendecomposition. Defaults to None.
-        """ 
-        K = self.__K
+        """
+        C = self.get_matrix()
+        M = self.get_mass_matrix()
         if self.is_sparse():
             K = K.toarray()
             

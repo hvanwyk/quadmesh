@@ -1,2 +1,9 @@
 __pycache__/add_path.cpython-310.pyc
 src/__pycache__/spd.cpython-310.pyc
+src/__pycache__/assembler.cpython-310.pyc
+src/__pycache__/diagnostics.cpython-310.pyc
+src/__pycache__/fem.cpython-310.pyc
+src/__pycache__/function.cpython-310.pyc
+src/__pycache__/gmrf.cpython-310.pyc
+src/__pycache__/mesh.cpython-310.pyc
+src/__pycache__/plot.cpython-310.pyc

@@ -197,3 +197,4 @@ class TestGaussHermite(unittest.TestCase):
         for i in range(n_points):
             ma += Y[:,i]*w[i]
             Ka += X[1,i]*X[0,i]*w[i]
+
