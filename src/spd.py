@@ -87,7 +87,7 @@ class SPDMatrix(object):
         self.__rank = rank
 
 
-    def rank(self):
+    def get_rank(self):
         """
         Return the rank of the matrix
         """
@@ -825,29 +825,59 @@ class EigenDecomposition(object):
         return self.__M
 
 
+    def has_mass_matrix(self):
+        """
+        Return True if the mass matrix is available
+        """
+        return self.__M is not None
+    
+
     def size(self):
         """
-        Return the number of rows (=columns) of K
+        Return the number of rows (=columns) of C
         """
-        return self.__K.shape[0]
+        return self.get_matrix().shape[0]
    
 
     def decompose(self,delta=None):
         """
-        Compute the eigendecomposition of the matrix C
-        
-        Compute the singular value decomposition USV' of M^{-1}K
+        Compute the (generalized) eigendecomposition of the matrix C, i.e. 
+
+            C*vi = di*M*vi, i = 1,...,n
         
         Parameters:
-            delta (float, optional): A small positive constant to add to the diagonal of K before computing the eigendecomposition. Defaults to None.
+            delta (float, optional): A small positive constant to add to the 
+            diagonal of C before computing the eigendecomposition. Defaults to None.
         """
+        #
+        # Preprocessing
+        #
+        if self.has_mass_matrix():
+            #
+            # Generalized eigendecomposition
+            # 
+            is_generalized = True
+            M = self.get_mass_matrix()
+        
+        # Get the matrix
         C = self.get_matrix()
-        M = self.get_mass_matrix()
+        
         if self.is_sparse():
-            K = K.toarray()
+            #
+            # Convert to full matrix
+            # 
+            C = C.toarray()
             
-        # Compute eigendecomposition
-        d, V = linalg.eigh(K)
+        if is_generalized:
+            #
+            # Compute the generalized eigendecomposition
+            # 
+            d, V = linalg.eigh(C,M)
+        else:
+            #
+            # Compute the eigendecomposition
+            # 
+            d, V = linalg.eigh(C)      
         
         # Rearrange to ensure decreasing order
         d = d[::-1]
@@ -857,54 +887,147 @@ class EigenDecomposition(object):
         # Modify negative eigenvalues
         if delta is None:
             eps = np.finfo(float).eps
-            delta = np.sqrt(eps)*linalg.norm(K, 'fro')
+            delta = np.sqrt(eps)*linalg.norm(C, 'fro')
         d[d<=delta] = delta
-        
-        
-        # Store eigendecomposition
+
+        #
+        # Store the eigendecomposition
+        #         
+        self.set_factors(d,V)
+
+
+    def set_factors(self,d,V):
+        """
+        Store the eigendecomposition
+        """
         self.__V = V
         self.__d = d
+
+
+    def get_factors(self):
+        """
+        Return the eigendecomposition of the matrix
+        """
+        return self.__d, self.__V
+    
+
+    def get_range(self):
+        """
+        Return the range of the matrix
+        """
+        return self.__V
+    
+
+    def get_nullspace(self):
+        """
+        Return the nullspace of the matrix
+        """
+        return self.__V[:,self.__ix_nullspace]
+    
 
     def reconstruct(self):
         """
         Reconstruct the matrix from its eigendecomposition
         """
-        d, V = self.get_eig_decomp()
-        return V.dot(np.diag(d).dot(V.T))
+        d, V = self.get_factors()
+        C = V.dot(np.diag(d).dot(V.T))
+        if self.has_mass_matrix():
+            M = self.get_mass_matrix()
+            return C, M
+        else:
+            return C
     
+
+    def diagonal_pinverse(self,d,eps=None):
+        """
+        Compute the (approximate) pseudo-inverse of a diagonal matrix with
+        diagonal entries d. 
+        
+        Inputs:
+        
+            d: double, (n, ) vector of diagonal entries
+            
+            eps: cut-off tolerance for zero entries
+        """
+        if eps is None:
+            #
+            # Default tolerance
+            # 
+            eps = np.finfo(float).eps
+        else:
+            assert eps > 0, 'Input "eps" should be positive.'
+        
+        if len(d.shape)==2:
+            #
+            # Matrix
+            # 
+            d = d.diagonal()
+            
+        #
+        # Compute the pseudo-inverse
+        #
+        d_inv = np.zeros(d.shape)
+        i_nz = np.abs(d)>eps
+        d_inv[i_nz] = 1/d[i_nz]
+        D_inv = np.diag(d_inv)
+        
+        return D_inv
+
+
     def dot(self,b):
         """
-        Compute the matrix vector product S*b
+        Compute the matrix vector product C*b
         """
-        pass
+        d, V = self.get_factors()
+        return V.dot(np.diag(d).dot(V.T.dot(b)))
 
-    def solve(self,b, eps=None):
+
+    def solve(self,b,eps=None,generalized=False):
         """
-        Solve the system Sx = b for x
-   
-        Solve the linear system Kx = Mb by means of eigenvalue decomposition, 
-        i.e. x = V'Dinv*V*b 
+        Solve the system C*x = b for x or the generalized system Cx = Mb for x,
+        using the eigendecomposition of C.
+
+        For Cx = b, the solution is given by 
+        
+            x = V*Dinv*V'*b, 
+
+        where Dinv is the pseudo-inverse of the diagonal matrix D, whereas for 
+        the generalized problem Cx = Mb, the solution is given by
+
+            x = V*Dinv*V'*M*b.
         
         Inputs:
         
             b: double, (n,m) array
             
-            tol: double >0, 
-        """
-        # Check that eigendecomposition has been computed
-        assert self.__d is not None, \
-        'First compute eigendecomposition using "compute_eig_decomp".'
-        
-        V = self.__V  # eigenvectors
-        d = self.__d  # eigenvalues
-        D_inv = diagonal_inverse(d, eps=eps)
-        return V.dot(D_inv.dot(np.dot(V.T, b)))
+            eps: double >0, cut off tolerance for zero entries in the diagonal
 
-    def sqrt(self,x, transpose=False):
+            generalized: bool, specifies whether to solve the generalized system
+
+        Output:
+            
+                x: double, (n,m) solution of the (generalized) system.
         """
-        Compute Sqrt(S)*x
+        d, V = self.get_factors()
+        D_inv = self.diagonal_inverse(d,eps=eps)
+        if generalized:
+            #
+            # Solve the generalized system
+            # 
+            M = self.get_mass_matrix()
+            return V.dot(D_inv.dot(np.dot(V.T, M.dot(b))))
+        else:
+            #
+            # Solve the system without mass matrix on the right
+            #   
+            return V.dot(D_inv.dot(np.dot(V.T, b)))
+
+
+    def sqrt_dot(self,x, transpose=False):
+        """
+        Compute Sqrt(C)*x
         
-        Compute Rx (or R'x), where A = RR'
+        Compute Rx (or R'x), where C = RR'
         
         Inputs:
         
@@ -914,15 +1037,17 @@ class EigenDecomposition(object):
             
         Output:
         
-            b = Rx/R'x
+            b = Rx or R'x
         """
-        d, V = self.__d, self.__V
+        d, V = self.get_factors()
+
         if transpose:
             # Sqrt(D)*V'x
             return np.diag(np.sqrt(d)).dot(V.T.dot(x))
         else:
             # V*Sqrt(D)*x
             return V.dot(np.diag(np.sqrt(d)).dot(x))
+
 
     def sqrt_solve(self,b,transpose=False):
         """
@@ -938,9 +1063,8 @@ class EigenDecomposition(object):
             transpose: bool [False], specifies whether system or transpose is 
                 to be solved.
         """
-        V = self.__V  # eigenvectors
-        d = self.__d  # eigenvalues
-        sqrtD_inv = diagonal_inverse(np.sqrt(d))
+        d, V = self.get_factors()
+        sqrtD_inv = self.diagonal_inverse(np.sqrt(d))
         if transpose:
             #
             # Solve sqrtD*V'x = b
