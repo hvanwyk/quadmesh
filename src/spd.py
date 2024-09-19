@@ -911,19 +911,19 @@ class EigenDecomposition(object):
         return self.__d, self.__V
     
 
-    def get_range(self):
+    def get_eigenvectors(self):
         """
         Return the range of the matrix
         """
         return self.__V
     
 
-    def get_nullspace(self):
+    def get_eigenvalues(self):
         """
-        Return the nullspace of the matrix
+        Return the eigenvalues of the matrix
         """
-        return self.__V[:,self.__ix_nullspace]
-    
+        return self.__d 
+        
 
     def reconstruct(self):
         """
@@ -1076,18 +1076,29 @@ class EigenDecomposition(object):
             #
             return sqrtD_inv.dot(np.dot(V.T, b))
 
-    def compute_nullspace(self, tol=1e-13):
+
+    def get_nullspace(self, tol=1e-13):
         """
         Determines an othornormal set of vectors spanning the nullspace
-        """
-        if not self.has_eig_decomp():
-            #
-            # Compute the eigendecomposition if necessary
-            # 
-            self.compute_eig_decomp()
-            
+        """ 
         # Determine what eigenvalues are below tolerance
-        d = self.__d
-        ix = (np.abs(d)<tol) 
+        d = self.get_eigenvalues()
+
+        # Indices of small eigenvalues
+        ix_null = np.abs(d)<tol 
         
-        self.__ix_nullspace = ix
+        # Return the eigenvectors corresponding to small eigenvalues
+        return self.get_eigenvectors()[:,ix_null]
+    
+    def get_range(self, tol=1e-13):
+        """
+        Determines an othornormal set of vectors spanning the range
+        """ 
+        # Determine what eigenvalues are below tolerance
+        d = self.get_eigenvalues()
+
+        # Indices of small eigenvalues
+        ix_range = np.abs(d)>tol 
+        
+        # Return the eigenvectors corresponding to small eigenvalues
+        return self.get_eigenvectors()[:,ix_range]

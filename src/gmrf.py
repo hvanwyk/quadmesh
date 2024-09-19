@@ -622,7 +622,7 @@ class Covariance(object):
         # Kernel
         k = self.kernel()
         
-        print(self.discretization())
+  
         
         #
         # Assemble and decompose covariance operator
