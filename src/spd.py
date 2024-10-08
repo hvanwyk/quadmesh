@@ -1090,6 +1090,7 @@ class EigenDecomposition(object):
         # Return the eigenvectors corresponding to small eigenvalues
         return self.get_eigenvectors()[:,ix_null]
     
+    
     def get_range(self, tol=1e-13):
         """
         Determines an othornormal set of vectors spanning the range
