@@ -7,6 +7,8 @@ import scipy.linalg as linalg
 import scipy.sparse as sp
 from sklearn.datasets import make_sparse_spd_matrix
 
+# TODO: Modify tests in lieu of new implementation through spd module
+
 def test_matrix(n, sparse=False, d=-0.5):
     """
     Returns symmetric matrices on which to test algorithms

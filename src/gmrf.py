@@ -433,7 +433,7 @@ class CovKernel(Kernel):
 '''        
 
 
-class Covariance(object):
+class Covariance(EigenDecomposition):
     """
     (Discretized) Covariance operator
     =================================
@@ -621,9 +621,7 @@ class Covariance(object):
         
         # Kernel
         k = self.kernel()
-        
-  
-        
+            
         #
         # Assemble and decompose covariance operator
         # 
@@ -635,8 +633,11 @@ class Covariance(object):
             assembler.assemble()
             C = assembler.af[0]['bilinear'].get_matrix().toarray()
             
+            # Initialize as EigenDecomposition
+            EigenDecomposition.__init__(self, C)
+
             # Compute eigendecomposition
-            lmd, V = linalg.eig(C)
+            # lmd, V = linalg.eig(C)
                    
         elif self.discretization()=='galerkin':
             
@@ -647,8 +648,11 @@ class Covariance(object):
             C = assembler.get_matrix(1).toarray()
             M = assembler.get_matrix(0).toarray()
             
+            # Initialize as EigenDecomposition
+            EigenDecomposition.__init__(self, C, M)
+
             # Generalized eigen-decomposition
-            lmd, V = linalg.eigh(C,M)
+            #lmd, V = linalg.eigh(C,M)
             
                
         elif self.discretization()=='interpolation':
@@ -672,14 +676,17 @@ class Covariance(object):
             # Define discretized covariance operator
             C = M.dot(K.dot(M.T))
             
+            # Initialize as EigenDecomposition
+            EigenDecomposition.__init__(self, C, M)
+
             # Compute generalized eigendecomposition
-            lmd, V = linalg.eigh(C,M)
+            # lmd, V = linalg.eigh(C,M)
          
         else:
             raise Exception('Only "interpolation", "galerkin", '+\
                             ' or "collocation" supported for input "method"')
     
-    
+        """
         #
         # Construct covariance matrix using eigendecomposition
         #
@@ -693,7 +700,7 @@ class Covariance(object):
         # Initialize as SPDMatrix  
         #
         SPDMatrix.__init__(self, covariance)
-        
+        """
     
     def dim(self):
         """
@@ -725,73 +732,79 @@ class Covariance(object):
 
 class GaussianField(object):
     """
-    Base class for Gaussian random fields
+    Base class for Gaussian random fields. These are fields of the form
+
+        x  = mu + R*z ~ N(mu, C),
+
+    where mu is the mean, C=RR' is the covariance matrix, and z is a standard
+    normal random vector. Alternatively, the field can be defined in terms of 
+    canonical parameters
+
+        x ~ N(b, Q) \propto exp(-0.5*x'Q*x + b'x)), 
+
+    where Q is the precision matrix, b = Q*mu. 
+
+    The field's degrees of freedom are based on the range of the covariance
+    (or precision) matrix. Additionally, the field can be sampled on a 
+    restricted subspace.
+
     """
-    def __init__(self, size, mean=None, K=None, mode='covariance', 
-                 support=None): 
+    def __init__(self, mean=None, canonical_mean=None, covariance=None, precision=None):
         """
         Constructor
         
         Inputs:
-        
-            size: int, the size n of the Gaussian random vector.  
-            
+                  
             mean: double, (n,1) numpy array representing the expectation. 
-            
-            b: double, (n,1) numpy array representing Q*mean.
-            
-            support: double, (n,k) numpy array whose columns form an 
-                orthonormal basis for the support of the Gaussian vector.
-            
-            precision: double, (n,n) sparse/full precision matrix.
-                    
-            covariance: double, (n,n) sparse/full covariance matrix.
-             
-        NOTE: If the precision/covariance have a preferred decomposition, 
-            decompose before defining the Gaussian field.
+
+            canonical_mean: double, (n,1) numpy array representing Q*mean.
+
+            covariance: SPDMatrix, (n,n) numpy array representing the covariance.
+
+            precision: SPDMatrix, (n,n) numpy array representing the precision.
         """               
-        # Store size
-        self.__size = size
-        
-        # Set supporting subspace
-        self.set_support(support)
-        
-        # Store covariance/precision
-        self.set_dependence(K, mode=mode)
-                 
-        # Store mean 
+        # Store mean
         self.set_mean(mean)
-            
+
+        # Store canonical mean
+        self.set_canonical_mean(canonical_mean)
+
+        # Store covariance
+        self.set_covariance(covariance)
+
+        # Store precision
+        self.set_precision(precision)
+
+        # Store size
+        self.set_size()
+                         
             
     def set_mean(self, mean):
         """
-        Store the mean
+        Store the means of the Gaussian field
         
         Inputs:
         
-            mean: double, (n,n_sample) mean (array)
+            mean: double, (n,n_means) mean (array)
         """
-        if mean is None:
-            #
-            # Default mean is zero
-            #
-            mean = np.zeros((self.size(),1))
-        else:
-            #
-            # non-trivial location vector 
-            #
-            assert isinstance(mean, np.ndarray)
-            assert mean.shape[0]==self.size()
-            
         self.__mean = mean
-        self.__b = None
-            
+
+
+    def get_mean(self):
+        """
+        Return the mean of the Gaussian field
+        """
+        return self.__mean
     
-    def set_b(self):
+
+    def set_canonical_mean(self, canonical_mean):
         """
         Compute the convenience parameter b = precision*mu
         
         What about degenerate matrices? 
+        """
+        self.__canonical_mean = canonical_mean
+
         """
         Q = self.precision()
         if Q is not None: 
@@ -800,8 +813,125 @@ class GaussianField(object):
             K = self.covariance()
             b = K.solve(self.mean())
         self.__b = b
-            
+        """
+     
+    def get_canonical_mean(self):
+        """
+        Return the canonical mean of the Gaussian field
+        """
+        return self.__canonical_mean
+    
+
+    def set_covariance(self, covariance, decomposition='eig'):
+        """
+        Store the covariance matrix of the random field
         
+        Inputs:
+        
+            covariance: SPDMatrix or numpy array
+
+            decomposition: str, type of decomposition to be used. 
+                Eigenvalue decomposition ('eig') is the or Cholesky 
+                decompoositon ('chol').
+        """
+        if isinstance(covariance, EigenDecomposition) or isinstance(covariance, CholeskyDecomposition):
+            # Store as SPDMatrix
+            self.__covariance = covariance
+        elif isinstance(covariance, np.ndarray) or isinstance(covariance, sp.spmatrix):
+            # Convert to SPDMatrix
+            if decomposition=='eig':
+                # Compute the Eigendecomposition
+                self.__covariance = EigenDecomposition(covariance)
+            else:
+                # Compute the Cholesky decomposition
+                self.__covariance = CholeskyDecomposition(covariance)
+        elif covariance is None:
+            self.__covariance = None
+        else:
+            raise Exception('Input "covariance" should be SPDMatrix or numpy array.')        
+        
+
+    def get_covariance(self):
+        """
+        Return the covariance matrix of the random field
+        """
+        return self.__covariance
+
+
+    def set_precision(self, precision, decomposition='chol'):
+        """
+        Store the precision matrix of the random field
+        
+        Inputs:
+        
+            precision: double, (n,n) numpy array or SPDMatrix
+
+            decomposition: str, type of decomposition to be used. 
+                Eigenvalue decomposition ('eig') is the or Cholesky 
+                decompoositon ('chol').
+        """
+        if isinstance(precision, SPDMatrix):
+            # Store as SPDMatrix
+            self.__precision = precision
+        elif isinstance(precision, np.ndarray) or isinstance(precision, sp.spmatrix):
+            # Convert to SPDMatrix
+            if decomposition=='eig':
+                # Compute the Eigendecomposition
+                self.__precision = EigenDecomposition(precision)
+            else:
+                # Compute the Cholesky decomposition
+                self.__precision = CholeskyDecomposition(precision)
+        elif precision is None:
+            self.__precision = None
+        else:
+            raise Exception('Input "precision" should be SPDMatrix or numpy or sparse array.') 
+        
+
+    def get_precision(self):
+        """
+        Return the precision matrix of the random field
+        """
+        return self.__precision
+    
+
+    def set_size(self):
+        """
+        Determine the size of the random field from the mean, canonical mean, 
+        covariance, or precision.
+        """
+        mean = self.get_mean()
+        if mean is not None:
+            # Use mean to determine size
+            n = mean.shape[0]
+            self.__size = n
+        else:
+            # Use canonical mean to determine size
+            canonical_mean = self.get_canonical_mean()
+            if canonical_mean is not None:
+                n = canonical_mean.shape[0]
+                self.__size = n
+            else:
+                # Use covariance to determine size
+                covariance = self.get_covariance()
+                if covariance is not None:
+                    n = covariance.size()
+                    self.__size = n
+                else:
+                    precision = self.get_precision()
+                    if precision is not None:
+                        # Use precision to determine size
+                        n = precision.size()
+                        self.__size = n
+                    else:
+                        # Size not specified
+                        self.__size = None
+
+    def get_size(self):
+        """
+        Return the size of the random field
+        """
+        return self.__size
+    
     def set_dependence(self, K, mode='covariance'):
         """
         Store the proper covariance matrix of the random field, i.e. the 
@@ -1652,13 +1782,18 @@ class GaussianField(object):
     
     def iid_gauss(self, n_samples=1):
         """
-        Returns a matrix whose columns are N(0,I) vectors of length the 
-        size of the covariance. 
+        Returns a matrix whose columns are N(0,I). The vectors' length correspond to the field's degrees of freedom. 
         """
         V = self.support()
         if V is not None:
+            #
+            # Support on a restricted subspace
+            # 
             n = V.shape[1]
         else:
+            #
+            # Support on full space
+            #
             n = self.size()
             
         return np.random.normal(size=(n,n_samples)) 

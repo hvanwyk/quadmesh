@@ -783,7 +783,7 @@ class CholeskyDecomposition(SPDMatrix):
         
     
 
-class EigenDecomposition(object):
+class EigenDecomposition(SPDMatrix):
     """
     (Generalized) Eigenvalue decomposition of a symmetric positive definite 
     matrix. Unlike the Cholesky decomposition, the eigendecomposition also 
@@ -794,21 +794,26 @@ class EigenDecomposition(object):
         """
         Constructor, initialize the (generalized) eigendecomposition of 
 
-        Parameters:
-        - C: numpy.ndarray or scipy.sparse matrix
-            The input matrix to be stored as the SPD matrix.
+        Inputs:
+
+            C: numpy.ndarray or scipy.sparse matrix
+                The input matrix to be stored as the SPD matrix.
+
+            M: numpy.ndarray or scipy.sparse matrix (optional mass matrix).
+
+            delta: float, the smallest allowable eigenvalue in the decomposition.
         """
         # Initialize the SPD matrix
         SPDMatrix.__init__(self,C)
         
-        if M is not None:
-            #
-            # Store the mass matrix
-            #
-            self.set_mass_matrix(M)
+        # Store the mass matrix
+        self.set_mass_matrix(M)
                     
+        # Set the eigenvalue lower bound
+        self.set_eigenvalue_lower_bound(delta)
+
         # Compute the eigendecomposition
-        self.decompose(delta=delta)
+        self.decompose()
 
 
     def set_mass_matrix(self, M):
@@ -839,15 +844,51 @@ class EigenDecomposition(object):
         return self.get_matrix().shape[0]
    
 
-    def decompose(self,delta=None):
+    def set_eigenvalue_lower_bound(self, delta):
+        """
+        Store the eigenvalue lower bound
+
+        Input:
+
+            delta: float, the smallest allowable eigenvalue in the
+                decomposition. Eigenvalues below this value are set to delta.
+
+        Notes: 
+        
+            (i) Under the default value (None), the smallest eigenvalues
+                is set to delta = sqrt(eps)*norm(C,'fro'), where eps is 
+                the machine epsilon.
+
+            (ii) If delta = 0, only negative eigenvalues are set to zero.
+        """
+        if delta is None:
+            #
+            # Default lower bound
+            # 
+            C = self.get_matrix()
+            eps = np.finfo(float).eps
+            delta = np.sqrt(eps)*linalg.norm(C, 'fro')
+
+        # Check whether delta is non-negative
+        assert delta >= 0, 'Input "delta" should be non-negative.'
+
+        # Store the lower bound
+        self.__delta = delta
+
+
+    def get_eigenvalue_lower_bound(self):
+        """
+        Return the eigenvalue lower bound
+        """
+        return self.__delta
+    
+
+    def decompose(self):
         """
         Compute the (generalized) eigendecomposition of the matrix C, i.e. 
 
             C*vi = di*M*vi, i = 1,...,n
-        
-        Parameters:
-            delta (float, optional): A small positive constant to add to the 
-            diagonal of C before computing the eigendecomposition. Defaults to None.
+
         """
         #
         # Preprocessing
@@ -858,6 +899,12 @@ class EigenDecomposition(object):
             # 
             is_generalized = True
             M = self.get_mass_matrix()
+        else:
+            #
+            # Standard eigendecomposition
+            # 
+            is_generalized = False
+            
         
         # Get the matrix
         C = self.get_matrix()
@@ -885,9 +932,9 @@ class EigenDecomposition(object):
         
         
         # Modify negative eigenvalues
-        if delta is None:
-            eps = np.finfo(float).eps
-            delta = np.sqrt(eps)*linalg.norm(C, 'fro')
+        delta = self.get_eigenvalue_lower_bound()
+
+        # Ensure eigenvalues are at least delta
         d[d<=delta] = delta
 
         #
@@ -938,16 +985,15 @@ class EigenDecomposition(object):
             return C
     
 
-    def diagonal_pinverse(self,d,eps=None):
+    def diagonal_pseudo_inverse(self,eps=None):
         """
-        Compute the (approximate) pseudo-inverse of a diagonal matrix with
-        diagonal entries d. 
+        Compute the (approximate) pseudo-inverse of a diagonal matrix of 
+        eigenvalues.
         
-        Inputs:
-        
-            d: double, (n, ) vector of diagonal entries
+        Input:
             
-            eps: cut-off tolerance for zero entries
+            eps: double (>0), cut-off tolerance for zero entries. Default is 
+                the machine epsilon.
         """
         if eps is None:
             #
@@ -956,16 +1002,11 @@ class EigenDecomposition(object):
             eps = np.finfo(float).eps
         else:
             assert eps > 0, 'Input "eps" should be positive.'
-        
-        if len(d.shape)==2:
-            #
-            # Matrix
-            # 
-            d = d.diagonal()
-            
+                
         #
-        # Compute the pseudo-inverse
+        # Compute the pseudo-inverse of the diagonal matrix of eigenvalues
         #
+        d = self.get_eigenvalues()
         d_inv = np.zeros(d.shape)
         i_nz = np.abs(d)>eps
         d_inv[i_nz] = 1/d[i_nz]
@@ -1008,8 +1049,8 @@ class EigenDecomposition(object):
             
                 x: double, (n,m) solution of the (generalized) system.
         """
-        d, V = self.get_factors()
-        D_inv = self.diagonal_inverse(d,eps=eps)
+        V = self.get_eigenvectors()
+        D_inv = self.diagonal_pseudo_inverse(eps=eps)
         if generalized:
             #
             # Solve the generalized system
@@ -1089,8 +1130,25 @@ class EigenDecomposition(object):
         
         # Return the eigenvectors corresponding to small eigenvalues
         return self.get_eigenvectors()[:,ix_null]
-    
-    
+
+
+    def get_rank(self, tol=1e-13):
+        """
+        Determines the rank of the matrix based on the number of non-zero
+        eigenvalues
+        
+        Input:
+
+            tol: double, tolerance for determining rank
+
+        Output:
+
+            rank: int, the approximate rank of the matrix
+        """
+        d = self.get_eigenvalues()
+        return np.sum(np.abs(d)>tol)
+
+
     def get_range(self, tol=1e-13):
         """
         Determines an othornormal set of vectors spanning the range
