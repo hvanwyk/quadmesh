@@ -941,6 +941,9 @@ class GaussianField(object):
         Inputs:
         
             covariance: double, (n,n) numpy array
+
+        NOTE: This function 
+        TODO: Double-check whether 
         """
         V = self.support()
         if V is not None:

@@ -1,4 +1,4 @@
-from operator import is_
+"""from operator import is_
 import sys
 
 # Get the folder path
@@ -6,7 +6,7 @@ folder_path = '/home/hans-werner/git/quadmesh/quadmesh/src'
 
 # Add the folder path to the system path if it's not already there
 if folder_path not in sys.path:
-    sys.path.append(folder_path)
+    sys.path.append(folder_path)"""
 
 from spd import CholeskyDecomposition
 from scipy import linalg, sparse

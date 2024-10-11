@@ -15,6 +15,36 @@ from sksparse.cholmod import cholesky_AAt
 from sksparse.cholmod import Factor
 from sksparse.cholmod import  CholmodNotPositiveDefiniteError
 
+def diagonal_pseudo_inverse(d,eps=None):
+    """
+    Compute the (approximate) pseudo-inverse of a diagonal matrix of 
+    eigenvalues.
+    
+    Inputs:
+
+        d: double, (n,) array, the non-zero entries of a diagonal matrix 
+        
+        eps: double (>0), cut-off tolerance for zero entries. Default is 
+            the machine epsilon.
+    """
+    if eps is None:
+        #
+        # Default tolerance
+        # 
+        eps = np.finfo(float).eps
+    else:
+        assert eps > 0, 'Input "eps" should be positive.'
+            
+    #
+    # Compute the pseudo-inverse of the diagonal matrix of eigenvalues
+    #
+    d_inv = np.zeros(d.shape)
+    i_nz = np.abs(d)>eps
+    d_inv[i_nz] = 1/d[i_nz]
+    D_inv = np.diag(d_inv)
+    
+    return D_inv
+
 
 class SPDMatrix(object):
     def __init__(self, C):
@@ -985,36 +1015,6 @@ class EigenDecomposition(SPDMatrix):
             return C
     
 
-    def diagonal_pseudo_inverse(self,eps=None):
-        """
-        Compute the (approximate) pseudo-inverse of a diagonal matrix of 
-        eigenvalues.
-        
-        Input:
-            
-            eps: double (>0), cut-off tolerance for zero entries. Default is 
-                the machine epsilon.
-        """
-        if eps is None:
-            #
-            # Default tolerance
-            # 
-            eps = np.finfo(float).eps
-        else:
-            assert eps > 0, 'Input "eps" should be positive.'
-                
-        #
-        # Compute the pseudo-inverse of the diagonal matrix of eigenvalues
-        #
-        d = self.get_eigenvalues()
-        d_inv = np.zeros(d.shape)
-        i_nz = np.abs(d)>eps
-        d_inv[i_nz] = 1/d[i_nz]
-        D_inv = np.diag(d_inv)
-        
-        return D_inv
-
-
     def dot(self,b):
         """
         Compute the matrix vector product C*b
@@ -1049,8 +1049,9 @@ class EigenDecomposition(SPDMatrix):
             
                 x: double, (n,m) solution of the (generalized) system.
         """
+        d = self.get_eigenvalues()
+        D_inv = diagonal_pseudo_inverse(d,eps=eps)
         V = self.get_eigenvectors()
-        D_inv = self.diagonal_pseudo_inverse(eps=eps)
         if generalized:
             #
             # Solve the generalized system
@@ -1090,7 +1091,7 @@ class EigenDecomposition(SPDMatrix):
             return V.dot(np.diag(np.sqrt(d)).dot(x))
 
 
-    def sqrt_solve(self,b,transpose=False):
+    def sqrt_solve(self,b,transpose=False,eps=None):
         """
         Solve Sqrt(S)*x = b for x
        
@@ -1105,7 +1106,7 @@ class EigenDecomposition(SPDMatrix):
                 to be solved.
         """
         d, V = self.get_factors()
-        sqrtD_inv = self.diagonal_inverse(np.sqrt(d))
+        sqrtD_inv = diagonal_pseudo_inverse(np.sqrt(d),eps=eps)
         if transpose:
             #
             # Solve sqrtD*V'x = b

@@ -1,4 +1,5 @@
 import unittest
+import xxlimited
 from spd import EigenDecomposition
 from numpy import array, zeros, allclose, random, diag, eye, abs, max
 from numpy.linalg import eig, qr, det, norm
@@ -82,20 +83,9 @@ class TestEigenDecomposition(unittest.TestCase):
         # Check whether the eigenvectors have length 1
         for i in range(n):
             self.assertTrue(allclose(norm(QQ[:,i]), 1))
-            self.assertTrue(allclose(norm(Q[:,i]), 1))
 
-            # Print components of the eigenvectors onto Q:
-            print(Q.T.dot(QQ[:,i]))
-            print((Q.T.dot(QQ[:,i]))[i])
-
-    
-        # Project onto the orthogonal complement of the eigenvectors
-        PQ = eye(n) - Q.dot(Q.T.dot(QQ))
-
-        
-        self.assertTrue(allclose(PQ, 0)) 
-        
-
+        # Check whether eigenvectors are orthonormal
+        self.assertTrue(allclose(QQ.T.dot(QQ), eye(n)))
 
 
     def test_rank(self):
@@ -104,6 +94,15 @@ class TestEigenDecomposition(unittest.TestCase):
             A, _, _ = generate_spd_matrix(10,r)
             factor = EigenDecomposition(A,delta=0)
             self.assertEqual(factor.get_rank(), r)
+
+
+    def test_reconstruct(self):
+        # Test the reconstruction of the original matrix
+        A,_,_ = generate_spd_matrix(10,10)
+        factor = EigenDecomposition(A)
+        A_rec = factor.reconstruct()
+        self.assertTrue(allclose(A,A_rec))
+        
 
     def test_dot(self):
         # Test matrix-vector multiplication
@@ -130,6 +129,39 @@ class TestEigenDecomposition(unittest.TestCase):
 
         # Solve the linear system of equations
         xx = factor.solve(b)
+
+        # Check the solution
+        self.assertTrue(allclose(x,xx))
+
+
+    def test_sqrt_dot(self):
+        # Test matrix-square root multiplication
+        A,_,_ = generate_spd_matrix(10,10)
+        factor = EigenDecomposition(A)
+        x = random.rand(10)
+        b = factor.sqrt_dot(x,transpose=True)
+        bb = factor.sqrt_dot(b, transpose=False)
+        self.assertTrue(allclose(bb,A.dot(x)))
+
+
+    def test_sqrt_solve(self):
+        # Test the solution of a linear system using the square root
+        # Generate a random full rank matrix
+        n = 10
+        r = n
+        A, _, _ = generate_spd_matrix(n,r)
+        factor = EigenDecomposition(A)
+
+        # Compute the solution of a linear system of equations
+        x = random.rand(n)
+        b = A.dot(x)
+
+        # Solve the linear system of equations
+        y  = factor.sqrt_dot(x, transpose=True)
+        yy = factor.sqrt_solve(b, transpose=False)
+        self.assertTrue(allclose(y,yy))
+
+        xx = factor.sqrt_solve(yy, transpose=True)
 
         # Check the solution
         self.assertTrue(allclose(x,xx))
