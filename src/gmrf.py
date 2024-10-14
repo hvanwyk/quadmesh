@@ -39,6 +39,8 @@ from scipy.sparse import linalg as spla
 import matplotlib.pyplot as plt
 
 
+# NOTE: This is now in the spd module (10/14/2024)
+# TODO: Remove this function
 def modchol_ldlt(A,delta=None):
     """
     Modified Cholesky algorithm based on LDL' factorization.
@@ -127,7 +129,8 @@ def modchol_ldlt(A,delta=None):
         
     return L, DMC, P, D
     
-    
+ # Note: This is now in the spd module (10/14/2024) 
+ # TODO: Remove this function  
 def diagonal_inverse(d, eps=None):
     """
     Compute the (approximate) pseudo-inverse of a diagonal matrix with
