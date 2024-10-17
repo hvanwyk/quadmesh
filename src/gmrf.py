@@ -752,12 +752,14 @@ class GaussianField(object):
     restricted subspace.
 
     """
-    def __init__(self, mean=None, canonical_mean=None, covariance=None, precision=None):
+    def __init__(self, size, mean=None, canonical_mean=None, covariance=None, precision=None):
         """
         Constructor
         
         Inputs:
-                  
+
+            size: int, size of the random field
+
             mean: double, (n,1) numpy array representing the expectation. 
 
             canonical_mean: double, (n,1) numpy array representing Q*mean.
@@ -765,7 +767,10 @@ class GaussianField(object):
             covariance: SPDMatrix, (n,n) numpy array representing the covariance.
 
             precision: SPDMatrix, (n,n) numpy array representing the precision.
-        """               
+        """      
+        # Store size
+        self.set_size(size)        
+
         # Store mean
         self.set_mean(mean)
 
@@ -778,10 +783,7 @@ class GaussianField(object):
         # Store precision
         self.set_precision(precision)
 
-        # Store size
-        self.set_size()
-                         
-            
+
     def set_mean(self, mean):
         """
         Store the means of the Gaussian field
@@ -790,7 +792,14 @@ class GaussianField(object):
         
             mean: double, (n,n_means) mean (array)
         """
-        self.__mean = mean
+        if mean is not None:
+            # Check shape
+            assert mean.shape[0] == self.get_size(), \
+                'Input "mean" should have the same number of rows as the '+\
+                'random vector.'
+            self.__mean = mean
+        else:
+            self.__mean = np.zeros(self.get_size())
 
 
     def get_mean(self):
@@ -800,6 +809,19 @@ class GaussianField(object):
         return self.__mean
     
 
+    def compute_mean(self):
+        """
+        Compute the mean of the Gaussian field from the canonical mean
+        """
+        b = self.get_canonical_mean()
+        Q = self.get_precision()
+        if Q is not None:
+            self.__mean = Q.solve(b)
+        else:
+            K = self.get_covariance()
+            self.__mean = K.dot(b)
+
+
     def set_canonical_mean(self, canonical_mean):
         """
         Compute the convenience parameter b = precision*mu
@@ -808,6 +830,17 @@ class GaussianField(object):
         """
         self.__canonical_mean = canonical_mean
 
+
+    def get_canonical_mean(self):
+        """
+        Return the canonical mean of the Gaussian field
+        """
+        return self.__canonical_mean
+
+
+    def compute_canonical_mean(self):
+        """
+        Compute the canonical mean b = Q*mu
         """
         Q = self.precision()
         if Q is not None: 
@@ -815,15 +848,8 @@ class GaussianField(object):
         else:
             K = self.covariance()
             b = K.solve(self.mean())
-        self.__b = b
-        """
-     
-    def get_canonical_mean(self):
-        """
-        Return the canonical mean of the Gaussian field
-        """
-        return self.__canonical_mean
-    
+        self.__canonical_mean = b
+
 
     def set_covariance(self, covariance, decomposition='eig'):
         """
@@ -897,44 +923,26 @@ class GaussianField(object):
         return self.__precision
     
 
-    def set_size(self):
+    def set_size(self,size):
         """
-        Determine the size of the random field from the mean, canonical mean, 
-        covariance, or precision.
+        Store the size of the random field
+
+        Inputs:
+
+            size: int, size of the random field
         """
-        mean = self.get_mean()
-        if mean is not None:
-            # Use mean to determine size
-            n = mean.shape[0]
-            self.__size = n
-        else:
-            # Use canonical mean to determine size
-            canonical_mean = self.get_canonical_mean()
-            if canonical_mean is not None:
-                n = canonical_mean.shape[0]
-                self.__size = n
-            else:
-                # Use covariance to determine size
-                covariance = self.get_covariance()
-                if covariance is not None:
-                    n = covariance.size()
-                    self.__size = n
-                else:
-                    precision = self.get_precision()
-                    if precision is not None:
-                        # Use precision to determine size
-                        n = precision.size()
-                        self.__size = n
-                    else:
-                        # Size not specified
-                        self.__size = None
+        assert isinstance(size, int) and size>0, \
+            'Input "size" should be a positive integer.'
+        self.__size = size
+
 
     def get_size(self):
         """
         Return the size of the random field
         """
         return self.__size
-    
+
+
     def set_dependence(self, K, mode='covariance'):
         """
         Store the proper covariance matrix of the random field, i.e. the 
@@ -945,7 +953,7 @@ class GaussianField(object):
         
             covariance: double, (n,n) numpy array
 
-        NOTE: This function 
+        NOTE: This function is superfluous.
         TODO: Double-check whether 
         """
         V = self.support()
@@ -1145,6 +1153,7 @@ class GaussianField(object):
         """
         return self.__support 
         
+
     def truncate(self, level):
         """
         Description
@@ -1189,8 +1198,7 @@ class GaussianField(object):
         
     
     
-    def sample(self, n_samples=1, z=None, m_col=0,
-               mode='covariance', decomposition='eig'):
+    def sample(self, n_samples=1, z=None, mode='covariance', m_col=0):
         """
         Generate sample realizations from Gaussian random field.
         
@@ -1205,10 +1213,7 @@ class GaussianField(object):
             mode: str, specify parameters used to simulate random field
                 ['precision', 'covariance', 'canonical']
                 
-            decomposition: str, specifying the decomposition type
-                ['chol', 'eig']
                 
-              
         Outputs:
         
             x: (n,n_samples), samples paths of random field
@@ -1227,53 +1232,43 @@ class GaussianField(object):
         # Retrieve SPDMatrix   
         #  
         if mode=='covariance':
-            # Check that covariance matrix is specified 
-            assert self.covariance() is not None, 'No covariance specified.'
-            
+
             # Get covariance
-            K = self.covariance()
+            C = self.get_covariance()
+
+            # Check that covariance matrix is specified 
+            assert C is not None, 'No covariance specified.'
             
         elif mode=='precision' or mode=='canonical':
-            # Check that precision matrix is specified
-            assert self.precision() is not None, 'No precision specified.'
-            
             # Get precision
-            K = self.precision()
+            C = self.get_precision()
+
+            # Check that precision matrix is specified
+            assert C is not None, 'No precision specified.'
             
-        #    
-        # Compute factorization L*L' if necessary
-        #
-        if decomposition=='chol' and not K.has_chol_decomp():
-            #
-            # Cholesky
-            #
-            K.chol_decomp()
-        elif decomposition=='eig' and not K.has_eig_decomp():
-            #
-            # Eigendecomposition
-            #
-            K.compute_eig_decomp(delta=0)
-        
         #
         # Parse samples
         # 
+        n = C.get_size()
         if z is not None:
             #
             # Extract number of samples from z
             #  
+            # Check that it's a 2D array
             assert len(z.shape) == 2, \
                 'Input "z" should have size (n, n_samples).'
-            if z.shape[0] > K.size():
-                z = z[:K.size(),:]
-            
-            assert z.shape[0] <= K.size(), \
+        
+            # Check that it has the right number of rows
+            assert z.shape[0] == n,\
                 'Input "z" should have size (n, n_samples).'
+            
+            # Overwrite the sample size if necessary
             n_samples = z.shape[1]
         else:
             #
             # Generate z
             # 
-            z = np.random.normal(size=(K.size(), n_samples))
+            z = np.random.normal(size=(n, n_samples))
         #
         #  Compute sample   
         # 
@@ -1281,30 +1276,29 @@ class GaussianField(object):
             #
             # Return Lz + mean
             #
-            Lz = K.sqrt(z, decomposition=decomposition)
-            V = self.support()
-            if V is not None:
-                Lz = V.dot(Lz)
-            return  Lz + self.mean(col=m_col, n_copies=n_samples)
-                
+            Lz = C.sqrt_dot(z,transpose=False)
+            return  Lz + np.tile(self.get_mean(),(1,n_samples))
+    
         elif mode=='precision':
             #
             # Return L^{-T} z + mean
             #
-            Lz = K.sqrt_solve(z,transpose=True, decomposition=decomposition)
-            V = self.support()
-            if V is not None:
-                Lz = V.dot(Lz)  
-            mu = self.mean(col=m_col, n_copies=n_samples)
-            return Lz + mu
-                       
+            Lz = C.sqrt_solve(z,transpose=True)
+            return Lz + np.tile(self.get_mean(),(1,n_samples))
+                                   
         elif mode=='canonical':
             #
             # Cholesky decomposition of the precision matrix 
             #
-            assert self.precision() is not None, 'No precision specified.'
-            return self.sample(n_samples=n_samples, z=z, mode='precision', \
-                               decomposition=decomposition, m_col=m_col)
+
+            # Compute the mean from the canonical mean
+            mean = self.get_mean()
+            if mean is None:
+                self.compute_mean()
+                mean = self.get_mean()
+            Lz = C.sqrt_solve(z,transpose=True)
+            return Lz + np.tile(mean,(1,n_samples))
+
         else:
             raise Exception('Input "mode" not recognized. '+\
                             'Use "covariance", "precision", or "canonical".')

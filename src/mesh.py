@@ -5995,7 +5995,7 @@ class DCEL(object):
         # Update Point Fields
         #
         n_points = self.points['n']
-        self.points['half_edge'] = np.full((n_points,), -1, dtype=np.int)
+        self.points['half_edge'] = np.full((n_points,), -1, dtype=int)
 
         # =====================================================================
         # Initialize Half-Edges
@@ -6015,12 +6015,12 @@ class DCEL(object):
                 n_he += len(self.faces['connectivity'][i])
 
         self.half_edges['n'] = n_he
-        self.half_edges['connectivity'] = np.full((n_he,2), -1, dtype=np.int)
-        self.half_edges['prev'] = np.full((n_he,), -1, dtype=np.int)
-        self.half_edges['next'] = np.full((n_he,), -1, dtype=np.int)
-        self.half_edges['twin'] = np.full((n_he,), -1, dtype=np.int)
-        self.half_edges['edge'] = np.full((n_he,), -1, dtype=np.int)
-        self.half_edges['face'] = np.full((n_he,), -1, dtype=np.int)
+        self.half_edges['connectivity'] = np.full((n_he,2), -1, dtype=int)
+        self.half_edges['prev'] = np.full((n_he,), -1, dtype=int)
+        self.half_edges['next'] = np.full((n_he,), -1, dtype=int)
+        self.half_edges['twin'] = np.full((n_he,), -1, dtype=int)
+        self.half_edges['edge'] = np.full((n_he,), -1, dtype=int)
+        self.half_edges['face'] = np.full((n_he,), -1, dtype=int)
 
         # =====================================================================
         # Define Half-Edges

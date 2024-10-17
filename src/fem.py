@@ -921,7 +921,7 @@ class Basis():
         self.__derivative = parse_derivative_info(derivative)
 
         dofs = self.dofs()
-        d2i = -np.ones(dofs[-1]+1, dtype=np.int)
+        d2i = -np.ones(dofs[-1]+1, dtype=int)
         d2i[dofs] = np.arange(len(dofs))
 
         self.__i2d = np.array(dofs)
@@ -2235,7 +2235,7 @@ class DofHandler(object):
             in which the dofs must occur.
         """
         is_singleton = False
-        if type(dofs) is np.int:
+        if type(dofs) is int:
             dofs = [dofs]
             is_singleton = True
 

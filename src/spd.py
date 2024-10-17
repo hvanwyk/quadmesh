@@ -95,7 +95,7 @@ class SPDMatrix(object):
         return self.__C
 
 
-    def size(self):
+    def get_size(self):
         """
         Return the number of rows (=columns) of C.
 

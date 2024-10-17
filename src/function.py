@@ -1879,7 +1879,7 @@ class Nodal(Map):
             assert type(dofs) is list, \
             'Dofs should be passed as list'
             
-            if all([type(dof) is np.int for dof in dofs]):
+            if all([type(dof) is int for dof in dofs]):
                 #
                 # list of numbers -> 1 variable
                 # 

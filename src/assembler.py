@@ -4355,7 +4355,7 @@ class AssembledForm(object):
             #
             # Dof-to-index mapping for interior dofs
             #
-            dof2idx.append(np.zeros(udofs[i][-1]+1, dtype=np.int))
+            dof2idx.append(np.zeros(udofs[i][-1]+1, dtype=int))
             dof2idx[i][udofs[i]] = np.arange(n_idx[i])
 
         #
