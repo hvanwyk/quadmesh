@@ -27,18 +27,28 @@ mesh = QuadMesh(box=[0,1,0,2])
 mesh.record('coarse')
 mesh.cells.refine(new_label='fine')
 
-Q1 = QuadFE(mesh.dim(), 'Q1')
-Q0 = QuadFE(mesh.dim(), 'DQ0')
 
-dhQ1 = DofHandler(mesh, Q1)
-dhQ1.distribute_dofs()
+Q0 = QuadFE(mesh.dim(), 'DQ0')
 
 dhQ0 = DofHandler(mesh, Q0)
 dhQ0.distribute_dofs()
 
-phi_0 = Basis(dhQ1)
-print(phi_0.subforest_flag())
-phi_1 = Basis(dhQ1, subforest_flag='coarse')
+phi_0 = Basis(dhQ0, subforest_flag='coarse')
+phi_1 = Basis(dhQ0, subforest_flag='fine')
+
+problem = [Form(trial=phi_0,test=phi_0), Form(trial=phi_1, test=phi_0)]
+assembler = Assembler(problem, mesh=mesh)
+for c in mesh.cells.get_leaves(subforest_flag='fine'):
+    for form in assembler.problems:
+        for f in form:
+            shape_info = assembler.shape_info(c)
+            xi_g, wi_g, phii, dofsi = assembler.shape
+    shape_info = assembler.shape_info(c)
+    xi_g, wi_g, phii, dofsi = assembler
+
+# Try to mimic an assembly
+
+
 cell = mesh.cells.get_leaves(subforest_flag='coarse')[0]
 cell.info()
 
