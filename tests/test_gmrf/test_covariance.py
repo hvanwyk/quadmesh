@@ -42,6 +42,8 @@ class TestCovariance(unittest.TestCase):
         print('mean:', eta.get_mean())
         xx = eta.sample()
 
+        plot = Plot()
+        plot.line(Nodal(basis=phi,data=xx))
         V = cov.get_eigenvectors()
         
 

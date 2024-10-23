@@ -3770,6 +3770,35 @@ class Assembler(object):
         return u
 
 
+    def project(self, marker_coarse, marker_fine, u_fine=None):
+        """
+        Project a fine grid function to a coarse grid.
+
+        Inputs:
+
+            marker_coarse: str/int, tree node marker denoting the cells of the
+                coarse grid.
+
+            marker_fine: str/int, tree node marker labeling the cells of the
+                fine grid.
+
+            u_fine: Nodal, function defined on the fine grid.
+
+
+        Outputs:
+
+            if u_fine is not None:
+
+                u_project: double, nodal vector defined on coarse grid
+
+            if u_fine is None:
+
+                P: double, sparse projection matrix, u_coarse = P*u_fine
+        """
+        pass
+        
+
+
 
     def interpolate(self, marker_coarse, marker_fine, u_coarse=None):
         """
