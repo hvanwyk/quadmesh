@@ -1673,7 +1673,7 @@ class IPForm(Form):
         n_dofsj = self.trial.dofhandler().element.n_dofs()
 
         # Sample size
-        n_samples = self.kernel.n_subsample()
+        n_samples = self.kernel.n_samples()
 
         f_loc = None
         for regi in self.regions(ci):
@@ -2189,6 +2189,8 @@ class Assembler(object):
         See Also
         --------
         Forest.is_contained_in
+
+        NOTE: Strictly speaking, bilinear forms 
         """
         mesh = self.mesh()
         flag = self.subforest_flag()
@@ -3022,7 +3024,7 @@ class Assembler(object):
             return np.array([data[i] for i in i_sample])
 
 
-    def get_scalar(self, i_problem=0, i_sample=None):
+    def get_scalar(self, i_problem=0, i_sample=0):
         """
         Return the scalar representation of the constant form of the specified
         sample of the specified problem
@@ -3039,10 +3041,7 @@ class Assembler(object):
             c: double, scalar representing constant form
         """
         aform = self.__af[i_problem][0]
-        if i_sample is None:
-            return aform.aggregate_data()['array']
-        else:
-            return aform.aggregate_data()['array'][i_sample]
+        return aform.aggregate_data()['array'][i_sample]
 
 
     def get_dofs(self, dof_type, i_problem=0):
@@ -3767,36 +3766,7 @@ class Assembler(object):
         C = self.hanging_node_matrix(i_problem=i_problem)
         u += C.dot(u)
 
-        return u
-
-
-    def project(self, marker_coarse, marker_fine, u_fine=None):
-        """
-        Project a fine grid function to a coarse grid.
-
-        Inputs:
-
-            marker_coarse: str/int, tree node marker denoting the cells of the
-                coarse grid.
-
-            marker_fine: str/int, tree node marker labeling the cells of the
-                fine grid.
-
-            u_fine: Nodal, function defined on the fine grid.
-
-
-        Outputs:
-
-            if u_fine is not None:
-
-                u_project: double, nodal vector defined on coarse grid
-
-            if u_fine is None:
-
-                P: double, sparse projection matrix, u_coarse = P*u_fine
-        """
-        pass
-        
+        return u     
 
 
 

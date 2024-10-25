@@ -25,6 +25,7 @@ print(a)
 
 mesh = QuadMesh(box=[0,1,0,2])
 mesh.record('coarse')
+mesh.cells.refine(new_label='middle')
 mesh.cells.refine(new_label='fine')
 
 
@@ -34,21 +35,49 @@ dhQ0 = DofHandler(mesh, Q0)
 dhQ0.distribute_dofs()
 
 phi_0 = Basis(dhQ0, subforest_flag='coarse')
-phi_1 = Basis(dhQ0, subforest_flag='fine')
+phi_1 = Basis(dhQ0, subforest_flag='middle')
+phi_2 = Basis(dhQ0, subforest_flag='fine')
 
-problem = [Form(trial=phi_0,test=phi_0), Form(trial=phi_1, test=phi_0)]
-assembler = Assembler(problem, mesh=mesh)
 for c in mesh.cells.get_leaves(subforest_flag='fine'):
+    print('Coarse basis dofs in fine cell', phi_0.dofs(c))
+
+problems = [[Form(trial=phi_1,test=phi_1)], [Form(trial=phi_2, test=phi_1)]]
+assembler = Assembler(problems, mesh=mesh, subforest_flag='fine')
+assembler.assemble()
+B = assembler.get_matrix(i_problem=0)
+C = assembler.get_matrix(i_problem=1)
+print('Size of B:', B.shape)
+print('Size of C:', C.shape)
+print('B:', B.toarray())
+print('C:', C.toarray())
+"""
+
     for form in assembler.problems:
         for f in form:
             shape_info = assembler.shape_info(c)
             xi_g, wi_g, phii, dofsi = assembler.shape
     shape_info = assembler.shape_info(c)
     xi_g, wi_g, phii, dofsi = assembler
+"""
 
 # Try to mimic an assembly
+plot = Plot()
+plot.mesh(mesh, subforest_flag='coarse', dofhandler=dhQ0, dofs=True, doflabels=True)
+plot.mesh(mesh, subforest_flag='middle', dofhandler=dhQ0, dofs=True, doflabels=True)
+plot.mesh(mesh, subforest_flag='fine', dofhandler=dhQ0, dofs=True, doflabels=True)
 
 
+for cell in mesh.cells.get_leaves(subforest_flag='fine'):
+    parent = cell.get_parent('coarse')
+    print('Parent address:', parent.get_node_address())
+    print('Child address:', cell.get_node_address())
+    pos, width = parent.subcell_position(cell)
+
+    print('Position:', pos, 'Width:', width)
+    print('')
+
+    #shape_info = assembler.shape_info(cell)
+    #xi_g, wi_g, phii, dofsi = assembler.shape_eval
 cell = mesh.cells.get_leaves(subforest_flag='coarse')[0]
 cell.info()
 
@@ -56,7 +85,7 @@ print(mesh.cells.is_contained_in('fine','coarse'))
 # Evaluate phi_1 on cell
 sub_dofs = []
 for child in cell.get_leaves(flag='fine'):
-    sub_dofs.extend(dhQ1.get_cell_dofs(child))
+    sub_dofs.extend(dhQ0.get_cell_dofs(child))
 
 sub_dofs = list(set(sub_dofs))
 print(sub_dofs)

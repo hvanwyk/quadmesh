@@ -1115,7 +1115,7 @@ class Forest(object):
             #
             # No trees specified, only the number of slots
             #
-            assert type(n_trees) is np.int and n_trees > 0,\
+            assert type(n_trees) is int and n_trees > 0,\
                 'Input "n_children" should be a positive integer.'
             self._trees = [None]*n_trees
         else:
@@ -3562,7 +3562,7 @@ class Cell(Tree):
         x,y = xy[:,0], xy[:,1]
 
         n_points = len(x)
-        in_cell = np.ones(n_points, dtype=np.bool)
+        in_cell = np.ones(n_points, dtype=bool)
 
         for half_edge in self.get_half_edges():
             #
@@ -6066,7 +6066,7 @@ class DCEL(object):
             # 2D: Define HE's and link with others, faces, and points
             #
             n_faces = self.faces['n']
-            self.faces['half_edge'] = np.full((n_faces,), -1, dtype=np.int)
+            self.faces['half_edge'] = np.full((n_faces,), -1, dtype=int)
 
             #
             # Loop over faces
