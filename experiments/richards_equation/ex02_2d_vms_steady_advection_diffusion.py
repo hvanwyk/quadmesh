@@ -149,10 +149,11 @@ infn = lambda x,y: (x==-2) and (-1<=y) and (y<=0)  # inflow boundary
 outfn = lambda x,y: (x==2) and (0<=y) and (y<=1)  # outflow boundary
 
 # Define the mesh
-mesh = QuadMesh(box=domain, resolution=(10,5))
+mesh = QuadMesh(box=domain, resolution=(4,2))
 
 # Various refinement levels
-for i in range(3):
+L = 5
+for i in range(L):
     if i==0:
         mesh.record(0)
     else:
@@ -170,8 +171,8 @@ for i in range(3):
 #
 # Plot meshes 
 #  
-fig, ax = plt.subplots(3,3)  
-for i in range(3):
+fig, ax = plt.subplots(L,4)  
+for i in range(L):
 
     ax[i,0] = plot.mesh(mesh,axis=ax[i,0], 
                       regions=[('inflow','edge'),('outflow','edge')],
@@ -189,16 +190,16 @@ for i in range(3):
 Q0 = QuadFE(2,'DQ0')  # element
 dh0 = DofHandler(mesh,Q0)  # degrees of freedom handler
 dh0.distribute_dofs()
-v0 = [Basis(dh0, subforest_flag=i) for i in range(3)]
+v0 = [Basis(dh0, subforest_flag=i) for i in range(L)]
 
 # Piecewise Linear 
 Q1 = QuadFE(2,'Q1')  # linear element
 dh1 = DofHandler(mesh,Q1)  # linear DOF handler
 dh1.distribute_dofs()
 
-v1   = [Basis(dh1,'v',i) for i in range(3)]   
-v1_x = [Basis(dh1,'vx',i) for i in range(3)]
-v1_y = [Basis(dh1,'vy',i) for i in range(3)]
+v1   = [Basis(dh1,'v',i) for i in range(L)]   
+v1_x = [Basis(dh1,'vx',i) for i in range(L)]
+v1_y = [Basis(dh1,'vy',i) for i in range(L)]
 
 
 # 
@@ -210,23 +211,23 @@ a2 = Constant(-0.5)
 #
 # Random diffusion coefficient
 #
-cov = Covariance(dh0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':0.1})
-Z = GaussianField(dh0.n_dofs(), K=cov)
+cov = Covariance(dh0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':0.2})
+Z = GaussianField(dh0.n_dofs(), covariance=cov)
 
 # Sample from the diffusion coefficient
-q2 = Nodal(basis=v0[2], data=Z.sample())
+qL = Nodal(basis=v0[-1], data=Z.sample())
  
 
 #
 # Compute the spatial average
 # 
 q = []
-for i in range(2):
+for i in range(L-1):
     #
     # Define Problem (v[i], v[i]) = (q, v[i]) 
     # 
-    problem = [[Form(trial=v0[i],test=v0[i]), Form(kernel=q2, test=v0[i])]]
-    assembler = Assembler(problem,mesh=mesh,subforest_flag=2)
+    problem = [[Form(trial=v0[i],test=v0[i]), Form(kernel=qL, test=v0[i])]]
+    assembler = Assembler(problem,mesh=mesh,subforest_flag=L-1)
     assembler.assemble()
     
     M = assembler.get_matrix()
@@ -236,14 +237,15 @@ for i in range(2):
     solver.solve_system()
     qi = solver.get_solution()
     q.append(qi)
-q.append(q2)
+q.append(qL)
 
+print('plotting q')
 # Plot realizations of the diffusion coefficient
 for i,qi in enumerate(q):
     ax[i,1] = plot.contour(qi,axis=ax[i,1],colorbar=False)
     ax[i,1].set_axis_off()
-#plt.show()
-
+# plt.show()
+print('done plotting q')
 
 
 #
@@ -251,16 +253,16 @@ for i,qi in enumerate(q):
 # 
 xi = [Kernel(qi,F=lambda q: 0.01 + np.exp(q)) for qi in q]
 u = []
-for i in range(3):
+for i in range(L):
     
     # Weak form
-    problem = [Form(kernel=xi[i],test=v1_x[2], trial=v1_x[2]), 
-               Form(kernel=xi[i],test=v1_y[2], trial=v1_y[2]),
-               Form(kernel=a1, test=v1[2], trial=v1_x[2]),
-               Form(kernel=a2, test=v1[2], trial=v1_y[2]),
-               Form(kernel=0, test=v1[2])]
+    problem = [Form(kernel=xi[i],test=v1_x[-1], trial=v1_x[-1]), 
+               Form(kernel=xi[i],test=v1_y[-1], trial=v1_y[-1]),
+               Form(kernel=a1, test=v1[-1], trial=v1_x[-1]),
+               Form(kernel=a2, test=v1[-1], trial=v1_y[-1]),
+               Form(kernel=0, test=v1[-1])]
     # Initialize 
-    assembler = Assembler(problem, mesh=mesh, subforest_flag=2)
+    assembler = Assembler(problem, mesh=mesh, subforest_flag=L-1)
     
     # Add Dirichlet conditions 
     assembler.add_dirichlet('inflow', 1)
@@ -271,9 +273,11 @@ for i in range(3):
     
     # Solve system
     ui = assembler.solve()
-    u.append(Nodal(basis=v1[2], data=ui))
+    u.append(Nodal(basis=v1[-1], data=ui))
     
-
+    if i>0:
+        ei = Nodal(basis=v1[-1], data = (u[i].data() - u[i-1].data()))
+        ax[i,3] = plot.contour(ei,axis=ax[i,3],colorbar=True)    
 #fig, ax = plt.subplots(3,1)
 for i,ui in enumerate(u):
     print(ui.basis().n_dofs())
@@ -282,7 +286,7 @@ for i,ui in enumerate(u):
 plt.tight_layout()
 plt.show()   
 
-
+"""
 #
 # Conditional distribution of the fine scale, given the coarse scale. 
 # 
@@ -302,7 +306,7 @@ print('K1:', 'type', type(K1), 'size',K1.shape)
 
 
 # Level 1 scale diffusion coefficient
-Z1 = GaussianField(dh0.n_dofs(subforest_flag=1), K=K1)
+Z1 = GaussianField(dh0.n_dofs(subforest_flag=1), covariance=K1)
 
 # Level 0:
 # Local averaging operator
@@ -310,7 +314,7 @@ M10 = local_average_operator(mesh, v0[0], v0[1], flag0=0, flag1=1).toarray()
 K0 = M10.dot(K1.dot(M10.transpose()))
 
 # Level 0 scale diffusion coefficient
-Z0 = GaussianField(dh0.n_dofs(subforest_flag=0), K=K0)
+Z0 = GaussianField(dh0.n_dofs(subforest_flag=0), covariance=K0)
 
 fig, ax = plt.subplots(1,3)
 ax[0] = plot.contour(Nodal(basis=v0[0], data=Z0.sample()),axis=ax[0],colorbar=True)
@@ -360,6 +364,8 @@ ax[1,1] = plot.contour(Nodal(basis=v0[1], data=0.01 + np.exp(z10)),axis=ax[1,1],
 ax[1,2] = plot.contour(Nodal(basis=v0[2], data=0.01 + np.exp(z21)),axis=ax[1,2],colorbar=True)
 
 plt.show()
+
+"""
 """
 K = assembler.get_matrix().tocsr()
 b = assembler.get_vector()
