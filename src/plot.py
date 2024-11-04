@@ -591,7 +591,7 @@ class Plot(object):
     
     
     def contour(self, f, n_sample=0, colorbar=True, derivative=(0,), 
-                resolution=(500,500), axis=None, mesh=None):
+                resolution=(250,250), axis=None, mesh=None):
         """
         Returns a contour plot of a function f
         
