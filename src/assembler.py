@@ -2311,7 +2311,7 @@ class Assembler(object):
 
 
 
-    def assemble(self, keep_cellwise_data=False):
+    def assemble(self, keep_cellwise_data=False, region_flag=None):
         """
         Description
         -----------
@@ -2324,6 +2324,10 @@ class Assembler(object):
             problems : list of (list of) forms,
                 A list of finite element problems. Each problem is a list of
                 constant, linear, and bilinear forms.
+
+            keep_cellwise_data : bool, whether to store the cell-wise default=False
+
+            region_flag : str/int/tuple, default=None, region marker
 
 
         Output:

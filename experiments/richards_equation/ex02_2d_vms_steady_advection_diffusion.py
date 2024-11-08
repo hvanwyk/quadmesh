@@ -1,10 +1,13 @@
 """
-Variational Multiscale Method for Advection-Diffusion Equation
+Advection-Diffusion Equation with Hierarchical Random Diffusion Coefficients
 
 
+TODO: 
+- [ ] Generate projection operators 
+- [ ] Evaluate statistical quantity of interest
+- [ ] Implement Tasmanian sparse Gaussian grid interpolation/integration
 """
-import sys
-sys.path.append('/home/hans-werner/git/quadmesh/src/')
+
 from mesh import QuadMesh
 from fem import QuadFE, Basis, DofHandler
 from function import Explicit, Nodal, Constant
@@ -148,6 +151,10 @@ domain = [-2,2,-1,1]
 infn = lambda x,y: (x==-2) and (-1<=y) and (y<=0)  # inflow boundary
 outfn = lambda x,y: (x==2) and (0<=y) and (y<=1)  # outflow boundary
 
+# Region of interest
+dlt = 0.1
+reg_fn = lambda x,y: (-dlt<=x) and (x<=dlt) and (-dlt<=y) and (y<=dlt)
+
 # Define the mesh
 mesh = QuadMesh(box=domain, resolution=(4,2))
 
@@ -167,19 +174,25 @@ for i in range(L):
     mesh.mark_region('outflow', outfn, entity_type='half_edge', 
                      on_boundary=True, subforest_flag=i)
     
+    # Mark region of interest
+    mesh.mark_region('roi', reg_fn, entity_type='cell', 
+                     on_boundary=False, subforest_flag=i)
     
 #
 # Plot meshes 
 #  
 fig, ax = plt.subplots(L,4)  
 for i in range(L):
-
-    ax[i,0] = plot.mesh(mesh,axis=ax[i,0], 
-                      regions=[('inflow','edge'),('outflow','edge')],
-                      subforest_flag=i)
+    if i < L-1:
+        ax[i,0] = plot.mesh(mesh,axis=ax[i,0], 
+                        regions=[('inflow','edge'),('outflow','edge')],
+                        subforest_flag=i)
+    else:
+        ax[i,0] = plot.mesh(mesh,axis=ax[i,0], 
+                        regions=[('inflow','edge'),('outflow','edge'),('roi','cell')],
+                        subforest_flag=i)    
     ax[i,0].set_xlabel('x')
     ax[i,0].set_ylabel('y')
-#plt.show()
 
 
 #
@@ -219,8 +232,36 @@ qL = Nodal(basis=v0[-1], data=Z.sample())
  
 
 #
-# Compute the spatial average
+# Compute the spatial projection operators
 # 
+P = []
+for l in range(L-1):
+    #
+    # Define the problem (v[l-1], v[l-1]) = (v[l], v[l+1])
+    # 
+    problems = [[Form(trial=v0[l],test=v0[l])], 
+                [Form(trial=v0[l+1], test=v0[l])]]
+    
+    assembler = Assembler(problems, mesh=mesh, subforest_flag=l+1)
+    assembler.assemble()
+
+    M = assembler.get_matrix(i_problem=0).tocsc()
+    A = assembler.get_matrix(i_problem=1)
+    P.append(spla.spsolve(M,A))
+    print('P:', 'type', type(P[-1]), 'size',P[-1].shape)
+
+
+
+#
+# Linear Operator for Evaluating Quantity of Interest
+# 
+problem = [Form(test=v1[-1], trial=v1[-1],flag='roi')]
+assembler = Assembler(problem, mesh=mesh, subforest_flag=L-1)
+assembler.assemble(region_flag='roi')
+I = assembler.get_matrix()
+
+print('I:', 'type', type(I), 'size',I.shape, 'Number of non-zeros', I.nnz)
+print('I:', 'values', I)
 q = []
 for i in range(L-1):
     #
@@ -261,6 +302,7 @@ for i in range(L):
                Form(kernel=a1, test=v1[-1], trial=v1_x[-1]),
                Form(kernel=a2, test=v1[-1], trial=v1_y[-1]),
                Form(kernel=0, test=v1[-1])]
+    
     # Initialize 
     assembler = Assembler(problem, mesh=mesh, subforest_flag=L-1)
     
@@ -285,6 +327,7 @@ for i,ui in enumerate(u):
     ax[i,2].set_axis_off()
 plt.tight_layout()
 plt.show()   
+
 
 """
 #
