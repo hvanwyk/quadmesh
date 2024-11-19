@@ -152,7 +152,7 @@ infn = lambda x,y: (x==-2) and (-1<=y) and (y<=0)  # inflow boundary
 outfn = lambda x,y: (x==2) and (0<=y) and (y<=1)  # outflow boundary
 
 # Region of interest
-dlt = 0.1
+dlt = 0.2
 reg_fn = lambda x,y: (-dlt<=x) and (x<=dlt) and (-dlt<=y) and (y<=dlt)
 
 # Define the mesh
@@ -319,7 +319,8 @@ for i in range(L):
     
     if i>0:
         ei = Nodal(basis=v1[-1], data = (u[i].data() - u[i-1].data()))
-        ax[i,3] = plot.contour(ei,axis=ax[i,3],colorbar=True)    
+        ax[i,3] = plot.contour(ei,axis=ax[i,3],colorbar=True)  
+        ax[i,3].set_axis_off()  
 #fig, ax = plt.subplots(3,1)
 for i,ui in enumerate(u):
     print(ui.basis().n_dofs())
