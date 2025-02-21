@@ -160,7 +160,7 @@ def test_ft():
     # Specify initial condition
     c0 = Constant(1)
     dt = 1e-3  # time step 
-    T  = 4  # terminal time 
+    T  = 1  # terminal time 
     N  = int(np.ceil(T/dt))  # number of timesteps
     
     
