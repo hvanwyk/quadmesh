@@ -221,7 +221,7 @@ v1_y = [Basis(dh1,'vy',i) for i in range(L)]
 # 
 # Parameters
 # 
-a1 = Constant(1)  # advection parameters
+a1 = Constant(0.5)  # advection parameters
 a2 = Constant(-0.5) 
 
 #

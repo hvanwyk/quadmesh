@@ -2358,7 +2358,7 @@ class Assembler(object):
         # Assemble forms over mesh cells
         #
         sf = self.subforest_flag()
-        cells = self.mesh().cells.get_leaves(subforest_flag=sf)
+        cells = self.mesh().cells.get_leaves(subforest_flag=sf, flag=region_flag)
         for ci in cells:
             #
             # Compute shape functions on cell
