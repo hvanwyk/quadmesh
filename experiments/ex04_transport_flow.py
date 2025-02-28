@@ -217,7 +217,7 @@ def test_ft():
         # Update c0
         c0 = cp.copy()
         
-        plot.contour(c_fn, n_sample=i)
+        #plot.contour(c_fn, n_sample=i)
     
     #
     # Quantity of interest
@@ -229,11 +229,13 @@ def test_ft():
         n = entity.unit_normal()
         return c*(px*n[0]+py*n[1])
     
+    print('computing quantity of interest')
+    print(px.data())
     px.set_subsample(i=np.arange(41))
     py.set_subsample(i=np.arange(41))
     
-    #kernel = Kernel(f=[c_fn,px,py], F=F)
-    kernel = Kernel(c_fn)
+    kernel = Kernel(f=[c_fn,px,py], F=F)
+    #kernel = Kernel(c_fn)
     
     #print(kernel.n_subsample())
     form = Form(kernel, flag='right', dmu='ds')
