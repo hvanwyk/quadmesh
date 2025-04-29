@@ -1750,6 +1750,8 @@ class Forest(object):
         if test_flag is None:
             return True
 
+        elif reference_flag==test_flag:
+            return True
         #
         # Check whether the test_flag nodes have reference_flag ancestors
         #

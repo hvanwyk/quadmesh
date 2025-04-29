@@ -617,7 +617,7 @@ class Covariance(EigenDecomposition):
         mesh = dofhandler.mesh
         
         # Basis
-        u = Basis(dofhandler, 'u')
+        u = Basis(dofhandler, 'u', subforest_flag=sf)
         
         # Mass matrix 
         m = Form(trial=u, test=u)
@@ -752,7 +752,7 @@ class GaussianField(object):
     restricted subspace.
 
     """
-    def __init__(self, size, mean=None, canonical_mean=None, covariance=None, precision=None):
+    def __init__(self, size, mean=None, canonical_mean=None, covariance=None, precision=None,support=None):
         """
         Constructor
         
@@ -767,6 +767,8 @@ class GaussianField(object):
             covariance: SPDMatrix, (n,n) numpy array representing the covariance.
 
             precision: SPDMatrix, (n,n) numpy array representing the precision.
+
+            support: double, range of field stored in (n,k) array whose columns form an orthonormal
         """      
         # Store size
         self.set_size(size)        
@@ -782,6 +784,9 @@ class GaussianField(object):
 
         # Store precision
         self.set_precision(precision)
+
+        # Store support
+        self.set_support(support)
 
 
     def set_mean(self, mean):
@@ -799,7 +804,7 @@ class GaussianField(object):
                 'random vector.'
             self.__mean = mean
         else:
-            self.__mean = np.zeros(self.get_size())
+            self.__mean = np.zeros((self.get_size(),1))
 
 
     def get_mean(self):
@@ -1031,9 +1036,9 @@ class GaussianField(object):
             # 
             cov = self.covariance()
             assert cov is not None, 'No covariance specified.'
-            if not cov.has_eig_decomp():
-                cov.compute_eig_decomp(delta=0)
-            d, V = cov.get_eig_decomp()
+            #if not cov.has_eig_decomp():
+            #    cov.compute_eig_decomp(delta=0)
+            d, V = cov.get_factors()
         elif mode=='precision':
             #
             # Use (reduced) precision matrix
@@ -1154,6 +1159,74 @@ class GaussianField(object):
         return self.__support 
         
 
+    def KL_sample(self, i_min=0, i_max=None, n_samples=1, z=None, mode='covariance'):
+        """
+        Description
+        -----------
+        Generate sample realizations from the Karhunen-Loeve expansion of the 
+        random field within a given range of eigenvalues.
+
+        Inputs:
+
+            i_min: double, index of larget eigenvalue to be included in the
+                sample.
+
+            i_max: double, index of smallest eigenvalue to be included in the
+                sample.
+
+            n_samples: int, number of samples to generate.
+
+            z: (n,n_samples) random vector ~N(0,I).
+
+            mode: str, expansion mode ('covariance', 'precision', 'canonical')
+
+            
+        Outputs:
+
+            x: (n,n_samples), samples paths of random field
+
+
+        Note: Samples can only be generated from the covariance or precision matrices with
+            an eigendecomposition. 
+        
+        """
+        assert i_min >= 0 and i_max < self.size(), \
+            'Indices should be within the range of the covariance matrix.'
+        
+        # Extract the mean
+        mean = self.mean()
+
+        # Extract the covariance
+        C = self.covariance()
+        assert C is not None, 'No covariance specified.'
+        assert isinstance(C, EigenDecomposition), \
+            'Covariance should have an eigendecomposition.' 
+        
+        # Extract the eigendecomposition
+        d = C.get_eigenvalues()
+        V = C.get_eigenvectors()
+
+        # Determine eigenvalue range
+        if i_max is None:
+            i_max = self.size()-1
+        assert i_max >= i_min, 'Index range should be non-empty.'
+        
+        # Sample 
+        if z is None:
+            z = np.random.normal(size=(self.size(), n_samples))
+        else:
+            assert z.shape[0] == i_max-i_min+1, \
+                'Input "z" should have the same number of rows as the random vector.'
+
+        # Compute samples
+        print('V shape', V[:,i_min:i_max+1].shape)
+        print('d shape', d[i_min:i_max+1].shape)
+        print('z shape', z.shape)
+        print('mean shape', mean.shape)
+        return V[:,i_min:i_max+1].dot(np.diag(np.sqrt(d[i_min:i_max+1])).dot(z[i_min:i_max+1,:])) + np.tile(mean,(1,n_samples))
+    
+
+
     def truncate(self, level):
         """
         Description
@@ -1198,7 +1271,7 @@ class GaussianField(object):
         
     
     
-    def sample(self, n_samples=1, z=None, mode='covariance', m_col=0):
+    def sample(self, n_samples=1, z=None, mode='covariance', m_col=0, T=None):
         """
         Generate sample realizations from Gaussian random field.
         
@@ -1306,7 +1379,7 @@ class GaussianField(object):
     
     
     def condition(self, A, e, Ko=0, output='sample', n_samples=1, z=None, 
-                  mode='covariance', decomposition='eig'):
+                  mode='covariance'):
         """
         Returns the conditional random field X|e, where e|X ~ N(AX, Ko).
         
@@ -1373,7 +1446,13 @@ class GaussianField(object):
                 # Compute ek = e - P^*mu
                 ek = e - A.dot(self.project(mu,'nullspace'))
             else:
-                Ak = A.dot(Vk)
+                if sp.issparse(A):
+                    Ak = A.toarray()
+                else:
+                    # Convert to dense matrix
+                    Ak = A
+                
+                Vk = np.identity(n)
                 mu_k = mu
                 ek = e
                 
@@ -1383,6 +1462,10 @@ class GaussianField(object):
             print('Computing KAT and AKAT') 
             if mode=='covariance':    
                 KAT  = K.dot(Ak.T)
+                print('Type',type(KAT))
+                print('Sparse?',sp.issparse(KAT))
+                print('KAT',KAT.shape)
+                print('Ak',Ak.shape)
                 AKAT = Ak.dot(KAT)
             elif mode=='precision':
                 KAT = Q.solve(Ak.T)
@@ -1396,8 +1479,7 @@ class GaussianField(object):
                 
                 # Sample unconditioned field 
                 print('Sampling from unconditioned field')
-                Xs = self.sample(z=z, n_samples=n_samples, mode=mode, 
-                                 decomposition=decomposition)            
+                Xs = self.sample(z=z, n_samples=n_samples, mode=mode)            
                 
                 # Compute residual
                 print('Computing residual')
@@ -1427,9 +1509,10 @@ class GaussianField(object):
                 K_cnd = K.get_matrix() - KAT.dot(U)
                 K_cnd = Vk.dot(K_cnd.dot(Vk.T))
                 
+                print('K_cnd', K_cnd.shape)
+                print('K_cnd', K_cnd[0:10,0:10])
                 # Define random field 
-                X = GaussianField(self.size(), mean=mu_cnd, \
-                                  K=K_cnd,mode='covariance')
+                X = GaussianField(self.size(), mean=mu_cnd, covariance=K_cnd)
                 X.update_support()
                 
                 return X

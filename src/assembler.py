@@ -2370,7 +2370,7 @@ class Assembler(object):
             #
             # Assemble local forms and assign to global dofs
             #
-            for problem, i_problem in zip(self.problems, range(self.n_problems())):
+            for i_problem, problem in enumerate(self.problems):
                 #
                 # Loop over problems
                 #
@@ -2379,7 +2379,7 @@ class Assembler(object):
                     # Loop over forms
                     #
 
-                    # Get form dimension
+                    # Get form dimension (0-constant, 1-linear, 2-bilinear)
                     dim = form.dim()
 
                     # Get assembled form
@@ -3599,7 +3599,7 @@ class Assembler(object):
                                           interior=False,
                                           on_boundary=on_bnd, \
                                           subforest_flag=sf)
-            print('The Dirichlet Dofs are', dir_dofs)
+            #print('The Dirichlet Dofs are', dir_dofs)
         # Number of dirichlet dofs
         n_dirichlet = len(dir_dofs)
 

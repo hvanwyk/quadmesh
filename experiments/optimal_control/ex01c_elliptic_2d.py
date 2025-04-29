@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/home/hans-werner/git/quadmesh/src')
+
 from assembler import Assembler
 from assembler import Form
 from assembler import Kernel
@@ -20,13 +23,13 @@ from mesh import QuadMesh
 
 from plot import Plot
 
-from solver import LS
+from solver import LinearSystem as LS
 
 import numpy as np
 import matplotlib.pyplot as plt
 import gc
 import scipy.sparse as sp
-from tqdm import tqdm
+#from tqdm import tqdm
 """
 System 
 
@@ -183,7 +186,7 @@ adjoint.set_constraint_relation()
 J = []
 u_iter = []
 alpha = 0.1
-for i in tqdm(range(n_samples)):
+for i in range(n_samples):
     u_iter.append(u)
     
     # Get current sample of system matrix

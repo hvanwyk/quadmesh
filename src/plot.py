@@ -591,7 +591,8 @@ class Plot(object):
     
     
     def contour(self, f, n_sample=0, colorbar=True, derivative=(0,), 
-                resolution=(250,250), axis=None, mesh=None):
+                resolution=(250,250), axis=None, mesh=None,cmap='viridis',
+                vmin=None,vmax=None, alpha=1):
         """
         Returns a contour plot of a function f
         
@@ -607,6 +608,8 @@ class Plot(object):
             *colorbar [True]: bool, add a colorbar?
             
             *resolution [(100,100)]: int, tuple resolution of contour plot.
+
+            * cmap
                         
             
         Outputs: 
@@ -647,7 +650,7 @@ class Plot(object):
             ff = f.eval(xy, derivative=derivative)
         z  = ff[:,n_sample].reshape(x.shape)
         
-        cm = axis.contourf(x,y,z,100)
+        cm = axis.contourf(x,y,z,100,cmap=cmap, vmin=vmin, vmax=vmax,alpha=alpha)
         
         if colorbar:
             plt.colorbar(cm, ax=axis, format='%g')

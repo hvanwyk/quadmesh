@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/home/hans-werner/git/quadmesh/src')
+
 from mesh import Mesh1D
 from fem import DofHandler
 from function import Function

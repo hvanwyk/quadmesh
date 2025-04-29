@@ -162,7 +162,7 @@ reg_fn = lambda x,y: (-dlt<=x) and (x<=dlt) and (-dlt<=y) and (y<=dlt)
 mesh = QuadMesh(box=domain, resolution=(4,2))
 
 # Various refinement levels
-L = 5
+L = 4
 for i in range(L):
     if i==0:
         mesh.record(0)
@@ -209,8 +209,8 @@ dh0.distribute_dofs()
 v0 = [Basis(dh0, subforest_flag=i) for i in range(L)]
 
 # Piecewise Linear 
-Q1 = QuadFE(2,'Q1')  # linear element
-dh1 = DofHandler(mesh,Q1)  # linear DOF handler
+Q2 = QuadFE(2,'Q2')  # linear element
+dh1 = DofHandler(mesh,Q2)  # linear DOF handler
 dh1.distribute_dofs()
 
 v1   = [Basis(dh1,'v',i) for i in range(L)]   
@@ -221,19 +221,22 @@ v1_y = [Basis(dh1,'vy',i) for i in range(L)]
 # 
 # Parameters
 # 
-a1 = Constant(0.5)  # advection parameters
-a2 = Constant(-0.5) 
+a1 = Constant(1)  # advection parameters
+a2 = Constant(-1) 
 
 #
 # Random diffusion coefficient
 #
-cov = Covariance(dh0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':0.2})
+cov = Covariance(dh0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':0.5})
 Z = GaussianField(dh0.n_dofs(), covariance=cov)
+
+Zs = Z.sample(n_samples=1)
+print('Zs:', 'type', type(Zs), 'size',Zs.shape)
 
 # Sample from the diffusion coefficient
 qL = Nodal(basis=v0[-1], data=Z.sample())
  
-
+print(qL.n_samples())
 #
 # Compute the spatial projection operators
 # 
@@ -255,16 +258,7 @@ for l in range(L-1):
 
 
 
-#
-# Linear Operator for Evaluating Quantity of Interest
-# 
-problem = [Form(test=v1[-1], trial=v1[-1],flag='roi')]
-assembler = Assembler(problem, mesh=mesh, subforest_flag=L-1)
-assembler.assemble(region_flag='roi')
-I = assembler.get_matrix()
 
-print('I:', 'type', type(I), 'size',I.shape, 'Number of non-zeros', I.nnz)
-print('I:', 'values', I)
 q = []
 for i in range(L-1):
     #
@@ -288,7 +282,7 @@ print('plotting q')
 for i,qi in enumerate(q):
     ax[i,1] = plot.contour(qi,axis=ax[i,1],colorbar=False)
     ax[i,1].set_axis_off()
-# plt.show()
+#plt.show()
 print('done plotting q')
 
 

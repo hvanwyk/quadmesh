@@ -1,3 +1,11 @@
+"""
+TODO: Unfinished
+"""
+
+
+import sys
+sys.path.append('/home/hans-werner/git/quadmesh/src')
+
 from assembler import Assembler
 from assembler import Kernel
 from assembler import Form
