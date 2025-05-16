@@ -30,6 +30,10 @@ Ossiander et. al. 2014, Conditional Stochastic Simulations of Flow and
 Transport with Karhunen-Loève Expansions, Stochastic Collocation, and 
 Sequential Gaussian Simulation
 """
+import sys
+if '/home/hans-werner/git/quadmesh/src' not in sys.path:
+    sys.path.append('/home/hans-werner/git/quadmesh/src')
+
 # Imports 
 from assembler import Form
 from assembler import Kernel
@@ -69,8 +73,8 @@ def test_ft():
     
     # permeability field
     phi = Constant(1)  # porosity
-    D   = Constant(0.0252)  # dispersivity
-    #D = Constant(2)
+    #D   = Constant(0.0252)  # dispersivity
+    D = Constant(2)
     K   = Constant(1)  # permeability
     
     # =============================================================================
@@ -260,8 +264,8 @@ def test_ft():
         n = entity.unit_normal()
         return c*(px*n[0]+py*n[1])
     
-    px.set_subsample(i=np.arange(41))
-    py.set_subsample(i=np.arange(41))
+    #px.set_subsample(i=np.arange(41))
+    #py.set_subsample(i=np.arange(41))
     
     #kernel = Kernel(f=[c_fn,px,py], F=F)
     kernel = Kernel(c_fn)

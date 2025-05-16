@@ -1,3 +1,9 @@
+
+import sys
+if '/home/hans-werner/git/quadmesh/src' not in sys.path:
+    sys.path.append('/home/hans-werner/git/quadmesh/src')
+
+
 #
 # Internal
 # 

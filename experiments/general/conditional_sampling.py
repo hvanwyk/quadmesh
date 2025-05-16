@@ -7,7 +7,6 @@ import sys
 if '/home/hans-werner/git/quadmesh/src' not in sys.path:
     sys.path.append('/home/hans-werner/git/quadmesh/src')
 
-import gmrf
 from mesh import QuadMesh
 from fem import Basis, DofHandler, QuadFE   
 from function import Nodal

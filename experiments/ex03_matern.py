@@ -10,10 +10,17 @@ implementation and effect of
 2. the diffusion tensor
 3. boundary conditions 
 
+TODO: Update to latest source code
+TODO: Add boundary conditions
 """
+import sys
+if '/home/hans-werner/git/quadmesh/src' not in sys.path:
+    sys.path.append('/home/hans-werner/git/quadmesh/src')
+
 
 # Import 
 from mesh import Mesh
+from function import Function
 from fem import QuadFE, DofHandler, Function, GaussRule
 from gmrf import Gmrf
 from plot import Plot

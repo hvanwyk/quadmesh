@@ -30,6 +30,11 @@ Ossiander et. al. 2014, Conditional Stochastic Simulations of Flow and
 Transport with Karhunen-Loève Expansions, Stochastic Collocation, and 
 Sequential Gaussian Simulation
 """
+
+import sys
+if '/home/hans-werner/git/quadmesh/src' not in sys.path:   
+    sys.path.append('/home/hans-werner/git/quadmesh/src')
+
 # Imports 
 from assembler import Form
 from assembler import Kernel
@@ -217,7 +222,7 @@ def test_ft():
         # Update c0
         c0 = cp.copy()
         
-        #plot.contour(c_fn, n_sample=i)
+        plot.contour(c_fn, n_sample=i)
     
     #
     # Quantity of interest

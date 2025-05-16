@@ -925,7 +925,7 @@ class Plot(object):
         #
         # Check function properties
         # 
-        assert isinstance(f, Map), 'Can only plot "Map" objects.'
+        assert isinstance(f, Map), 'Can only plot "Map" objects.'   
         
         #
         # Ensure there's a mesh

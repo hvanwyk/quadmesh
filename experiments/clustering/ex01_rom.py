@@ -1,3 +1,7 @@
+import sys
+if '/home/hans-werner/git/quadmesh/src' not in sys.path:
+    sys.path.append('/home/hans-werner/git/quadmesh/src')
+
 from assembler import Assembler
 from assembler import Form
 from fem import DofHandler
