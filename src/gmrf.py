@@ -1190,8 +1190,7 @@ class GaussianField(object):
             an eigendecomposition. 
         
         """
-        assert i_min >= 0 and i_max < self.size(), \
-            'Indices should be within the range of the covariance matrix.'
+        
         
         # Extract the mean
         mean = self.mean()
@@ -1211,6 +1210,9 @@ class GaussianField(object):
             i_max = self.size()-1
         assert i_max >= i_min, 'Index range should be non-empty.'
         
+        assert i_min >= 0 and i_max < self.size(), \
+            'Indices should be within the range of the covariance matrix.'
+        
         # Sample 
         if z is None:
             z = np.random.normal(size=(self.size(), n_samples))
@@ -1219,10 +1221,6 @@ class GaussianField(object):
                 'Input "z" should have the same number of rows as the random vector.'
 
         # Compute samples
-        print('V shape', V[:,i_min:i_max+1].shape)
-        print('d shape', d[i_min:i_max+1].shape)
-        print('z shape', z.shape)
-        print('mean shape', mean.shape)
         return V[:,i_min:i_max+1].dot(np.diag(np.sqrt(d[i_min:i_max+1])).dot(z[i_min:i_max+1,:])) + np.tile(mean,(1,n_samples))
     
 
