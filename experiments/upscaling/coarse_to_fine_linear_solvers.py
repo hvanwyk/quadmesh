@@ -42,7 +42,7 @@ from scipy.sparse.linalg import LinearOperator
 # 
 
 # Generate a 1D mesh
-mesh = Mesh1D(box=[0, 1], resolution=(101,))
+mesh = Mesh1D(box=[0, 1], resolution=(1001,))
 
 # Mark boundary
 bnd_fn = lambda x: abs(x) < 1e-6 or abs(1 - x) < 1e-6
@@ -70,7 +70,7 @@ vx = Basis(dQ1,'vx')
 # 
 
 # Define the covariance function
-cov = Covariance(dQ1, name='matern', parameters={'sgm':1, 'nu': 1.5, 'l': 0.1})
+cov = Covariance(dQ1, name='matern', parameters={'sgm':1, 'nu': 1.5, 'l': 0.05})
 
 # Define the Gaussian field
 eta = GaussianField(dQ1.n_dofs(), covariance=cov)
@@ -121,7 +121,7 @@ def callback(xk):
     err.append(np.linalg.norm(r))
 
 # Use the preconditioner in CG
-uc_int = spla.cg(Ac, bc - Ac.dot(x0), callback=callback)
+uc_int = spla.cg(Ac, bc - Ac.dot(x0), callback=callback)[0]
 
 fig, ax = plt.subplots(1, 1, figsize=(8, 4))
 ax.semilogy(np.array(err), label='Convergence of CG')
@@ -139,7 +139,7 @@ n_dofs = dQ1.n_dofs()
 print(f"Number of degrees of freedom: {n_dofs}")
 uc_vec = np.zeros(n_dofs)
 uc_vec[dir_dofs] = dir_vals[:,0]
-uc_vec[int_dofs] = uc_int[0]                           
+uc_vec[int_dofs] = uc_int                           
 #uc_vec = assembler_coarse.solve()
 
 clu = spla.splu(Ac)
@@ -154,13 +154,22 @@ assert np.allclose(uc_vec, uc_lu), "The solutions do not match!"
 # 
 
 # Sample the fine random field
-eta_tail_smpl = eta.KL_sample(i_min=6, n_samples=20)
+eta_tail_smpl = eta.KL_sample(i_min=6, n_samples=10)
 
 # Form the log-normal conditional random field
 eta_cond_smpl = np.zeros((dQ1.n_dofs(), 10))
 for i in range(10):
     eta_cond_smpl[:, i] = eta_coarse_smpl[:,0] + eta_tail_smpl[:, i]
 eta_cond_fn = Nodal(basis=v, data=0.1 + np.exp(eta_cond_smpl))
+
+plot = Plot(quickview=False)
+fig, ax = plt.subplots(1, 1, figsize=(8, 4))
+ax = plot.line(eta_coarse_fn,axis=ax,i_sample=0,plot_kwargs={'color':'blue'})
+for i in range(10):
+    plot.line(eta_cond_fn,axis=ax,i_sample=i,plot_kwargs={'color':'black','alpha':0.5}) 
+ax.set_title('Sample realization of the coarse random field')
+ax.set_xlabel('x')
+plt.ylim(0, 7)
 
 # Assemble the conditional fine system
 K_cond = Kernel(f=eta_cond_fn)
@@ -193,8 +202,8 @@ ax.set_xlabel('Iteration')
 ax.set_ylabel('Residual Norm')
 ax.set_title('Convergence of the Conjugate Gradient Method for Conditional Samples')
 plt.show()  
-"""
 
+"""
 plot = Plot(quickview=False)
 eta_fn = Nodal(basis=v,data=0.1+np.exp(eta_smpl))
 fig, ax = plt.subplots(1, 1, figsize=(8, 4))
