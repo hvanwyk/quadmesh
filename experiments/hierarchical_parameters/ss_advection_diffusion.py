@@ -15,7 +15,7 @@ We sample from quantities of interest related to the solution, such as
     (ii) the flux at the boundary.
 
 TODO: Sample from the solution 
-TODO: 
+TODO: Sample low-complexity parameter system and compare distribution of the solution with the one from the high-complexity parameter system.
 """
 
 
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     dh.distribute_dofs() 
     phi = Basis(dh,'v')
     phi_x = Basis(dh,'vx')
-
+    phi_l = Basis(dh,'v',subforest_flag=2)
 
     # Compute projection matrices
     comment.tic("Compute projection matrices")
@@ -93,17 +93,17 @@ if __name__ == "__main__":
 
     # Define Gaussian random field
     comment.tic("Create Covariance")
-    cov = Covariance(dh,name='exponential',parameters={'sgm':1,'l':0.01})
+    cov = Covariance(dh,name='exponential',parameters={'sgm':1,'l':0.01},subforest_flag=2)
     comment.toc()
 
     # Create Gaussian random field
     comment.tic("Create Gaussian random field")
-    eta = GaussianField(dh.n_dofs(), covariance=cov)
+    eta = GaussianField(dh.n_dofs(subforest_flag=2), covariance=cov)
     comment.toc()
 
     # Sample from the Gaussian random field
     comment.tic("Sample from Gaussian random field")
-    n_samples = 100000
+    n_samples = 100
     eta_smpl = eta.sample(n_samples=n_samples)
     comment.toc()
 
@@ -116,7 +116,7 @@ if __name__ == "__main__":
 
 
     comment.tic("Define eta function")
-    eta_fn = Nodal(basis=phi, data=eta_smpl[:,:100],dim=1)
+    eta_fn = Nodal(basis=phi_l, data=eta_smpl[:,:n_samples],dim=1,subforest_flag=2)
     comment.toc()
 
     #comment.tic("Plot q function")
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     # Problem parameters
     f =  Constant(1.0)  # Right-hand side function
     b =  Constant(0.5)  # Advection coefficient
-    q =  Nodal(data=0.1 + np.exp(eta_smpl),basis=phi)
+    q =  Nodal(data=0.1 + np.exp(eta_smpl),basis=phi_l,dim=1,subforest_flag=2)  # Diffusion coefficient
 
     comment.tic("Plot q function")
     ax_q = plt.subplot2grid((6,6), (0,0), colspan=4, rowspan=3)
