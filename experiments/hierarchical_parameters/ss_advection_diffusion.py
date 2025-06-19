@@ -1,5 +1,21 @@
 """
+One-dimensional advection-diffusion equation with hierarchical random parameters. 
 
+    - d/dx (q(x) du/dx) + b(x) du/dx = f(x),  x in [0,1], 
+
+with boundary conditions:
+
+    u(0) = 0, u(1) = 1
+
+where q(x) is a random diffusion coefficient and b(x) is a random advection coefficient. The random coefficients are modeled as Gaussian random fields with a given covariance structure. 
+
+We sample from quantities of interest related to the solution, such as 
+
+    (i) the spatial average over a given region [a,b] in the domain, or 
+    (ii) the flux at the boundary.
+
+TODO: Sample from the solution 
+TODO: 
 """
 
 
@@ -17,7 +33,7 @@ from mesh import Mesh1D
 
 # Finite Elements
 from fem import Basis, DofHandler, QuadFE
-from function import Nodal, Explicit
+from function import Nodal, Explicit, Constant
 
 # Plotting
 from plot import Plot
@@ -55,7 +71,12 @@ if __name__ == "__main__":
     comment.toc()
     plt.show()
      
-    
+    # Mark boundaries
+    left_bnd =  lambda x: abs(x) < 1e-6
+    right_bnd = lambda x: abs(x-1) < 1e-6
+    mesh.mark_region('left', left_bnd, entity_type='vertex', on_boundary=True)
+    mesh.mark_region('right', right_bnd, entity_type='vertex', on_boundary=True)
+
     # Create finite element system
     Q = QuadFE(1, 'Q1')
     dh = DofHandler(mesh, Q)
@@ -72,7 +93,7 @@ if __name__ == "__main__":
 
     # Define Gaussian random field
     comment.tic("Create Covariance")
-    cov = Covariance(dh,name='gaussian',parameters={'sgm':1,'l':0.01})
+    cov = Covariance(dh,name='exponential',parameters={'sgm':1,'l':0.01})
     comment.toc()
 
     # Create Gaussian random field
@@ -86,27 +107,125 @@ if __name__ == "__main__":
     eta_smpl = eta.sample(n_samples=n_samples)
     comment.toc()
 
+
+    # 
+    # Plot specifications
+    #
+    plot = Plot(quickview=False)
+    fig = plt.figure(figsize=(8, 8))
+
+
     comment.tic("Define eta function")
-    eta_fn = Nodal(basis=phi, data=eta_smpl[:,:10],dim=1)
+    eta_fn = Nodal(basis=phi, data=eta_smpl[:,:100],dim=1)
     comment.toc()
 
-    comment.tic("Plot eta function")
-    plot = Plot(quickview=False)
-    fig, ax = plt.subplots(1,1, figsize=(8, 4))
-    for n in range(10):
-        ax = plot.line(eta_fn, axis=ax, i_sample=n, plot_kwargs={'color':'black','alpha':0.5})
-    ax.set_ylim(-4, 4)
+    #comment.tic("Plot q function")
+    #ax_eta = plt.subplot2grid((6,6), (0,0), colspan=4, rowspan=3)
+    #fig, ax = plt.subplots(1,1, figsize=(8, 4))
+    #for n in range(50):
+    #    ax_eta = plot.line(eta_fn, axis=ax_eta, i_sample=n, 
+    #                   plot_kwargs={'color':'black','alpha':0.1})
+    #ax.set_ylim(-4, 4)
+    #comment.toc()
+    #plt.tight_layout()
+
+    # 
+    # Compute the solution of the advection-diffusion equation
+    # 
+
+    # Problem parameters
+    f =  Constant(1.0)  # Right-hand side function
+    b =  Constant(0.5)  # Advection coefficient
+    q =  Nodal(data=0.1 + np.exp(eta_smpl),basis=phi)
+
+    comment.tic("Plot q function")
+    ax_q = plt.subplot2grid((6,6), (0,0), colspan=4, rowspan=3)
+    for n in range(50):
+        ax_q = plot.line(q, axis=ax_q, i_sample=n, 
+                       plot_kwargs={'color':'black','alpha':0.1})
+    ax_q.set_title(r"$q(x,\omega)$")
+    ax_q.set_xlabel("x")
+    comment.toc()
+
+    # Define the weak form of the advection-diffusion equation
+    FDiff = Form(Kernel(q), test=phi_x, trial=phi_x)
+    FAdv = Form(Kernel(b), test=phi_x, trial=phi)
+    FSource = Form(Kernel(f), test=phi)
+
+    # Assemble the finite element system
+    comment.tic("Assemble the finite element system")   
+    problems = [FDiff, FAdv, FSource]
+    assembler = Assembler(problems, mesh)
+
+    # Add Dirichlet boundary conditions
+    assembler.add_dirichlet('left', Constant(0.0))
+    assembler.add_dirichlet('right', Constant(1.0))
+
+    assembler.assemble()
+    comment.toc()
+
+    # Solve the linear system
+    comment.tic("Solve the linear system")
+    u = []
+    for i in range(n_samples):
+        print((i+1)/n_samples, end='\r')
+        u.append(assembler.solve(i_matrix=i))
+    u = np.array(u).transpose()
+    comment.toc()
+
+    u_fn = Nodal(basis=phi, data=u, dim=1)
+    comment.tic("Plot solution")
+    ax_u = plt.subplot2grid((6,6), (3,0), colspan=4, rowspan=3)
+    
+    for n in range(100):
+        ax_u = plot.line(u_fn, axis=ax_u, i_sample=n,
+                       plot_kwargs={'color':'black','alpha':0.1})
+    #ax.set_ylim(0, 1)
+    ax_u.set_title(r"u")
+    ax_u.set_xlabel("x")
     comment.toc()
     #plt.tight_layout()
-    plt.show()
+    #plt.show()
 
-    # Compute the spatial average of the samples
-    a = 0.4
-    b = 0.6
-    f_region = lambda x: (x >= a) & (x <= b)
-    mesh.mark_region('integration_region',f_region,entity_type='cell')
+    #
+    # Sample quantities of interest
+    #
     
-    comment.tic("Compute spatial average")
+    # 1. Point evaluation of the solution at x = 0.5
+    comment.tic("Point evaluation of the solution at x = 0.5")
+    x_eval = 0.5
+    qoi_mid = u_fn.eval(x_eval).ravel()    
+    comment.toc()
+
+    # Plot the point evaluation
+    ax_qoi_mid = plt.subplot2grid((6,6), (0,4), colspan=2, rowspan=2)
+    ax_qoi_mid.hist(qoi_mid, bins=50, density=True, alpha=0.5, color='black')
+    ax_qoi_mid.set_title(r"$u(0.5,\omega)$")
+    ax_qoi_mid.set_xlabel("u(0.5)")
+    ax_qoi_mid.set_ylabel("Density")
+
+    # 2. flux at the right boundary
+    comment.tic("Flux at the right boundary")
+    q_flux = q.eval(1.0)*u_fn.eval(1.0,derivative='vx') + b.eval(1.0)*u_fn.eval(1.0)
+    q_flux = q_flux.ravel()  # Flatten the array for plotting
+    comment.toc()
+
+    # Plot the flux at the right boundary
+    ax_flux = plt.subplot2grid((6,6), (2,4), colspan=2, rowspan=2)
+    ax_flux.hist(q_flux, bins=50, density=True, alpha=0.5, color='black')
+    ax_flux.set_title(r"Flux at the right boundary")
+    ax_flux.set_xlabel(r"Flux at $x=1$")
+    ax_flux.set_ylabel(r"Density")
+
+
+    # Weighted spatial average of the solution over a given region [a,b]
+
+    #a = 0.4
+    #b = 0.6
+    #f_region = lambda x: (x >= a) & (x <= b)
+    #mesh.mark_region('integration_region',f_region,entity_type='cell')
+    
+    comment.tic("Weighted spatial average")
     sgm = 1/60
     mu = 0.5
     norm = stats.norm(0,1)
@@ -116,18 +235,25 @@ if __name__ == "__main__":
     assembler = Assembler(problem, mesh)
     assembler.assemble()
     L = assembler.get_vector()
+    q_ave = L.dot(u)
     comment.toc()
 
-    plot = Plot(quickview=False)
-    fig, ax = plt.subplots(1,1, figsize=(8, 4))
-    ax = plot.mesh(mesh,axis=ax, regions=[('integration_region','cell')])
-    ax.set_title("Integration region")
+    # Plot the weighted spatial average
+    ax_qoi_ave = plt.subplot2grid((6,6), (4,4), colspan=2, rowspan=2)
+    ax_qoi_ave.hist(q_ave, bins=50, density=True, alpha=0.5, color='black')
+    ax_qoi_ave.set_title("Weighted spatial average")
+    ax_qoi_ave.set_xlabel("Weighted spatial average of u")
+    ax_qoi_ave.set_ylabel("Density")    
+    plt.tight_layout()
+    plt.show()
+    #plot = Plot(quickview=False)
+    #fig, ax = plt.subplots(1,1, figsize=(8, 4))
+    #ax = plot.mesh(mesh,axis=ax, regions=[('integration_region','cell')])
+    #ax.set_title("Integration region")
     #plt.show()
 
-
-
+    """
     x = dh.get_dof_vertices()
-    print(x)
     print('Should be 1', np.sum(L))
     print('Should be 0.5', L.dot(x))
     fig, ax = plt.subplots(1,1, figsize=(8, 4))
@@ -140,4 +266,5 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(1,1, figsize=(8, 4))
     pi = L.dot(eta_smpl)
     plt.hist(pi, bins=50, density=True, alpha=0.5, color='black')
-    plt.show()
+    plt.show()#
+    """

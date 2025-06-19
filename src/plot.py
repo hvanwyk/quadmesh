@@ -995,6 +995,9 @@ class Plot(object):
         axis.set_xlim(x0-spc*hx, x1+spc*hx)        
         
         y0, y1 = np.nanmin(fx), np.nanmax(fx)        
+        y0_ax, y1_ax = axis.get_ylim()
+        y0 = min(y0, y0_ax)
+        y1 = max(y1, y1_ax)
         hy = y1-y0
         axis.set_ylim(y0-spc*hy, y1+spc*hy)
         
