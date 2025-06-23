@@ -1,3 +1,10 @@
+"""
+Investigate the accuracy and complexity of the sparse grid Gauss-Hermite rule.
+
+References:
+
+"""
+
 import sys
 
 if '/home/hans-werner/git/quadmesh/src' not in sys.path:
@@ -10,7 +17,7 @@ import matplotlib.pyplot as plt
 
 from mesh import QuadMesh
 
-n_inputs = 16
+n_inputs = 5
 n_outputs = 100
 print(Tasmanian.lsTsgGlobalRules)
 print(Tasmanian.lsTsgGlobalTypes)
