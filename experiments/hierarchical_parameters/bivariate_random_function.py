@@ -16,9 +16,14 @@ def f2(x,y):
     """Example function f2(x,y) = sin(x) + cos(y)"""
     return np.sin(x) + np.cos(y)
 
-def f3(x,y):
+def f3(x,y,V,mu):
     """Example function f3(x,y) = exp(x^2)"""
-    return np.exp(-y**2) + 0.05 * x
+    # Transform the input first
+    s = V[0,0] * (x - mu[0]) + V[1,0] * (y - mean[1])
+    t = V[0,1] * (x - mu[0]) + V[1,1] * (y - mean[1])
+
+    # Then evaluate the function
+    return np.exp(-t**2) + 0.05 * s
 
 def integrate_function():
     pass
@@ -41,12 +46,16 @@ if __name__ == "__main__":
     y_min, y_max = np.min(y_samples), np.max(y_samples)
     x, y =  np.linspace(x_min, x_max, 100), np.linspace(y_min, y_max,100)
     xx, yy = np.meshgrid(x,y)
+    
+
 
     # Create a joint plot with marginal distributions
     sns.jointplot(x=x_samples, y=y_samples, height=5, kind='kde', cmap='Blues', fill=True, thresh=0,alpha=0.5)
-    plt.contour(xx, yy, f3(xx, yy), levels=30, colors='gray')
-    l = lambda x: np.ones(x.shape)*mean[0]
-    #l = lambda x: mean[1] + eigvecs[1,0] * (x - mean[0]) / eigvecs[0,0]
+    f = lambda x,y: f3(x, y, eigvecs, mean)
+    #f = lambda x,y: f1(x, y)  # Change this to f2 or f3 as needed
+    plt.contour(xx, yy, f(xx, yy), levels=30, colors='gray')
+    #l = lambda x: np.ones(x.shape)*mean[0]
+    l = lambda x: mean[1] + eigvecs[1,0] * (x - mean[0]) / eigvecs[0,0]
     plt.plot(x, l(x), color='red', linestyle='--', label='Subspace')   
     plt.plot([],[], color='gray', label=r'$f(y_1,y_2)$')
     plt.legend()
@@ -65,15 +74,15 @@ if __name__ == "__main__":
 
     # Evaluate the function at the sampled points
     fig, ax = plt.subplots(figsize=(5, 5))
-    Z_samples1 = f3(x_samples, y_samples)
-    Z_samples2 = f3(x_samples, l(x_samples))
+    Z_samples1 = f(x_samples, y_samples)
+    Z_samples2 = f(x_samples, l(x_samples))
     
     sns.kdeplot(Z_samples1, label=r'$f(y_1,y_2)$', color='blue', fill=True, alpha=0.5, ax=ax)
-    sns.kdeplot(Z_samples2, label=r'$\hat{f}(y_1)$', color='orange', fill=True, alpha=0.5, ax=ax)
+    sns.kdeplot(Z_samples2, label=r'$\hat{f}(w_1)$', color='orange', fill=True, alpha=0.5, ax=ax)
     plt.title(r'Density of $Q$')
     plt.xlabel(r'$Q$')
     plt.ylabel(r'$\pi_Q$')
-    plt.legend()
+    plt.legend(loc='upper left')
     plt.grid()
     plt.tight_layout()
     plt.savefig(filename.replace('jointplot.png', 'qoi.png'), dpi=300)
