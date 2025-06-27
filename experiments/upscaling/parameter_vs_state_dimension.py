@@ -11,8 +11,8 @@ if '/home/hans-werner/git/quadmesh/src' not in sys.path:
 from mesh import QuadMesh, Mesh1D
 from gmrf import Covariance, GaussianField
 from fem import Basis, DofHandler, QuadFE   
-from function import Nodal
-from assembler import Assembler, Form
+from function import Nodal, Constant
+from assembler import Assembler, Form, Kernel
 from gmrf import Covariance, GaussianField
 from diagnostics import Verbose
 
@@ -28,10 +28,13 @@ import numpy as np
 
 comment = Verbose()
 
+#
 # Mesh
+#
+n_levels = 10 
 mesh = Mesh1D(resolution=(1,), box=[0, 1])
 mesh.record(0)
-for l in range(1, 11):
+for l in range(1, n_levels + 1):
     mesh.cells.refine()
     mesh.record(l)
 
@@ -57,7 +60,7 @@ vx_ref = Basis(dofhandler=dh, derivative='vx')
 # 
   # Define Gaussian random field
 comment.tic("Create Covariance")
-cov = Covariance(dh,name='matern',parameters={'sgm': 1,'nu': 1, 'l':0.05})
+cov = Covariance(dh,name='matern',parameters={'sgm': 1,'nu': 0.1, 'l':0.01})
 comment.toc()
 
 # Create Gaussian random field
@@ -67,24 +70,64 @@ comment.toc()
 
 # Sample from the Gaussian random field
 comment.tic("Sample from Gaussian random field")
-n_samples = 100
-eta_smpl = eta.sample(n_samples=n_samples)
+eta_smpl = eta.sample()
 comment.toc()
 
-eta_fn = Nodal(basis=v_ref, data=eta_smpl)
+q = Nodal(basis=v_ref, data=0.0001 + 50*np.exp(eta_smpl))
 
 # Plot the samples
 comment.tic("Plot samples")
 plot = Plot(quickview=False)
 fig, ax = plt.subplots(1, 1, figsize=(8, 4))
-for i in range(n_samples):
-    ax = plot.line(eta_fn, axis=ax,i_sample=i,
-              plot_kwargs={'color':'black', 'alpha':0.1})
-
-ax.set_title("Samples from Gaussian Random Field")
+ax = plot.line(q, axis=ax, plot_kwargs={'color':'black', 'alpha':0.1})
+ax.set_title("Sample from Gaussian Random Field")
 ax.set_xlabel("x")
 ax.set_ylabel("Value")
 
 plt.tight_layout()
 comment.toc()  
+plt.show()
+
+#
+# Solve the advection-diffusion equation
+# 
+# Problem parameters
+f =  Constant(100.0)  # Right-hand side function
+b =  Constant(1.0)  # Advection coefficient
+
+
+
+# Define the weak form of the advection-diffusion equation
+FDiff = Form(Kernel(q), test=vx_ref, trial=vx_ref)
+FAdv = Form(Kernel(b), test=vx_ref, trial=v_ref)
+FSource = Form(Kernel(f), test=v_ref)
+
+# Assemble the finite element system
+comment.tic("Assemble the finite element system")   
+problems = [FDiff, FAdv, FSource]
+assembler = Assembler(problems, mesh)
+
+# Add Dirichlet boundary conditions
+assembler.add_dirichlet('left', Constant(0.0))
+assembler.add_dirichlet('right', Constant(1.0))
+
+assembler.assemble()
+comment.toc()
+
+# Solve the linear system
+comment.tic("Solve the linear system")
+u_ref = assembler.solve()
+comment.toc()
+
+
+# Plot the solution
+comment.tic("Plot the solution")
+fig, ax = plt.subplots(1, 1, figsize=(8, 4))
+ax = plot.line(Nodal(basis=v_ref, data=u_ref), axis=ax, plot_kwargs={'color':'black'})
+ax.set_title("Solution of the Advection-Diffusion Equation")
+ax.set_xlabel("x")
+ax.set_ylabel("Value")
+
+plt.tight_layout()
+comment.toc()
 plt.show()
