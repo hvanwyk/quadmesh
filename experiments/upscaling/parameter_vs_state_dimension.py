@@ -1,5 +1,8 @@
 """
 This script determines the spatial error convergence of the finite element solution of a 1D advection-diffusion equation for different parameter dimensions.
+
+Unfinished!
+TODO: Implement error convergence analysis
 """
 import sys
 
@@ -92,7 +95,7 @@ plt.show()
 # Solve the advection-diffusion equation
 # 
 # Problem parameters
-f =  Constant(100.0)  # Right-hand side function
+f =  Constant(1.0)  # Right-hand side function
 b =  Constant(1.0)  # Advection coefficient
 
 

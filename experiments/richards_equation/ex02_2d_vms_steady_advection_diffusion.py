@@ -315,7 +315,7 @@ for i in range(L):
     u.append(Nodal(basis=v1[-1], data=ui))
     
     if i>0:
-        ei = Nodal(basis=v1[-1], data = (u[i].data() - u[i-1].data()))
+        ei = Nodal(basis=v1[-1], data = np.abs(u[i].data() - u[i-1].data()))
         ax[i,3] = plot.contour(ei,axis=ax[i,3],colorbar=True)  
         ax[i,3].set_axis_off()  
 #fig, ax = plt.subplots(3,1)
