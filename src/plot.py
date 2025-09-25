@@ -489,7 +489,8 @@ class Plot(object):
                           xytext=he.base().coordinates(),\
                           color = color, \
                           arrowprops=dict(arrowstyle="->", \
-                                          connectionstyle="arc3" ))
+                                          connectionstyle="arc3",\
+                                          color=color))
         return axis
 
 
