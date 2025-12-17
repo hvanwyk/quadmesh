@@ -9,6 +9,8 @@ Step 4: Sample forward problem for stochastic input
 Step 5: Sample refinement indicators (classify)
 Step 6: Try linearization (Yanzhao's method)    
 """
+import sys
+
 from fem import System, QuadFE
 from mesh import Mesh
 from plot import Plot
