@@ -20,8 +20,8 @@ TODO: Sample low-complexity parameter system and compare distribution of the sol
 
 
 import sys
-if '/home/hans-werner/git/quadmesh/src/' not in sys.path:
-    sys.path.append('/home/hans-werner/git/quadmesh/src/')
+if '/home/hans-werner/Documents/git/quadmesh/src/' not in sys.path:
+    sys.path.append('/home/hans-werner/Documents/git/quadmesh/src/')
 
 import numpy as np
 import scipy.linalg as la
