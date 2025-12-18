@@ -551,7 +551,7 @@ class QuadFE(Element):
             #
             # Local dofs given: check if they're ok.
             #
-            all(type(i) is np.int for i in local_dofs),
+            all(type(i) is int for i in local_dofs),
             'Local dofs must be of type int.'
 
             all((i>=0) and (i<=n_dofs) for i in local_dofs),

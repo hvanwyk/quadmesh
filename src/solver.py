@@ -85,8 +85,8 @@ class LinearSystem(object):
         # Form Dof-to-Equation Mapping
         # 
         n_dofs = len(dofs)
-        dof2eqn = np.zeros(dofs[-1]+1, dtype=np.int)
-        dof2eqn[dofs] = np.arange(n_dofs, dtype=np.int)
+        dof2eqn = np.zeros(dofs[-1]+1, dtype=int)
+        dof2eqn[dofs] = np.arange(n_dofs, dtype=int)
         
         #
         # Store Dof-to-Equation mapping 
@@ -300,7 +300,7 @@ class LinearSystem(object):
         # Define constraint matrix
         #
         constraints = self.get_dofhandler().constraints
-        c_dofs = np.array(constraints['constrained_dofs'], dtype=np.int)
+        c_dofs = np.array(constraints['constrained_dofs'], dtype=int)
         c_rows = []
         c_cols = []
         c_vals = []  

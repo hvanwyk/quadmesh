@@ -2904,11 +2904,11 @@ class Assembler(object):
                     unique_cdofs = list(set(list(cols)))
 
                     # Dof to index mapping for rows
-                    map_rows = np.zeros(unique_rdofs[-1]+1, dtype=np.int)
+                    map_rows = np.zeros(unique_rdofs[-1]+1, dtype=int)
                     map_rows[unique_rdofs] = np.arange(len(unique_rdofs))
 
                     # Dof-to-index mapping for cols
-                    map_cols = np.zeros(unique_cdofs[-1]+1, dtype=np.int)
+                    map_cols = np.zeros(unique_cdofs[-1]+1, dtype=int)
                     map_cols[unique_cdofs] = np.arange(len(unique_cdofs))
 
                     # Transform from dofs to indices
@@ -2940,7 +2940,7 @@ class Assembler(object):
                     rows = np.array(rows)
 
                     # Dof-to-index mapping for rows
-                    map_rows = np.zeros(unique_rdofs[-1]+1, dtype=np.int)
+                    map_rows = np.zeros(unique_rdofs[-1]+1, dtype=int)
                     map_rows[unique_rdofs] = np.arange(n_dofs)
 
                     # Transform from dofs to indices

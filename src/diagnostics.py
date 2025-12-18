@@ -3,7 +3,15 @@ Created on Jun 10, 2019
 
 @author: hans-werner
 '''
-import time 
+import time
+import os
+
+# Optional dependency for controlling BLAS/OpenMP threadpools at runtime
+try:
+    from threadpoolctl import threadpool_limits, threadpool_info
+except Exception:
+    threadpool_limits = None
+    threadpool_info = None
 
 
 class Verbose(object):
@@ -80,3 +88,62 @@ class Verbose(object):
         if isinstance(o, Container):
             return r + sum(d(x, ids) for x in o)
     '''
+
+
+# ---------------------------------------------------------------------------
+# Threading helpers
+# ---------------------------------------------------------------------------
+
+def set_env_thread_defaults(n_threads):
+    """
+    Set common environment variables to cap thread counts for BLAS/OpenMP-based
+    libraries (OpenBLAS, MKL, OMP, numexpr). This affects subsequently created
+    threadpools; it may not change already-initialized pools.
+
+    Parameters:
+    - n_threads: int > 0
+    """
+    assert isinstance(n_threads, int) and n_threads > 0
+    os.environ["OMP_NUM_THREADS"] = str(n_threads)
+    os.environ["OPENBLAS_NUM_THREADS"] = str(n_threads)
+    os.environ["MKL_NUM_THREADS"] = str(n_threads)
+    os.environ["NUMEXPR_NUM_THREADS"] = str(n_threads)
+
+
+class _NoopContext:
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def limit_math_threads(n_threads):
+    """
+    Return a context manager that limits thread usage of numerical libraries
+    (NumPy/SciPy BLAS and OpenMP backends, and CHOLMOD via OpenMP) while active.
+
+    Usage:
+        with limit_math_threads(8):
+            # Do heavy linear algebra here
+            ...
+
+    If threadpoolctl is unavailable, returns a no-op context manager.
+    """
+    assert isinstance(n_threads, int) and n_threads > 0
+    if threadpool_limits is None:
+        return _NoopContext()
+    # Affect all supported backends (BLAS/OpenMP) when user_api=None
+    return threadpool_limits(limits=n_threads, user_api=None)
+
+
+def current_threadpools():
+    """
+    Return information about active threadpools (vendor, n_threads) if
+    threadpoolctl is available; otherwise return an empty list.
+    """
+    if threadpool_info is None:
+        return []
+    try:
+        return threadpool_info()
+    except Exception:
+        return []

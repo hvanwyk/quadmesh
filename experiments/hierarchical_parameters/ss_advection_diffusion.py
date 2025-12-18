@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
     # Sample from the Gaussian random field
     comment.tic("Sample from Gaussian random field")
-    n_samples = 100
+    n_samples = 10000
     eta_smpl = eta.sample(n_samples=n_samples)
     comment.toc()
 

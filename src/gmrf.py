@@ -1114,7 +1114,7 @@ class GaussianField(object):
         """
         mu = self.__mean[:,col][:,None]
         if n_copies is not None:
-            assert type(n_copies) is np.int, \
+            assert type(n_copies) is int, \
                 'Number of copies should be an integer.'
             if n_copies == 1:
                 return mu 
@@ -2847,7 +2847,7 @@ class GMRF(object):
             mu: (n,n_copies) mean
         """
         if n_copies is not None:
-            assert type(n_copies) is np.int, \
+            assert type(n_copies) is int, \
                 'Number of copies should be an integer.'
             if n_copies == 1:
                 return self.__mean
