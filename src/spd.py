@@ -518,7 +518,7 @@ class CholeskyDecomposition(SPDMatrix):
         Reconstruct the matrix from its Cholesky decomposition
         """
         if self.is_sparse():
-            n = self.size()
+            n = self.get_size()
             #
             # Sparse
             # 
@@ -572,8 +572,8 @@ class CholeskyDecomposition(SPDMatrix):
         
             C*b: double, (n,m) product
         """
-        assert b.shape[0]==self.size(), 'Input "b" has incompatible shape.'+\
-        'Size C: {0}, Size b: {1}'.format(self.size(), b.shape)
+        assert b.shape[0]==self.get_size(), 'Input "b" has incompatible shape.'+\
+        'Size C: {0}, Size b: {1}'.format(self.get_size(), b.shape)
         if sp.issparse(b):
             #
             # b is a sparse matrix
@@ -645,7 +645,7 @@ class CholeskyDecomposition(SPDMatrix):
         assert self.__L is not None, \
             'Cholesky factor not computed.'\
             
-        n = self.size()
+        n = self.get_size()
         if not self.is_degenerate():
             #
             # Non-degenerate matrix

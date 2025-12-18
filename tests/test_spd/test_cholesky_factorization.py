@@ -81,7 +81,7 @@ class TestCholeskyDecomposition(unittest.TestCase):
                 self.assertEqual(cholesky.is_sparse(),not(dense) and not(degenerate))        
 
                 # Check the size
-                self.assertEqual(cholesky.size(), A.shape[0])
+                self.assertEqual(cholesky.get_size(), A.shape[0])
 
     def test_reconstruct_positive_definite(self):
         """

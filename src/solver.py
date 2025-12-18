@@ -612,7 +612,18 @@ class LinearSystem(object):
 
         if cholmod_cholesky is not None:
             factor = cholmod_cholesky(A)
-            self.__invA = factor
+
+            # Wrapper to present a uniform `.solve(B)` interface across
+            # CHOLMOD (callable factor) and SciPy factorized fallback.
+            # This keeps `invert_matrix` agnostic to the backend while
+            # still supporting multi-RHS arrays.
+            class _CholmodWrapper:
+                def __init__(self, f):
+                    self._f = f
+                def solve(self, B):
+                    return self._f(B)
+
+            self.__invA = _CholmodWrapper(factor)
             self.__A_is_factored = True
             return
 
