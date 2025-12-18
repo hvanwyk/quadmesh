@@ -6,6 +6,12 @@ from scipy.sparse import linalg
 import numbers
 from diagnostics import Verbose    
 
+# Optional: CHOLMOD for fast sparse Cholesky (scikit-sparse)
+try:
+    from sksparse.cholmod import cholesky as cholmod_cholesky
+except Exception:
+    cholmod_cholesky = None
+
 
 class NonlinearSystem(object):
     """
@@ -581,15 +587,50 @@ class LinearSystem(object):
     
         # Convert to sparse column format
         if factor:
+            if not self.matrix_is_factored():
+                self.factor_matrix()
             A = A.tocsc()
             b = sparse.csc_matrix(b)
-            u = self.__invA.solve(b.toarray())    
+            u = self.__invA.solve(b.toarray())
         else:
             u = linalg.spsolve(self.get_matrix(), self.get_rhs())    
         if len(u.shape)==1:
             u = u[:,None]
             
         self.__u = u
+
+    def factor_matrix(self):
+        """
+        Factor the constrained system matrix for efficient repeated solves.
+
+        Prefers CHOLMOD if available; falls back to SciPy factorization.
+        Sets internal solver interface `self.__invA` exposing `.solve(ndarray)`.
+        """
+        A = self.get_matrix()
+        assert A is not None, 'No system matrix to factor.'
+        A = A.tocsc()
+
+        if cholmod_cholesky is not None:
+            factor = cholmod_cholesky(A)
+            self.__invA = factor
+            self.__A_is_factored = True
+            return
+
+        # Fallback: use SciPy factorized to obtain a callable
+        func = linalg.factorized(A)
+
+        class _FactorWrapper:
+            def __init__(self, f):
+                self._f = f
+            def solve(self, B):
+                # B expected as ndarray (n,k) or (n,)
+                if B.ndim == 1:
+                    return self._f(B)
+                # Solve each column independently
+                return np.column_stack([self._f(B[:, i]) for i in range(B.shape[1])])
+
+        self.__invA = _FactorWrapper(func)
+        self.__A_is_factored = True
         
         
     def set_rhs(self, rhs):
