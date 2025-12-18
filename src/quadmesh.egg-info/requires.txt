@@ -1,0 +1,6 @@
+numpy>=1.13.3
+scipy>=0.19
+matplotlib>=3.0
+
+[cholmod]
+scikit-sparse>=0.4

@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: quadmesh
+Version: 0.1.0
+Summary: Adaptive 1D/2D quadtree FE toolkit
+Requires-Python: >=3.8
+License-File: LICENSE
+Requires-Dist: numpy>=1.13.3
+Requires-Dist: scipy>=0.19
+Requires-Dist: matplotlib>=3.0
+Provides-Extra: cholmod
+Requires-Dist: scikit-sparse>=0.4; extra == "cholmod"
+Dynamic: license-file
