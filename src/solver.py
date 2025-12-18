@@ -15,13 +15,15 @@ except Exception:
 
 class NonlinearSystem(object):
     """
-    
+    Wrapper function for nonlinear systems of equations.
     """
     def __init__(self, residual, Jacobian):
         """
         Inputs:
         
             residual: function, 
+
+            Jacobian: function, 
         """
         pass
 
