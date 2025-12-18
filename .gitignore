@@ -23,3 +23,4 @@ src/__pycache__/function.cpython-310.pyc
 src/__pycache__/gmrf.cpython-310.pyc
 src/__pycache__/mesh.cpython-310.pyc
 src/__pycache__/plot.cpython-310.pyc
+src/__pycache__/assembler.cpython-312.pyc
