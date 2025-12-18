@@ -1,3 +1,16 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Local tooling
+.vscode/
+
+# Existing entries
 __pycache__/add_path.cpython-310.pyc
 src/__pycache__/spd.cpython-310.pyc
 src/__pycache__/assembler.cpython-310.pyc
