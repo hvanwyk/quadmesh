@@ -7,9 +7,7 @@ TODO:
 - [ ] Evaluate statistical quantity of interest
 - [ ] Implement Tasmanian sparse Gaussian grid interpolation/integration
 """
-import sys
 
-sys.path.append('/home/hans-werner/git/quadmesh/src/')
 
 from mesh import QuadMesh
 from fem import QuadFE, Basis, DofHandler
