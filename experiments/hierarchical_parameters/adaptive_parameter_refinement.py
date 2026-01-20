@@ -14,6 +14,11 @@ We sample from quantities of interest related to the solution, such as
     (i) the spatial average over a given region [a,b] in the domain, or 
     (ii) the flux at the boundary.
 
+Given a discretization of the random field at mesh level l, we construct a
+local refinement scheme and compare the distribution of the quantities of 
+interest to that obtained through uniform refinement. 
+
+
 TODO: Sample from the solution 
 TODO: Sample low-complexity parameter system and compare distribution of the solution with the one from the high-complexity parameter system.
 """
@@ -42,26 +47,31 @@ from solver import LinearSystem
 
 
 
+
 if __name__ == "__main__":
     comment = Verbose()
-    comment.comment("Create Hierarchical Mesh")
+    comment.comment("Create Two-Level Hierarchical Mesh")
     #
     # Hierarchical Mesh
-    # 
-    nl = 10; 
-    mesh = Mesh1D(resolution=(1,), box = [0,1])
+    #  
+    n0_cells = 16
+    mesh = Mesh1D(resolution=(n0_cells,), box = [0,1])
     mesh.record(0)
-    for l in range(nl):
-        print(f'Number of cells: {len(mesh.cells.get_leaves(subforest_flag=l))}')
-        mesh.cells.refine()
-        mesh.record(l+1)
-    print(f'Number of cells: {len(mesh.cells.get_leaves(subforest_flag=nl))}')
+    mesh.cells.refine()
+    mesh.record(1)
+
+    assert(n0_cells == len(mesh.cells.get_leaves(subforest_flag=0)),\
+           "Number of cells at level 0 does not match")
+
+    print(f'Number of cells: {len(mesh.cells.get_leaves(subforest_flag=0))}')
+    print(f'Number of cells: {len(mesh.cells.get_leaves(subforest_flag=1))}')
+    
     comment.tic("Plotting mesh")
     # Plot mesh
     plot = Plot(quickview=False)
-    fig, ax = plt.subplots(nl+1,1, figsize=(4, 6))
+    fig, ax = plt.subplots(2,1, figsize=(4, 4))
     
-    for  l in range(nl+1):
+    for  l in range(2):
         ax[l] = plot.mesh(mesh,ax[l],subforest_flag=l)
         ax[l].set_title(f"Mesh Level {l}")
     plt.tight_layout()
@@ -74,28 +84,30 @@ if __name__ == "__main__":
     mesh.mark_region('left', left_bnd, entity_type='vertex', on_boundary=True)
     mesh.mark_region('right', right_bnd, entity_type='vertex', on_boundary=True)
 
+    
     # Create finite element system
-    Q = QuadFE(1, 'Q1')
+    Q = QuadFE(1, 'Q3')
     dh = DofHandler(mesh, Q)
     dh.distribute_dofs() 
     phi = Basis(dh,'v')
     phi_x = Basis(dh,'vx')
-    phi_l = Basis(dh,'v',subforest_flag=5)
+    phi_l = Basis(dh,'v',subforest_flag=1)
 
     # Compute projection matrices
     comment.tic("Compute projection matrices")
     P = []
-    for l in range(nl+1):
+    for l in range(2):
         problems = []
 
     # Define Gaussian random field
     comment.tic("Create Covariance")
-    cov = Covariance(dh,name='exponential',parameters={'sgm':1,'l':0.01},subforest_flag=5)
+    cov = Covariance(dh,name='exponential',
+                     parameters={'sgm':1,'l':1.3},subforest_flag=1)
     comment.toc()
 
     # Create Gaussian random field
     comment.tic("Create Gaussian random field")
-    eta = GaussianField(dh.n_dofs(subforest_flag=5), covariance=cov)
+    eta = GaussianField(dh.n_dofs(subforest_flag=1), covariance=cov)
     comment.toc()
 
     # Sample from the Gaussian random field
@@ -113,19 +125,20 @@ if __name__ == "__main__":
 
 
     comment.tic("Define eta function")
-    eta_fn = Nodal(basis=phi_l, data=eta_smpl[:,:n_samples],dim=1,subforest_flag=2)
+    eta_fn = Nodal(basis=phi_l, data=eta_smpl[:,:n_samples],dim=1,subforest_flag=1)
     comment.toc()
 
-    #comment.tic("Plot q function")
-    #ax_eta = plt.subplot2grid((6,6), (0,0), colspan=4, rowspan=3)
-    #fig, ax = plt.subplots(1,1, figsize=(8, 4))
-    #for n in range(50):
-    #    ax_eta = plot.line(eta_fn, axis=ax_eta, i_sample=n, 
-    #                   plot_kwargs={'color':'black','alpha':0.1})
-    #ax.set_ylim(-4, 4)
-    #comment.toc()
-    #plt.tight_layout()
-
+    comment.tic("Plot q function")
+    ax_eta = plt.subplot2grid((6,6), (0,0), colspan=4, rowspan=3)
+    fig, ax = plt.subplots(1,1, figsize=(8, 4))
+    for n in range(50):
+        ax_eta = plot.line(eta_fn, axis=ax_eta, i_sample=n, 
+                       plot_kwargs={'color':'black','alpha':0.1})
+    ax.set_ylim(-4, 4)
+    comment.toc()
+    plt.tight_layout()
+    plt.show()
+    """
     # 
     # Compute the solution of the advection-diffusion equation
     # 
@@ -248,7 +261,7 @@ if __name__ == "__main__":
     #ax = plot.mesh(mesh,axis=ax, regions=[('integration_region','cell')])
     #ax.set_title("Integration region")
     #plt.show()
-
+"""
     """
     x = dh.get_dof_vertices()
     print('Should be 1', np.sum(L))

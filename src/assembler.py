@@ -2335,11 +2335,11 @@ class Assembler(object):
             assembled_forms: list of dictionaries (one for each problem), each of
                 which contains:
 
-            A: double coo_matrix, system matrix determined by bilinear forms and
-                boundary conditions.
+                A: double coo_matrix, system matrix determined by bilinear forms and
+                    boundary conditions.
 
-            b: double, right hand side vector determined by linear forms and
-                boundary conditions.
+                b: double, right hand side vector determined by linear forms and
+                    boundary conditions.
 
         Note: If problems contain one integral form (IPFORM), then the assembly
             uses a double loop of cells. This is inefficient if problems are mixed.
