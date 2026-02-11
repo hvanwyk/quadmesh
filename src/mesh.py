@@ -1,4 +1,5 @@
 #import matplotlib.pyplot as plt
+from functools import total_ordering
 import numpy as np
 from collections import deque
 import numbers
@@ -1756,7 +1757,11 @@ class Forest(object):
         # Check whether the test_flag nodes have reference_flag ancestors
         #
         for leaf in self.get_leaves(subforest_flag=test_flag):
-            if leaf.get_parent(reference_flag) is None:
+            if leaf.is_marked(reference_flag):
+                # Leaf itself is marked with reference_flag
+                # continue
+                continue
+            elif leaf.get_parent(reference_flag) is None:
                 #
                 # No ancestor with reference flag, return False
                 #
@@ -2691,7 +2696,6 @@ class HalfEdge(Tree):
             return x_trg
         """
 
-
 class Interval(HalfEdge):
     """
     Interval Class (1D equivalent of a Cell)
@@ -2709,7 +2713,6 @@ class Interval(HalfEdge):
                           n_children=n_children, regular=regular,\
                           parent=parent, position=position, forest=forest,\
                           periodic=periodic)
-
 
     def get_vertices(self):
         """

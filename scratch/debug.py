@@ -2,23 +2,32 @@ from mesh import QuadMesh
 from fem import DofHandler, Basis, QuadFE
 from plot import Plot
 import matplotlib.pyplot as plt
+import numpy as np
 
-plot = Plot(quickview=False)
+# Sorting intervals 
 
-# Computational domain
-domain = [-2,2,-1,1]
+a1 = [0.0,0.1, 0.3]
+a2 = [0.3,0.4, 0.6]
+a3 = [0.6,0.8, 1.0]
 
-# Boundary regions
-infn = lambda x,y: (x==-2) and (-1<=y) and (y<=0)  # inflow boundary
-outfn = lambda x,y: (x==2) and (0<=y) and (y<=1)  # outflow boundary
+c1 = [1,2,3]
+c2 = [7,8,9]
+c3 = [4,5,6]
 
-# Define the mesh
-mesh = QuadMesh(box=domain, resolution=(20,10))
+a = [a3, a2, a1]
+print("Before sorting:", a)
+print("Corresponding c:", [c3, c2, c1])
+
+pairs = sorted(zip(a, [c3, c2, c1]))
+a, c = zip(*pairs)
+
+a.sorted()
+print("After sorting:", a)
+print("Corresponding c:", c)
 
 
-# Mark inflow
-mesh.mark_region('inflow', infn, entity_type='half_edge', on_boundary=True)
-    
-# Mark outflow
-mesh.mark_region('outflow', outfn, entity_type='vertex', on_boundary=True)
-
+b = []
+b.extend(a1)
+b.extend(a2)
+b.extend(a3)
+print("Extended list:", b)

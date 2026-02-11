@@ -517,8 +517,8 @@ class Covariance(EigenDecomposition):
         # Store parameters
         # 
         self.__subforest_flag = subforest_flag
-        dofhandler.distribute_dofs(subforest_flag=subforest_flag)
-        dofhandler.set_dof_vertices(subforest_flag=subforest_flag)
+        #dofhandler.distribute_dofs(subforest_flag=subforest_flag)
+        #dofhandler.set_dof_vertices(subforest_flag=subforest_flag)
         self.__dofhandler = dofhandler
         self.__discretization = discretization
         self.__dim = dofhandler.mesh.dim()

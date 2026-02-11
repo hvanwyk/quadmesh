@@ -1650,7 +1650,7 @@ class Nodal(Map):
         
         Inputs:
         
-            values: (n_dofs, n_samples) array of function values
+            data: (n_dofs, n_samples) array of function values
             
             f: (list of) lambda function(s) 
             
@@ -1664,7 +1664,7 @@ class Nodal(Map):
             # Check consistency with dofhandler
             n_dofs = self.basis().n_dofs()
             assert data.shape[0]==n_dofs, \
-            'Shape of input "values" inconsistent with dofhandler.'
+            'Shape of input "data" inconsistent with dofhandler.'
             if len(data.shape)<2:
                 # Data passed as a 1D array, convert to matrix 
                 data = data[:,None]

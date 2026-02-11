@@ -718,7 +718,6 @@ class Plot(object):
                 raise Exception(mesh_error)
             
         x0,x1,y0,y1 = mesh.bounding_box()        
-        system = Assembler()
         if shading:
             #
             # Colormap
@@ -919,7 +918,7 @@ class Plot(object):
             
         
                 
-    def line(self, f, mesh=None, resolution=10, axis=None, i_sample=0, plot_kwargs={}):
+    def line(self, f, mesh=None, resolution=4, axis=None, i_sample=0, plot_kwargs={}):
         """
         Plot graph of 1D function
         """
@@ -953,7 +952,13 @@ class Plot(object):
         # 
         x = []
         fx = []
-        for interval in mesh.cells.get_leaves(subforest_flag=f.subforest_flag()):
+
+        # Sort intervals
+        leaves = mesh.cells.get_leaves(subforest_flag=f.subforest_flag())
+        endpts = [leaf.get_vertex(0).coordinates()[0] for leaf in leaves]
+
+        sorted_leaves = [leaf for _, leaf in sorted(zip(endpts, leaves))]
+        for interval in sorted_leaves:
             #
             # Form grid on local interval
             # 
@@ -970,7 +975,9 @@ class Plot(object):
             #  
             x.extend(xx.tolist())
             fx.extend(ff[:,i_sample].tolist())
+            # Plot on local interval
             
+            #axis.plot(xx, ff[:,i_sample], **plot_kwargs)
             #
             # For discontinous elements, add a np.nan value
             # 

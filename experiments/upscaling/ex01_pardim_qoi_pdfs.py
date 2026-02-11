@@ -9,10 +9,6 @@ where xi(x,w) is a random field with log-normal distribution.
 """
 
 
-import sys
-
-sys.path.append('/home/hans-werner/git/quadmesh/src')
-
 import numpy as np
 import matplotlib.pyplot as plt
 

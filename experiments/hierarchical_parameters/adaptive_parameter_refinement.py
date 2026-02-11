@@ -17,8 +17,7 @@ We sample from quantities of interest related to the solution, such as
 Given a discretization of the random field at mesh level l, we construct a
 local refinement scheme and compare the distribution of the quantities of 
 interest to that obtained through uniform refinement. 
-
-
+ 
 TODO: Sample from the solution 
 TODO: Sample low-complexity parameter system and compare distribution of the solution with the one from the high-complexity parameter system.
 """
@@ -27,6 +26,9 @@ import numpy as np
 import scipy.linalg as la
 import matplotlib.pyplot as plt
 import scipy.stats as stats
+import scipy.sparse.linalg as spla
+import scipy.sparse as sp
+
 
 # Mesh
 from mesh import Mesh1D
@@ -46,38 +48,134 @@ from assembler import Form, Assembler, Kernel
 from solver import LinearSystem
 
 
+def assemble_ortho_projection(v_fne, v_crs):
+    """
+    Description: 
 
+        Assemble the projection matrix from a fine basis to a coarse basis.
+    
+    Inputs:
+
+        v_fne: Basis, Fine basis functions.
+
+        v_crs: Basis, Coarse basis functions.
+
+    Outputs:
+
+        P: np.ndarray, Projection matrix from fine to coarse basis.
+
+            (v_crs, v_crs)P = (v_crs, v_fne)
+    """
+    mesh = v_fne.mesh()
+    subff = v_fne.subforest_flag()
+
+    # Define the forms
+    problem_cc = [Form(trial=v_crs, test=v_crs)]
+    problem_cf = [Form(trial=v_fne, test=v_crs)]
+
+    # Define the assembler
+    assembler = Assembler([problem_cc, problem_cf],
+                          mesh=mesh, subforest_flag=subff)
+    
+    # Assemble the matrices
+    assembler.assemble()
+
+    # Extract the mass matrices
+    M_cc = assembler.get_matrix(0).tocsc()
+    M_cf = assembler.get_matrix(1).tocsc()
+
+    # Solve for projection matrix
+    P = spla.spsolve(M_cc, M_cf)
+
+    return P
+
+def restrict_to_coarse_mesh(v_fne, v_crs):
+    """
+    Description: 
+
+        Restrict a fine mesh basis function to a coarse submesh.
+
+    Inputs:
+
+        v_fne: Basis, Fine mesh basis function.
+
+        v_crs: Basis, Coarse mesh basis function.
+
+    
+    Outputs:
+
+        I_f2c : ndarray, Restriction matrix from fine to coarse mesh.
+    """
+
+    d_crs = v_crs.dofs()  # this is the number of rows
+
+    cols = v_fne.d2i(d_crs)  # map coarse dofs to fine indices
+    rows = v_crs.d2i(d_crs)  # map coarse dofs to coarse indices
+    vals = np.ones_like(rows, dtype=float)
+
+    n_crs = v_crs.n_dofs()
+    n_fne = v_fne.n_dofs()
+
+    I_f2c = sp.coo_matrix( (vals, (rows, cols)), \
+                          shape=(n_crs, n_fne) )   
+
+    return I_f2c
 
 if __name__ == "__main__":
     comment = Verbose()
     comment.comment("Create Two-Level Hierarchical Mesh")
     #
     # Hierarchical Mesh
-    #  
-    n0_cells = 16
-    mesh = Mesh1D(resolution=(n0_cells,), box = [0,1])
+    # 
+    # Unrefined mesh  
+    n0 = 64
+    mesh = Mesh1D(resolution=(n0,), box = [0,1])
     mesh.record(0)
+    
+    # Uniformly refined mesh
     mesh.cells.refine()
     mesh.record(1)
 
-    assert(n0_cells == len(mesh.cells.get_leaves(subforest_flag=0)),\
-           "Number of cells at level 0 does not match")
+    # Finite element spaces
+    Q1 = QuadFE(mesh.dim(), 'Q1')
+    DQ0 = QuadFE(mesh.dim(), 'DQ0')
 
-    print(f'Number of cells: {len(mesh.cells.get_leaves(subforest_flag=0))}')
-    print(f'Number of cells: {len(mesh.cells.get_leaves(subforest_flag=1))}')
+    # Dofhandlers
+    dh_Q1 = DofHandler(mesh, Q1)
+    dh_DQ0 = DofHandler(mesh, DQ0)
+
+    # Refinement indicator function
+    i_fn = lambda x: np.exp(-20*(x-0.5)**2) > 0.5
+
+    mesh.mark_region('r', i_fn, entity_type='cell', subforest_flag=0)
+    mesh.cells.refine( subforest_flag=0, refinement_flag='r', new_label=0.5)
     
+
     comment.tic("Plotting mesh")
     # Plot mesh
     plot = Plot(quickview=False)
-    fig, ax = plt.subplots(2,1, figsize=(4, 4))
+    fig, ax = plt.subplots(3,1, figsize=(4, 4))
     
     for  l in range(2):
         ax[l] = plot.mesh(mesh,ax[l],subforest_flag=l)
         ax[l].set_title(f"Mesh Level {l}")
+
+    ax[2] = plot.mesh(mesh,ax[2],subforest_flag=0.5)
+    ax[2].set_title(f"Adaptively Refined Mesh")
     plt.tight_layout()
     comment.toc()
     plt.show()
-     
+
+    # Distribute dofs
+    dh_Q1.distribute_dofs()
+    dh_DQ0.distribute_dofs()
+
+    # Basis functions 
+    v0 = [Basis(dh_DQ0, 'v', subforest_flag=l) for l in range(2)]
+    v1 = [Basis(dh_Q1, 'v', subforest_flag=l) for l in range(2)]
+    v_hlf = Basis(dh_Q1, 'v', subforest_flag=0.5)
+
+
     # Mark boundaries
     left_bnd =  lambda x: abs(x) < 1e-6
     right_bnd = lambda x: abs(x-1) < 1e-6
@@ -85,59 +183,142 @@ if __name__ == "__main__":
     mesh.mark_region('right', right_bnd, entity_type='vertex', on_boundary=True)
 
     
-    # Create finite element system
-    Q = QuadFE(1, 'Q3')
-    dh = DofHandler(mesh, Q)
-    dh.distribute_dofs() 
-    phi = Basis(dh,'v')
-    phi_x = Basis(dh,'vx')
-    phi_l = Basis(dh,'v',subforest_flag=1)
+    cov_0 = Covariance(dh_Q1,name='exponential',
+                     parameters={'sgm':1,'l':0.1},subforest_flag=0)
+    cov_1 = Covariance(dh_Q1,name='exponential',
+                     parameters={'sgm':1,'l':0.1},subforest_flag=1) 
+    cov_hlf = Covariance(dh_Q1,name='exponential',
+                     parameters={'sgm':1,'l':0.1},subforest_flag=0.5)
+
+    n0 = dh_Q1.n_dofs(subforest_flag=0)
+    n1 = dh_Q1.n_dofs(subforest_flag=1)
+    nhlf = dh_Q1.n_dofs(subforest_flag=0.5)
+    q_0 = GaussianField(n0, covariance=cov_0)
+    q_1 = GaussianField(n1, covariance=cov_1)
+    q_hlf = GaussianField(nhlf, covariance=cov_hlf)
+
+    # Sample from the Gaussian random field
+    comment.tic("Sample from Gaussian random field")
+    n_samples = 100
+    q_0_smpl = q_0.sample(n_samples=n_samples)
+    q_1_smpl = q_1.sample(n_samples=n_samples)
+    q_hlf_smpl = q_hlf.sample(n_samples=n_samples)
+    comment.toc()
+
+    fig, ax = plt.subplots(1,3, figsize=(12, 4))
+    plot = Plot(quickview=False)
+    q_0_fn = Nodal(data=q_0_smpl, basis=v1[0])
+    q_1_fn = Nodal(data=q_1_smpl, basis=v1[1])
+    q_hlf_fn = Nodal(data=q_hlf_smpl, basis=v_hlf)
+    for n in range(n_samples):
+        ax[0] = plot.line(q_0_fn, axis=ax[0], i_sample=n, 
+                       plot_kwargs={'color':'black','alpha':0.1})
+        ax[1] = plot.line(q_1_fn, axis=ax[1], i_sample=n, 
+                       plot_kwargs={'color':'black','alpha':0.1})
+        ax[2] = plot.line(q_hlf_fn, axis=ax[2], i_sample=n, 
+                       plot_kwargs={'color':'black','alpha':0.1})
+    ax[0].set_title("Samples on coarse mesh")
+    ax[1].set_title("Samples on fine mesh")
+    ax[2].set_title("Samples on adaptive mesh")
+    plt.tight_layout()
+    plt.show()
+
+    x = dh_Q1.get_dof_vertices(subforest_flag=0.5)
+    print(x)
+
+    for interval in mesh.cells.get_leaves(subforest_flag=0.5):
+        x0, x1 = interval.get_vertices()
+        print('Interval:', x0.coordinates(), x1.coordinates())
+
+    # Plot a function on the adaptive mesh
+    fn_apt = Nodal(lambda x: np.sin(5*np.pi*x), basis=v_hlf)
+    fig, ax = plt.subplots(1,1, figsize=(8, 4))
+    ax = plot.line(fn_apt, axis=ax)
+    ax.set_title("Function on adaptive mesh")
+    plt.show()
+
+    
 
     # Compute projection matrices
     comment.tic("Compute projection matrices")
-    P = []
-    for l in range(2):
-        problems = []
+    P_u = assemble_ortho_projection(v1[1], v1[0])
 
     # Define Gaussian random field
     comment.tic("Create Covariance")
-    cov = Covariance(dh,name='exponential',
-                     parameters={'sgm':1,'l':1.3},subforest_flag=1)
+    cov = Covariance(dh_Q1,name='gaussian',
+                     parameters={'sgm':1,'l':0.1},subforest_flag=1)
     comment.toc()
 
     # Create Gaussian random field
     comment.tic("Create Gaussian random field")
-    eta = GaussianField(dh.n_dofs(subforest_flag=1), covariance=cov)
+    eta = GaussianField(dh_Q1.n_dofs(subforest_flag=1), covariance=cov)
     comment.toc()
 
     # Sample from the Gaussian random field
     comment.tic("Sample from Gaussian random field")
     n_samples = 10000
     eta_smpl = eta.sample(n_samples=n_samples)
+    eta_smpl_fn = Nodal(data=eta_smpl, basis=v1[1])
     comment.toc()
+
+    print('Is 1/2 a subforest of 0?', mesh.cells.is_contained_in(0.5,0))
+
+    v_hlf = Basis(dh_Q1, 'v', subforest_flag=0.5)
+    P_hlf = assemble_ortho_projection(v_hlf, v1[0])
+    
+    eta_smpl_crs = P_u @ eta_smpl[:,0] 
+    fig, ax = plt.subplots(1,1, figsize=(8, 4))
+    eta_smpl_crs_fn = Nodal(data=eta_smpl_crs, basis=v1[0])
+    ax = plot.line(eta_smpl_crs_fn, axis=ax)
+    ax = plot.line(eta_smpl_fn, axis=ax, i_sample=0, plot_kwargs={'color':'red','alpha':0.5})
+    ax.set_title("Projected eta sample onto coarse basis")
+    
+    print('Dimensions of P_hlf:', P_hlf.shape)
+    print('Dimensions of eta_smpl_crs:', eta_smpl_crs.shape)
+    cov_hlf = Covariance(dh_Q1,name='exponential',
+                     parameters={'sgm':1,'l':0.1},subforest_flag=0.5)
+    
+    print('Covariance dimensions', cov_hlf.get_size())
+    eta_hlf = GaussianField(dh_Q1.n_dofs(subforest_flag=0.5), covariance=cov_hlf)   
+    eta_hlf_smpl = eta_hlf.sample(n_samples=1000)
+    fn = Nodal(data=eta_hlf_smpl, basis=v_hlf)
+    fig, ax = plt.subplots(1,1, figsize=(8, 4))
+    ax = plot.line(eta_smpl_fn, axis=ax, i_sample=0, plot_kwargs={'color':'red','alpha':0.5})
+    for n in range(3):
+        ax = plot.line(fn, axis=ax, i_sample=n, 
+                       plot_kwargs={'color':'black','alpha':0.1})
+    ax.set_title("Samples from eta on adaptive basis")
+    plt.show()  
+    
+    eta_smpl_cnd = eta_hlf.condition(P_hlf, eta_smpl_crs.reshape(-1,1),n_samples=1000)
+    eta_smpl_cnd_fn = Nodal(data=eta_smpl_cnd, basis=v_hlf)
+    fig, ax = plt.subplots(1,1, figsize=(8, 4))
+    for n in range(1000):
+        ax = plot.line(eta_smpl_cnd_fn, axis=ax, i_sample=n, 
+                       plot_kwargs={'color':'black','alpha':0.1})
+    ax.set_title("Conditioned eta sample onto adaptive basis")
+
+    plt.show()
 
 
     # 
     # Plot specifications
     #
-    plot = Plot(quickview=False)
-    fig = plt.figure(figsize=(8, 8))
-
-
     comment.tic("Define eta function")
-    eta_fn = Nodal(basis=phi_l, data=eta_smpl[:,:n_samples],dim=1,subforest_flag=1)
+    eta_fn = Nodal(basis=v1[1], data=eta_smpl[:,:n_samples])
     comment.toc()
 
     comment.tic("Plot q function")
     ax_eta = plt.subplot2grid((6,6), (0,0), colspan=4, rowspan=3)
     fig, ax = plt.subplots(1,1, figsize=(8, 4))
-    for n in range(50):
+    for n in range(100):
         ax_eta = plot.line(eta_fn, axis=ax_eta, i_sample=n, 
                        plot_kwargs={'color':'black','alpha':0.1})
     ax.set_ylim(-4, 4)
     comment.toc()
     plt.tight_layout()
     plt.show()
+    
     """
     # 
     # Compute the solution of the advection-diffusion equation
