@@ -89,6 +89,95 @@ def assemble_ortho_projection(v_fne, v_crs):
 
     return P
 
+def solve_pde(mesh, v, q, b, f):
+    """
+    Description:
+
+        Solve the advection-diffusion equation on a given mesh with specified 
+        finite element basis and coefficients.
+
+    Inputs:
+
+        mesh: Mesh, The computational mesh.
+
+        v: Basis, Finite element basis functions.
+
+        q: Function, Diffusion coefficient function.
+
+        b: Function, Advection coefficient function.
+
+        f: Function, Source term function.
+
+    Outputs:
+
+        u: np.ndarray, Solution vector.
+    """
+
+    # Define the forms
+    FDiff = Form(Kernel(q), test=v, trial=v)
+    FAdv = Form(Kernel(b), test=v, trial=v)
+    FSource = Form(Kernel(f), test=v)
+
+    # Assemble the finite element system
+    assembler = Assembler([FDiff, FAdv, FSource], mesh=mesh)
+    assembler.assemble()
+
+    # Add Dirichlet boundary conditions
+    assembler.add_dirichlet('left', Constant(0.0))
+    assembler.add_dirichlet('right', Constant(1.0))
+
+    # Solve the linear system
+    u = assembler.solve()
+
+    return u
+
+
+def solve_pde_adjoint(mesh, v, q, b, f, u):
+    """
+    Description:
+
+        Solve the adjoint of the advection-diffusion equation on a given mesh with specified 
+        finite element basis and coefficients.
+
+    Inputs:
+
+        mesh: Mesh, The computational mesh.
+
+        v: Basis, Finite element basis functions.
+
+        q: Function, Diffusion coefficient function.
+
+        b: Function, Advection coefficient function.
+
+        f: Function, Source term function.
+
+        u: np.ndarray, Solution vector from the forward problem.
+
+    Outputs:
+
+        p: np.ndarray, Adjoint solution vector.
+    """
+
+    # Define the forms for the adjoint problem
+    FDiff_adj = Form(Kernel(q), test=v, trial=v)
+    FAdv_adj = Form(Kernel(-b), test=v, trial=v)  # Note the negative sign for advection
+    FSource_adj = Form(Kernel(u), test=v)
+
+    # Assemble the finite element system for the adjoint problem
+    assembler_adj = Assembler([FDiff_adj, FAdv_adj, FSource_adj], mesh=mesh)
+    assembler_adj.assemble()
+
+    # Add Dirichlet boundary conditions for the adjoint problem
+    assembler_adj.add_dirichlet('left', Constant(0.0))
+    assembler_adj.add_dirichlet('right', Constant(0.0))
+
+    # Solve the linear system for the adjoint problem
+    p = assembler_adj.solve()
+
+    return p
+
+
+
 def restrict_to_coarse_mesh(v_fne, v_crs):
     """
     Description: 

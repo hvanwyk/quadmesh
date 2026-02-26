@@ -781,7 +781,6 @@ class Kernel(object):
             *F: function, lambda function describing how the f's are combined
                 and modified to form the kernel
 
-            *subsample: int, numpy array of subsample indices
         """
         #
         # Store input function(s)
@@ -937,7 +936,7 @@ class Kernel(object):
 
             cell: Interval or QuadCell on which kernel is to be evaluated
 
-            phi: (basis-indexed) shape functions over region
+            dofs: 
 
 
         Output:
@@ -3594,7 +3593,7 @@ class Assembler(object):
             #
             # Two dimensional mesh
             #
-            dir_dofs = dh.get_region_dofs(entity_type='half_edge',
+            dir_dofs = dh.get_region_dofs(entity_type='vertex',
                                           entity_flag=dir_marker,
                                           interior=False,
                                           on_boundary=on_bnd, \

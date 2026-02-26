@@ -124,10 +124,12 @@ class TestKernel(unittest.TestCase):
         # Evaluate on a fine mesh
         x = np.linspace(0,1,100)
         n_points = len(x)
-        self.assertEqual(k.eval(x).shape, (n_points, n_samples))    
+        self.assertEqual(k.eval(x).shape, (n_points, n_samples))   
+        print(f1.eval(x).shape) 
         for i in range(n_samples):
             # Check evaluation            
-            self.assertTrue(np.allclose(k.eval(x)[:,i], f1.eval(x)[:,i] + x + a[i]*x**2+ 1))
+            self.assertTrue(np.allclose(k.eval(x)[:,i], f1.eval(x).ravel() + x + a[i]*x**2+ 1))
+            #print(k.eval(x)[:,i]-(f1.eval(x).ravel() + x + a[i]*x**2+ 1))
             
         
         #
@@ -142,8 +144,8 @@ class TestKernel(unittest.TestCase):
         
         x = np.linspace(0,1,100)
         for i in range(n_samples):
-            self.assertTrue(np.allclose(k.eval(x)[:,i], \
-                                        a[i] + f2.eval(x)[:,i] + f3.eval(x)[:,i]))
+            self.assertTrue(np.allclose(k.eval(x)[:,[i]], \
+                                        f1.eval(x)[:,[i]] + f2.eval(x) + f3.eval(x)))
         
         #
         # Submeshes

@@ -1,33 +1,53 @@
-from mesh import QuadMesh
+from function import Constant, Explicit, Nodal
 from fem import DofHandler, Basis, QuadFE
-from plot import Plot
-import matplotlib.pyplot as plt
+from assembler import Kernel
+from mesh import Mesh1D
+
 import numpy as np
-
-# Sorting intervals 
-
-a1 = [0.0,0.1, 0.3]
-a2 = [0.3,0.4, 0.6]
-a3 = [0.6,0.8, 1.0]
-
-c1 = [1,2,3]
-c2 = [7,8,9]
-c3 = [4,5,6]
-
-a = [a3, a2, a1]
-print("Before sorting:", a)
-print("Corresponding c:", [c3, c2, c1])
-
-pairs = sorted(zip(a, [c3, c2, c1]))
-a, c = zip(*pairs)
-
-a.sorted()
-print("After sorting:", a)
-print("Corresponding c:", c)
+import matplotlib.pyplot as plt
 
 
-b = []
-b.extend(a1)
-b.extend(a2)
-b.extend(a3)
-print("Extended list:", b)
+mesh = Mesh1D(resolution=(1,))
+Q1 = QuadFE(1,'Q1')
+Q2 = QuadFE(1,'Q2')
+# 
+# Sampling 
+#
+one = Constant(1)
+f1 = Explicit(lambda x: x**2 + 1, dim=1)
+
+# Sampled function
+a = np.linspace(0,1,11)
+n_samples = len(a)
+
+# Define Dofhandler
+dh = DofHandler(mesh, Q2)
+dh.distribute_dofs()
+dh.set_dof_vertices()
+xv = dh.get_dof_vertices()
+n_dofs = dh.n_dofs()
+
+phi = Basis(dh, 'u')
+
+# #
+# Sample multiple constant functions
+# 
+f2_m  = np.empty((n_dofs, n_samples))
+for i in range(n_samples):
+    f2_m[:,i] = xv.ravel() + a[i]*xv.ravel()**2
+
+f1 = Constant(data=a)
+f2 = Explicit(lambda x: 1 + x**2, dim=1)
+f3 = Nodal(data=f2_m[:,-1], basis=phi)
+
+F = lambda f1, f2, f3: f1 + f2 + f3
+k = Kernel([f1,f2,f3], F=F)
+
+x = np.linspace(0,1,100)
+
+plt.plot(x, k.eval(x)[:,2], x, f1.eval(x)[:,2]+f2.eval(x)+f3.eval(x),'.-')
+plt.show()
+for i in range(n_samples):
+    print(np.allclose(k.eval(x)[:,[i]], f1.eval(x)[:,[i]]+f2.eval(x) + f3.eval(x)))
+#self.assertTrue(np.allclose(k.eval(x)[:,i], \
+#                a[i] + f2.eval(x) + f3.eval(x)))
