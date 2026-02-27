@@ -45,11 +45,10 @@ i_train = np.arange(n_train)
 i_test = np.arange(n_train,n_samples)
 
 cov = Covariance(dofhandler, name='gaussian', parameters={'l':0.1})
-cov.compute_eig_decomp()
-d,V = cov.get_eig_decomp()
+d,V = cov.get_factors()
 plt.semilogy(d,'.')
 plt.show()
-log_q = GaussianField(n, K=cov)
+log_q = GaussianField(n, covariance=cov)
 log_q.update_support()
 qfn = Nodal(dofhandler=dofhandler, 
             data=np.exp(log_q.sample(n_samples=n_samples)))

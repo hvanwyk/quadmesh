@@ -1,7 +1,7 @@
 import unittest
 from mesh import Tree, Forest
 import numpy as np
-from softwareproperties.AptAuth import dummy
+
 
 class TestForest(unittest.TestCase):
     """

@@ -14,7 +14,7 @@ from fem import DofHandler
 
 from function import Nodal
 
-from gmrf import GMRF
+#from gmrf import GMRF
 from gmrf import distance
 from gmrf import CovKernel
 from gmrf import Covariance
@@ -28,7 +28,7 @@ from mesh import QuadMesh
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
-from sksparse.cholmod import cholesky  # @UnresolvedImport
+from sksparse.cholmod import cholesky  
 import matplotlib.pyplot as plt
 from plot import Plot
 

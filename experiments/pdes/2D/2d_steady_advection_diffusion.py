@@ -13,6 +13,8 @@ We are interested in computing the following quantities of interest (QoI):
 1. The value of y at a specific point in the domain.
 2. The flux of y across a specific boundary.
 3. The average value of y over the entire domain.
+
+TODO: Fix the H1 Error Computation
 """
 
 # built-in modules
@@ -26,9 +28,9 @@ from fem import QuadFE, DofHandler, Basis
 from function import Nodal, Constant, Explicit
 from assembler import Assembler, Form, Kernel
 from plot import Plot
+from diagnostics import Verbose
 
-
-def test_accuracy(y_ref, yx1_ref, yx2_ref, y_apx):
+def test_accuracy(y_ref, yx1_ref, yx2_ref, y_apx, dya_dx1, dya_dx2):
     """
     Compute the L2- and H1-norm errors between the true and approximate 
     solutions. 
@@ -67,8 +69,7 @@ def test_accuracy(y_ref, yx1_ref, yx2_ref, y_apx):
     #
     F1 = lambda f_ref_x1, f_ref_x2,f_apx_x1,f_apx_x2: (f_ref_x1 - f_apx_x1)**2 + \
                                                       (f_ref_x2 - f_apx_x2)**2
-    K1 = Kernel(f=[yx1_ref, yx2_ref, y_apx, y_apx], 
-                derivatives=['v','v','vx','vy'], F=F1)
+    K1 = Kernel(f=[yx1_ref, yx2_ref, dya_dx1, dya_dx2], F=F1)
     H1_Form = Form(kernel=K1)
 
     #
@@ -78,16 +79,21 @@ def test_accuracy(y_ref, yx1_ref, yx2_ref, y_apx):
     assembler = Assembler(problems, mesh=dofhandler.mesh)
     assembler.assemble()
     
-    E_L2 = assembler.get_scalar(0)
-    E_H1 = assembler.get_scalar(1)
+    # L2 norm (not squared norm)
+    E_L2 = np.sqrt(assembler.get_scalar(0))
+    # H1 seminorm (not squared seminorm)
+    E_H1 = np.sqrt(assembler.get_scalar(1))
 
     return E_L2, E_H1
 
 
+# Initialize Verbose
+comment = Verbose()
+
 # -----------------------------------------------------------------------------
 # Geometry and Mesh
 # -----------------------------------------------------------------------------
-mesh = QuadMesh(box=[0, 2, 0, 1], resolution=(64, 64))
+mesh = QuadMesh(box=[0, 2, 0, 1], resolution=(64, 32))
 
 # Mark boundaries
 mesh.mark_region('left', lambda x,y: abs(x) < 1e-6, 
@@ -112,7 +118,7 @@ plt.tight_layout()
 plt.show()
 
 # Elements and Basis
-element = QuadFE(2, 'Q1')  # Linear elements
+element = QuadFE(2, 'Q1')  # Quadratic elements
 
 # Degree of freedom handler (mesh + element)
 dofhandler = DofHandler(mesh, element)  
@@ -177,10 +183,11 @@ print('Size of output', y_apx_vec.shape)
 print('Number of dofs', v.n_dofs())
 y_apx = Nodal(data=y_apx_vec, basis=v)
 
-
+comment.tic('Plotting function values')
 fig, ax = plt.subplots(2,1, figsize=(6,3))
 ax[0] = plot.contour(y_ref, mesh=mesh, axis=ax[0], cmap='viridis')
 ax[1] = plot.contour(y_apx, mesh=mesh, axis=ax[1], cmap='viridis')
+comment.toc()
 
 
 fig, ax = plt.subplots(2,2, figsize=(16,8))
@@ -188,16 +195,19 @@ fig, ax = plt.subplots(2,2, figsize=(16,8))
 ax[0,0] = plot.contour(dy_dx1,mesh=mesh, axis=ax[0,0],cmap='viridis')
 ax[0,1] = plot.contour(dy_dx2,mesh=mesh, axis=ax[0,1],cmap='viridis')
 
-# Row 2: derivatives of approximate solution
-dya_dx1 = Nodal(data=y_apx_vec, basis=vx)
-dya_dx2 = Nodal(data=y_apx_vec, basis=vy)
 
-ax[1,0] = plot.contour(dya_dx1,mesh=mesh, axis=ax[1,0],cmap='viridis')
-ax[1,1] = plot.contour(dya_dx2,mesh=mesh, axis=ax[1,1],cmap='viridis')
+# Row 2: derivatives of approximate solution
+dya_dx1 = y_apx.differentiate((1,0))
+dya_dx2 = y_apx.differentiate((1,1))
+
+comment.tic('Plotting Derivatives')
+ax[1,0] = plot.contour(y_apx,mesh=mesh, derivative=(1,0), axis=ax[1,0],cmap='viridis', resolution=(120,120))
+ax[1,1] = plot.contour(y_apx,mesh=mesh, derivative=(1,1), axis=ax[1,1],cmap='viridis', resolution=(120,120))
+comment.toc()
 
 plt.show()
 
-E_L2, E_H1 = test_accuracy(y_ref,dy_dx1,dy_dx2, y_apx)
+E_L2, E_H1 = test_accuracy(y_ref,dy_dx1,dy_dx2, y_apx, dya_dx1, dya_dx2)
 
 print('L2 error', E_L2)
 print('H1 error', E_H1)

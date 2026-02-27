@@ -85,7 +85,7 @@ class TestMap(unittest.TestCase):
                   2: ([(1,2),(1,2)],[(3,4),(3,4)])}}
         
         vals = {1: {1: 4, 2: 7}, 2: {1: 5, 2: 11}} 
-        subsample = np.array([2,3], dtype=np.int)
+        subsample = np.array([2,3], dtype=int)
         
         for dim in [1,2]:
             #
