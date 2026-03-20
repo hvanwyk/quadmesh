@@ -11,7 +11,7 @@ from mesh import Mesh1D, QuadMesh
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt                                                                                                                                                                                                                                                                                                                                                                                     
 
 from plot import Plot
 
@@ -174,15 +174,17 @@ def test02_1D_condition_on_pointwise():
     q_nodal = Nodal(data=q_smpl, basis=vf)
 
     # Plot the results
+    """
     fig, ax = plt.subplots()
     plot = Plot(quickview=False)
     for i in range(10):
+
         ax = plot.line(q_nodal, axis=ax, i_sample=i, 
                        plot_kwargs = {'color':'gray', 'alpha':0.5})
     plt.plot(x_dofs, q_obs, 'ro', label='Point Observations')
     plt.legend()
     plt.show()  
-    
+    """
 
 if __name__ == "__main__":
     test01_1D_condition_on_projection()
