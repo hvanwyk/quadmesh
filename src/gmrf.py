@@ -35,6 +35,8 @@ import numpy as np
 from scipy import linalg
 from scipy.special import kv, gamma
 import scipy.sparse as sp
+from sksparse.cholmod import Factor
+from sksparse.cholmod import  CholmodNotPositiveDefiniteError
 from scipy.sparse import linalg as spla
 import matplotlib.pyplot as plt
 
