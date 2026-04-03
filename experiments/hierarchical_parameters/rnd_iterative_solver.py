@@ -8,6 +8,18 @@ Random Iterative Solver:
    conditioned on the coarse parameter qhat.
 3. Try to solve the fine linear system iteratively, using the coarsely
    assembled system matrix as a preconditioner.
+
+TODO:
+There is an unresolved issue in factorizing the coarse matrix Ac for use as a 
+preconditioner. This relates to the incorporation of boundary conditions and
+hanging nodes in the current implementation of the linear solver (LinearSystem).
+This decreases the effectiveness of the preconditioner. 
+
+The solution: Since the coarse-parameter matrix still assembled over the fine mesh,
+its structure remains unchanged. The fix is to factorize the coarse matrix and 
+figure out how the right-hand side changes with the incorporation of boundary 
+conditions and hanging nodes, and apply the same changes for every residual 
+encountered.
    
 """
 

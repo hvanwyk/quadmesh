@@ -39,7 +39,7 @@ dhQ0.distribute_dofs()
 vQ0 = Basis(dhQ0,'v')
 
 cov = Covariance(dhQ0,name='matern',parameters={'sgm': 1,'nu': 1, 'l':1})
-Z = GaussianField(dhQ0.n_dofs(), K=cov)
+Z = GaussianField(dhQ0.n_dofs(), covariance=cov)
 Zs = Nodal(basis=vQ0, data=np.exp(Z.sample()))
 fig, ax = plt.subplots(1,1)
 ax = plot.contour(Zs,axis=ax)

@@ -2,6 +2,8 @@
 This is how to implement Neumann boundary conditions in the variational formulation. 
 
  using the dmu argument of the Form class to specify integration over the boundary and a Kernel to specify the Neumann flux function.
+
+ TODO: Unfinished.
 """
 
 from assembler import Assembler, Form
