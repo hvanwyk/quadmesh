@@ -799,7 +799,7 @@ class LinearSystem(object):
             return u
            
     
-    def solve_system(self, b=None, factor=False):
+    def solve_system(self, b=None, factor=False, verbose=False):
         """
         Compute the solution of the linear system 
         
@@ -832,26 +832,34 @@ class LinearSystem(object):
         #
         # Define constraint system
         # 
-        comment.tic('Setting constraint relation')
+        if verbose:
+            comment.tic('Setting constraint relation')
+
         if self.get_C() is None:
             self.set_constraint_relation()
-        comment.toc()
+
+        if verbose:
+            comment.toc()
         
         #
         # Apply constraints to A
         #
-        comment.tic('Constraining matrix') 
+        if verbose:
+            comment.tic('Constraining matrix') 
         if not self.matrix_is_constrained():
             self.constrain_matrix()
-        comment.toc()
+        if verbose:
+            comment.toc()
         
         #
         # Apply constraints to b
         #
-        comment.tic('constraining vector') 
+        if verbose:
+            comment.tic('constraining vector') 
         if not self.rhs_is_constrained():
-            self.constrain_rhs()
-        comment.toc()
+            self.constrain_rhs()    
+        if verbose:
+            comment.toc()
         
         #
         # Factor matrix
@@ -863,16 +871,20 @@ class LinearSystem(object):
         #
         # Solve the system
         #
-        comment.tic('Inverting matrix') 
+        if verbose:
+            comment.tic('Inverting matrix') 
         self.invert_matrix(factor=factor)
-        comment.toc()
+        if verbose:
+            comment.toc()
         
         #
         # Resolve constraints
         #
-        comment.tic('Resolving constraints')
+        if verbose:
+            comment.tic('Resolving constraints')
         self.resolve_constraints()
-        comment.toc()
+        if verbose:
+            comment.toc()
         
     
     def get_solution(self, as_function=True):

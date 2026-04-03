@@ -1,9 +1,12 @@
 """
 Run a variable selection algorithm based on local linearization 
 
-Step 1. Simulate 
+1. Generate samples of the coarse parameter field.
+2. Simulate the state for each sample of the coarse parameter field.
+3. Compute the local linearization of the state with respect to the coarse parameter field.
+4. Compute the sensitivity of the state with respect to the coarse parameter field.
 
-Step 2. 
+Step 2. Simulate 
 """
 
 from mesh import QuadMesh

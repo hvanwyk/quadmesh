@@ -3108,7 +3108,7 @@ class Assembler(object):
         n_samples = None
         for form in self.problems[i_problem]:
             if form.type==form_type:
-                n_kernel_sample = form.kernel.n_subsample()
+                n_kernel_sample = form.kernel.n_samples()
                 #
                 # Consider only forms of given type
                 #

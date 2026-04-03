@@ -98,7 +98,7 @@ def test01_1D_condition_on_projection():
     # Create hierarchical mesh
     mesh = Mesh1D(box=[0,1], resolution=(4,))  # initial mesh
     mesh.record(0)  # coarse-level flag
-    for l in range(2): mesh.cells.refine()   # refine twice
+    for l in range(4): mesh.cells.refine()   # refine twice
     mesh.record(1) # fine-level flag
 
     # Define a finite element space on the mesh
@@ -139,9 +139,8 @@ def test02_1D_condition_on_pointwise():
     """
     Test sampling from a conditional Gaussian field using pointwise
     conditioning on a fine 1D hierarchical mesh.
-
-    TODO: Unfinished!
     """
+
     # Create a Mesh
     mesh = Mesh1D(box=[0,1], resolution=(5,))  # initial mesh
     mesh.record(0)  # coarse-level flag
@@ -170,22 +169,23 @@ def test02_1D_condition_on_pointwise():
     q_obs = np.sin(2*np.pi*x_dofs)  # observations at coarse
     print(q_obs.shape)
 
-    q_smpl = q.condition(I_f2c, q_obs, n_samples=10)
+    n_samples = 30
+    q_smpl = q.condition(I_f2c, q_obs, n_samples=n_samples)
     q_nodal = Nodal(data=q_smpl, basis=vf)
 
     # Plot the results
-    """
+    
     fig, ax = plt.subplots()
     plot = Plot(quickview=False)
-    for i in range(10):
+    for i in range(n_samples):
 
         ax = plot.line(q_nodal, axis=ax, i_sample=i, 
                        plot_kwargs = {'color':'gray', 'alpha':0.5})
     plt.plot(x_dofs, q_obs, 'ro', label='Point Observations')
     plt.legend()
     plt.show()  
-    """
+    
 
 if __name__ == "__main__":
     test01_1D_condition_on_projection()
-    test02_1D_condition_on_pointwise()
+    #test02_1D_condition_on_pointwise()
