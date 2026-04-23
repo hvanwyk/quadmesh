@@ -2310,7 +2310,7 @@ class Assembler(object):
 
 
 
-    def assemble(self, keep_cellwise_data=False, region_flag=None):
+    def assemble(self, keep_cellwise_data=False, region_flag=None, verbose=False):
         """
         Description
         -----------
@@ -2328,7 +2328,10 @@ class Assembler(object):
 
             region_flag : str/int/tuple, default=None, region marker
 
+            verbose : bool, default=False, whether to print additional information 
+                during assembly
 
+                
         Output:
 
             assembled_forms: list of dictionaries (one for each problem), each of

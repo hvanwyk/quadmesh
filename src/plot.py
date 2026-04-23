@@ -592,7 +592,7 @@ class Plot(object):
     
     
     def contour(self, f, n_sample=0, colorbar=True, derivative=(0,), 
-                resolution=(250,250), axis=None, mesh=None,cmap='viridis',
+                resolution=(100,100), axis=None, mesh=None,cmap='viridis',
                 vmin=None,vmax=None, alpha=1):
         """
         Returns a contour plot of a function f
@@ -616,8 +616,6 @@ class Plot(object):
         Outputs: 
         
             ax
-            
-            fig
                     
         """
         if mesh is None:
@@ -739,8 +737,7 @@ class Plot(object):
                 alpha = 1
             axis.plot_surface(xx,yy,zz.reshape(xx.shape),cmap='viridis', \
                               linewidth=1, antialiased=True, alpha=alpha)
-            
-        self.exit(axis=axis)
+        
         
         if grid:
             #

@@ -78,11 +78,29 @@ def projection_matrix(v_fne, v_crs):
 
     return P
 
+def flux(q, ux, uy, region=None):
+    """
+    Description:
+
+        Compute the flux at the outflow boundary, i.e. 
+
+         flux = -(xi*grad u) * n
+
+    Inputs:
+
+        q: double, diffusion coefficient.
+
+        ux: double, x-derivative of solution.
+
+        uy: double, y-derivative of solution.
+    """
+    n = region.unit_normal()
+    return -q*(ux*n[0]+uy*n[1])
 
 #
 # Computational mesh
 # 
-mesh = QuadMesh(box=[0,1,0,1], resolution=(2,2))
+mesh = QuadMesh(box=[0,2,0,1], resolution=(2,2))
 mesh.record(0)
 L = 5  # number of levels in the mesh hierarchy
 for l in range(1, L):
@@ -91,12 +109,14 @@ for l in range(1, L):
 
 # Mark Dirichlet boundaries
 i_inflow = lambda x,y: np.abs(x)<1e-6 and (0<=y) and (y<=0.5)
-i_outflow = lambda x,y: np.abs(x-1)<1e-6 and (0.5<=y) and (y<=1)
+i_outflow = lambda x,y: np.abs(x-2)<1e-6 and (0.5<=y) and (y<=1)
 mesh.mark_region('inflow', i_inflow, entity_type='vertex', on_boundary=True)
 mesh.mark_region('outflow', i_outflow, entity_type='vertex', on_boundary=True)
-
+mesh.mark_region('outflow_edge', i_outflow, entity_type='half_edge', on_boundary=True)
+mesh.mark_region('outflow_cell', i_outflow, entity_type='cell',\
+                 strict_containment=False, on_boundary=True)
 plot = Plot(quickview=False)
-fig, ax = plt.subplots(L,3, figsize=(9, 3*L))
+fig, ax = plt.subplots(L,3, figsize=(12, 3*L))
 for l in range(L):
     ax[l,0] = plot.mesh(mesh, axis=ax[l,0], 
                         regions=[('inflow','vertex'), ('outflow','vertex')],
@@ -173,10 +193,12 @@ for l in range(L):
 for l in range(L):
     ax[l,1] = plot.contour(Nodal(basis=w[l], data=Z[l]), axis=ax[l,1])
     ax[l,1].set_title(f"Gaussian Field Sample at Level {l} with Conditioning")
-
+    ax[l,1].set_axis_off()
 
 # Solve the PDE sequentially for each sample of the Gaussian field
-u = []
+u, ux, uy = [], [], []
+Q_flux = []
+
 f = Constant(1)  # source term
 g = Constant(0)  # Neumann boundary condition
 u_inflow = Constant(1)  # Dirichlet boundary condition at inflow
@@ -187,7 +209,7 @@ for l in range(L):
                 Form(kernel=q, test=v_y, trial=v_y),
                 Form(kernel=f, test=v)]
                 
-    assembler = Assembler(problems, mesh, subforest_flag=l)
+    assembler = Assembler(problems, mesh, subforest_flag=L-1)
     assembler.add_dirichlet(dir_marker='inflow', dir_fn=u_inflow)
     assembler.add_dirichlet(dir_marker='outflow', dir_fn=u_outflow)
     
@@ -195,12 +217,27 @@ for l in range(L):
     
     u_vec = assembler.solve()
     u.append(Nodal(data=u_vec, basis=v))
+    ux.append(Nodal(data=u_vec, basis=v_x))
+    uy.append(Nodal(data=u_vec, basis=v_y))
 
     # Plot the solution
     ax[l,2] = plot.contour(u[l], axis=ax[l,2])
     ax[l,2].set_title(f"Solution at Level {l}")
+    ax[l,2].set_axis_off()
 
+    #
+    # Compute the ouflow flux at the outflow boundary
+    #
+    k_flux = Kernel(f=[q,ux[l],uy[l]], F=flux)
+    flux_problem = [Form(kernel=k_flux, flag='outflow_edge', dmu='ds')]
+    flux_assembler = Assembler(flux_problem, mesh, subforest_flag=L-1)
+    flux_assembler.assemble(region_flag='outflow_cell')
+    flux_assembled_form = flux_assembler.assembled_forms(0)
 
+    print(f"Flux at level {l}: {flux_assembled_form}")
+    #Q_flux.append(flux_assembler.get_scalar(i_problem=0))
+    #print(f"Flux at level {l}: {Q_flux[-1]}")
+    
 plt.tight_layout()
 plt.show()
 
