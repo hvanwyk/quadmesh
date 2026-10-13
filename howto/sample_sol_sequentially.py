@@ -228,13 +228,13 @@ for l in range(L):
     #
     # Compute the ouflow flux at the outflow boundary
     #
-    k_flux = Kernel(f=[q,ux[l],uy[l]], F=flux)
-    flux_problem = [Form(kernel=k_flux, flag='outflow_edge', dmu='ds')]
-    flux_assembler = Assembler(flux_problem, mesh, subforest_flag=L-1)
-    flux_assembler.assemble(region_flag='outflow_cell')
-    flux_assembled_form = flux_assembler.assembled_forms(0)
+    #k_flux = Kernel(f=[q,ux[l],uy[l]], F=flux)
+    #flux_problem = [Form(kernel=k_flux, flag='outflow_edge', dmu='ds')]
+    #flux_assembler = Assembler(flux_problem, mesh, subforest_flag=L-1)
+    #flux_assembler.assemble(region_flag='outflow_cell')
+    #flux_assembled_form = flux_assembler.assembled_forms(0)
 
-    print(f"Flux at level {l}: {flux_assembled_form}")
+    #print(f"Flux at level {l}: {flux_assembled_form}")
     #Q_flux.append(flux_assembler.get_scalar(i_problem=0))
     #print(f"Flux at level {l}: {Q_flux[-1]}")
     

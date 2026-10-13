@@ -2639,8 +2639,8 @@ class HalfEdge(Tree):
             if jac_p2r:
                 #
                 # Jacobian of mapping from physical to reference region
-                # TODO: Shouldn't this also be a list?
-                mg['jac_p2r'] = np.array([[1/(x1-x0), 1/(y1-y0)]])
+                #
+                mg['jac_p2r'] = [np.array([[1/(x1-x0), 1/(y1-y0)]])]*n
             if hess_r2p:
                 #
                 # Hessian of mapping from reference to physical region
@@ -2661,40 +2661,7 @@ class HalfEdge(Tree):
             #
             return x_trg
 
-        """
-        # TODO: Remove this...
-        #
-        # Compute the Jacobian
-        #
-        if jacobian:
-            if mapsto == 'physical':
-                #
-                # Derivative of mapping from refence to physical cell
-                #
-                jac = [np.array([[x1-x0],[y1-y0]])]*n
-            elif mapsto == 'reference':
-                #
-                # Derivative of inverse map
-                #
-                jac = np.array([[1/(x1-x0), 1/(y1-y0)]])
-
-        #
-        # Compute the Hessian (linear mapping, so Hessian = 0)
-        #
-        hess = np.zeros((2,2))
-
-        #
-        # Return output
-        #
-        if jacobian and hessian:
-            return x_trg, jac, hess
-        elif jacobian and not hessian:
-            return x_trg, jac
-        elif hessian and not jacobian:
-            return x_trg, hess
-        else:
-            return x_trg
-        """
+        
 
 class Interval(HalfEdge):
     """

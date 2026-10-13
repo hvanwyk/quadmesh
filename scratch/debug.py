@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import plot
 
 def flux(q,ux,uy,region=None):
-    n = region.normal()
+    n = region.normal() if region is not None else np.zeros(2)
     return q*(ux*n[0]+uy*n[1])
     
 #
@@ -22,8 +22,9 @@ mesh = QuadMesh(box=[0,1,0,1], resolution=(2,2))
 outflow_indicator = lambda x,y: np.abs(x-1)<1e-6 and (0.5<=y) and (y<=1)
 mesh.mark_region('outflow_edge', outflow_indicator, 
                  entity_type='half_edge', on_boundary=True)
-mesh.mark_region('outflow_cell', outflow_indicator, 
-                 entity_type='cell', strict_containment=False, on_boundary=True)
+for edge in mesh.half_edges.get_leaves(flag='outflow_edge'):
+    edge.cell().mark('outflow_cell')
+
 
 Q1 = QuadFE(mesh.dim(), 'Q1')
 dhQ1 = DofHandler(mesh, Q1)
@@ -40,7 +41,6 @@ assembler = Assembler(f_flux, mesh)
 
 # Iterate over cells at the outflow boundary
 for ci in mesh.cells.get_leaves(flag='outflow_cell'):
-    for edge in ci.get_half_edges():
-        print(edge.is_marked('outflow_edge'))
-    #shape_info = assembler.shape_info(ci)
-    #print(f"Cell {ci} shape info: {shape_info}")
+    shape_info = assembler.shape_info(ci)
+    
+    
